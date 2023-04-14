@@ -81,10 +81,25 @@ class CPU:
         if reg_pair == 3:
             self._sp = value
 
+    def _reg_pair_symb(self, reg_pair):
+        if reg_pair == 0:
+            return "BC"
+        if reg_pair == 1:
+            return "DE"
+        if reg_pair == 2:
+            return "HL"
+        if reg_pair == 3:
+            return "SP"
 
-    def _log_instruction(self, mnemonic):
-        logger.debug(f'{self._current_inst:02x}         {mnemonic}')
 
+    def _log_1b_instruction(self, mnemonic):
+        logger.debug(f' {self._current_inst:02x}         {mnemonic}')
+
+
+    def _log_3b_instruction(self, value, mnemonic):
+        l = value & 0xff
+        h = value >> 8
+        logger.debug(f' {self._current_inst:02x} {l:02x} {h:02x}   {mnemonic}')
 
     def _nop(self):
         """
@@ -92,7 +107,7 @@ class CPU:
 
         :return:
         """
-        self._log_instruction("NOP")
+        self._log_1b_instruction("NOP")
         self._cycles += 4
         
 
@@ -102,7 +117,7 @@ class CPU:
         value = self._fetch_next_word()
         self._set_register_pair(reg_pair, value)
 
-        self._log_instruction("LXI")
+        self._log_3b_instruction(value, f"LXI {self._reg_pair_symb(reg_pair)}, 0x{value:04x}")
         self._cycles += 10
 
 

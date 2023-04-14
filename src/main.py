@@ -1,9 +1,12 @@
+import logging
 from machine import Machine
 from cpu import CPU
 from ram import RAM
 from rom import ROM
 
 def main():
+    logging.basicConfig(level=logging.DEBUG)
+
     # Create a UT-88 machine in basic configuration
     machine = Machine()
     machine.add_memory(RAM(0xC000, 0xC3ff))
