@@ -7,6 +7,7 @@ import sys
 sys.path.append('../src')
 
 from ram import RAM
+from utils import *
 
 @pytest.fixture
 def ram():
@@ -48,3 +49,36 @@ def test_out_of_word_range_value(ram):
 def test_out_of_word_range_value2(ram):
     with pytest.raises(ValueError):
         ram.push(0x1234, 0xbeef42)
+
+def test_out_of_addr_range_byte():
+    ram = RAM(0x5000, 0x5fff) 
+    with pytest.raises(MemoryError):
+        ram.write_byte(0x1234, 0x42)
+    with pytest.raises(MemoryError):
+        ram.write_byte(0x6789, 0x42)
+    with pytest.raises(MemoryError):
+        ram.read_byte(0x1234)
+    with pytest.raises(MemoryError):
+        ram.read_byte(0x6789)
+
+def test_out_of_addr_range_word():
+    ram = RAM(0x5000, 0x5fff) 
+    with pytest.raises(MemoryError):
+        ram.write_word(0x1234, 0xbeef)
+    with pytest.raises(MemoryError):
+        ram.write_word(0x6789, 0xbeef)
+    with pytest.raises(MemoryError):
+        ram.read_word(0x1234)
+    with pytest.raises(MemoryError):
+        ram.read_word(0x6789)
+
+def test_out_of_addr_range_stack():
+    ram = RAM(0x5000, 0x5fff) 
+    with pytest.raises(MemoryError):
+        ram.push(0x1234, 0xbeef)
+    with pytest.raises(MemoryError):
+        ram.push(0x6789, 0xbeef)
+    with pytest.raises(MemoryError):
+        ram.pop(0x1234)
+    with pytest.raises(MemoryError):
+        ram.pop(0x6789)
