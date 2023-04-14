@@ -13,6 +13,10 @@ from utils import *
 def rom():
     return ROM("../resources/Monitor0.bin", 0x4000)
 
+def test_addr(rom):
+    assert rom.get_start_addr() == 0x4000
+    assert rom.get_end_addr() == 0x43ff
+
 def test_read_byte(rom):
     assert rom.read_byte(0x4042) == 0x26
 

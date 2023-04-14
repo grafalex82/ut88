@@ -7,6 +7,14 @@ class RAM:
         self._ram = [0] * (self._endaddr - self._startaddr + 1)
 
 
+    def get_start_addr(self):
+        return self._startaddr
+
+
+    def get_end_addr(self):
+        return self._endaddr
+
+
     def _check_addr(self, addr):
         if addr < self._startaddr or addr > self._endaddr:
             raise MemoryError(f"Address 0x{addr:04x} is out of memory range 0x{self._startaddr:04x}-0x{self._endaddr:04x}")

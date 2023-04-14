@@ -6,12 +6,20 @@ class ROM:
             self._rom = f.read()
 
         self._startaddr = startaddr
-        self._endaddr = self._startaddr + len(self._rom)
+        self._endaddr = self._startaddr + len(self._rom) - 1
 
 
     def _check_addr(self, addr):
         if addr < self._startaddr or addr > self._endaddr:
             raise MemoryError(f"Address 0x{addr:04x} is out of memory range 0x{self._startaddr:04x}-0x{self._endaddr:04x}")
+
+
+    def get_start_addr(self):
+        return self._startaddr
+
+
+    def get_end_addr(self):
+        return self._endaddr
 
 
     def read_byte(self, addr):
