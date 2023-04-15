@@ -27,9 +27,9 @@ def test_ram_read_write(machine):
     machine.write_memory_word(0x8642, 0xbeef)
     assert machine.read_memory_word(0x8642) == 0xbeef
 
-    assert machine.pop_stack(0x8ace) == 0x0000
-    machine.push_stack(0x8ace, 0xbeef)
-    assert machine.pop_stack(0x8acc) == 0xbeef
+    assert machine.read_stack(0x8ace) == 0x0000
+    machine.write_stack(0x8ace, 0xbeef)
+    assert machine.read_stack(0x8ace) == 0xbeef
 
 def test_rom_read(machine):
     assert machine.read_memory_byte(0x4042) == 0x26

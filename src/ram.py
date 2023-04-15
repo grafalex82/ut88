@@ -1,6 +1,12 @@
 from utils import *
 
 class RAM:
+    """
+    This class represent a general purpose memory at a given address space.
+    The RAM memory supports read and write operations. Stack read and write
+    operations are synonims for regular read and write operations as this
+    memory type does not distinguish between memory and stack access.
+    """
     def __init__(self, startaddr, endaddr):
         self._startaddr = startaddr
         self._endaddr = endaddr
@@ -50,14 +56,9 @@ class RAM:
         self._ram[addr - self._startaddr + 1] = value >> 8
 
     
-    def push(self, ptr, value):
-        self._check_addr(ptr)
-        self._check_value(value, 0xffff)
-
-        ptr -= 2
-        self._ram[ptr - self._startaddr] = value & 0xff
-        self._ram[ptr - self._startaddr + 1] = value >> 8
+    def write_stack(self, ptr, value):
+        self.write_word(ptr, value)
 
 
-    def pop(self, ptr):
+    def read_stack(self, ptr):
         return self.read_word(ptr)

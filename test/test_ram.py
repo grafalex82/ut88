@@ -34,13 +34,13 @@ def test_write_read_word2(ram):
     assert ram.read_byte(0x1235) == 0xbe
 
 def test_push(ram):
-    ram.push(0x1234, 0xbeef)
-    assert ram.read_byte(0x1232) == 0xef
-    assert ram.read_byte(0x1233) == 0xbe
+    ram.write_stack(0x1234, 0xbeef)
+    assert ram.read_byte(0x1234) == 0xef
+    assert ram.read_byte(0x1235) == 0xbe
 
 def test_pop(ram):
     ram.write_word(0x1234, 0xbeef)
-    assert ram.pop(0x1234) == 0xbeef
+    assert ram.read_stack(0x1234) == 0xbeef
 
 def test_out_of_byte_range_value(ram):
     with pytest.raises(ValueError):
@@ -52,7 +52,7 @@ def test_out_of_word_range_value(ram):
 
 def test_out_of_word_range_value2(ram):
     with pytest.raises(ValueError):
-        ram.push(0x1234, 0xbeef42)
+        ram.write_stack(0x1234, 0xbeef42)
 
 def test_out_of_addr_range_byte():
     ram = RAM(0x5000, 0x5fff) 
@@ -79,10 +79,10 @@ def test_out_of_addr_range_word():
 def test_out_of_addr_range_stack():
     ram = RAM(0x5000, 0x5fff) 
     with pytest.raises(MemoryError):
-        ram.push(0x1234, 0xbeef)
+        ram.write_stack(0x1234, 0xbeef)
     with pytest.raises(MemoryError):
-        ram.push(0x6789, 0xbeef)
+        ram.write_stack(0x6789, 0xbeef)
     with pytest.raises(MemoryError):
-        ram.pop(0x1234)
+        ram.read_stack(0x1234)
     with pytest.raises(MemoryError):
-        ram.pop(0x6789)
+        ram.read_stack(0x6789)

@@ -48,10 +48,10 @@ class Machine:
         mem = self._get_memory(addr)
         mem.write_word(addr, value)
 
-    def push_stack(self, addr, value):
+    def write_stack(self, addr, value):
         mem = self._get_memory(addr)
-        mem.push(addr, value)
+        mem.write_stack(addr, value)
 
-    def pop_stack(self, addr):
+    def read_stack(self, addr):
         mem = self._get_memory(addr)
-        return mem.pop(addr)
+        return mem.read_stack(addr)
