@@ -154,7 +154,7 @@ class CPU:
         if reg_pair == 2:
             self._set_hl(value)
         if reg_pair == 3:
-            self._set_psw(value)
+            self._sp = value
 
 
     def _get_register_pair(self, reg_pair):
@@ -165,8 +165,7 @@ class CPU:
         if reg_pair == 2:
             return self._get_hl()
         if reg_pair == 3:
-            return self._get_psw()
-
+            return self._sp
 
 
     def _reg_symb(self, reg_idx):
@@ -182,16 +181,6 @@ class CPU:
             return "HL"
         if reg_pair == 3:
             return "SP"
-
-    def _reg_pair_symb2(self, reg_pair):
-        if reg_pair == 0:
-            return "BC"
-        if reg_pair == 1:
-            return "DE"
-        if reg_pair == 2:
-            return "HL"
-        if reg_pair == 3:
-            return "PSW"
 
 
     def _log_1b_instruction(self, mnemonic):
@@ -254,11 +243,18 @@ class CPU:
     def _push(self):
         """ Push register pair to stack """
         reg_pair = (self._current_inst & 0x30) >> 4
-        value = self._get_register_pair(reg_pair)
+
+        if reg_pair != 3:
+            reg_pair_name = self._reg_pair_symb(reg_pair)
+            value = self._get_register_pair(reg_pair)
+        else:
+            reg_pair_name = "PSW"
+            value = self._get_psw()
+            
         self._push_to_stack(value)
         self._cycles += 11
 
-        self._log_1b_instruction(f"PUSH {self._reg_pair_symb2(reg_pair)}")
+        self._log_1b_instruction(f"PUSH {reg_pair_name}")
 
 
     def _jmp(self):
