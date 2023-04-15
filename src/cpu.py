@@ -92,6 +92,17 @@ class CPU:
         return (self._h << 8) | self._l
 
 
+    def _get_psw(self):
+        flags = 2 # bit1 is always 1
+        flags |= 0x80 if self._sign else 0
+        flags |= 0x40 if self._zero else 0
+        flags |= 0x10 if self._half_carry else 0
+        flags |= 0x04 if self._parity else 0
+        flags |= 0x01 if self._carry else 0
+
+        return (self._a << 8) | flags
+
+
     def _set_bc(self, value):
         self._b = value >> 8
         self._c = value & 0xff
@@ -105,6 +116,15 @@ class CPU:
     def _set_hl(self, value):
         self._h = value >> 8
         self._l = value & 0xff
+
+    
+    def _set_psw(self, value):
+        self._a = value >> 8
+        self._sign = (value & 0x80) != 0
+        self._zero = (value & 0x40) != 0
+        self._half_carry = (value & 0x10) != 0
+        self._parity = value & 0x04 != 0
+        self._carry = (value & 0x01) != 0
 
 
     def _set_register(self, reg_idx, value):
@@ -127,9 +147,6 @@ class CPU:
 
 
     def _set_register_pair(self, reg_pair, value):
-        h = value >> 8
-        l = value & 0xff
-
         if reg_pair == 0:
             self._set_bc(value)
         if reg_pair == 1:
@@ -137,7 +154,19 @@ class CPU:
         if reg_pair == 2:
             self._set_hl(value)
         if reg_pair == 3:
-            self._sp = value
+            self._set_psw(value)
+
+
+    def _get_register_pair(self, reg_pair):
+        if reg_pair == 0:
+            return self._get_bc()
+        if reg_pair == 1:
+            return self._get_de()
+        if reg_pair == 2:
+            return self._get_hl()
+        if reg_pair == 3:
+            return self._get_psw()
+
 
 
     def _reg_symb(self, reg_idx):
@@ -153,6 +182,16 @@ class CPU:
             return "HL"
         if reg_pair == 3:
             return "SP"
+
+    def _reg_pair_symb2(self, reg_pair):
+        if reg_pair == 0:
+            return "BC"
+        if reg_pair == 1:
+            return "DE"
+        if reg_pair == 2:
+            return "HL"
+        if reg_pair == 3:
+            return "PSW"
 
 
     def _log_1b_instruction(self, mnemonic):
@@ -184,7 +223,10 @@ class CPU:
         """ Load register pair immediate """
         reg_pair = (self._current_inst & 0x30) >> 4
         value = self._fetch_next_word()
-        self._set_register_pair(reg_pair, value)
+        if reg_pair == 3:
+            self._sp = value
+        else: 
+            self._set_register_pair(reg_pair, value)
         self._cycles += 10
 
         self._log_3b_instruction(f"LXI {self._reg_pair_symb(reg_pair)}, {value:04x}")
@@ -207,6 +249,16 @@ class CPU:
         self._cycles += 13
 
         self._log_3b_instruction(f"STA {addr:04x}")
+
+
+    def _push(self):
+        """ Push register pair to stack """
+        reg_pair = (self._current_inst & 0x30) >> 4
+        value = self._get_register_pair(reg_pair)
+        self._push_to_stack(value)
+        self._cycles += 11
+
+        self._log_1b_instruction(f"PUSH {self._reg_pair_symb2(reg_pair)}")
 
 
     def _jmp(self):
@@ -458,7 +510,7 @@ class CPU:
         self._instructions[0xC2] = None
         self._instructions[0xC3] = self._jmp
         self._instructions[0xC4] = None
-        self._instructions[0xC5] = None
+        self._instructions[0xC5] = self._push
         self._instructions[0xC6] = None
         self._instructions[0xC7] = self._rst
         self._instructions[0xC8] = None
@@ -475,7 +527,7 @@ class CPU:
         self._instructions[0xD2] = None
         self._instructions[0xD3] = None
         self._instructions[0xD4] = None
-        self._instructions[0xD5] = None
+        self._instructions[0xD5] = self._push
         self._instructions[0xD6] = None
         self._instructions[0xD7] = self._rst
         self._instructions[0xD8] = None
@@ -492,7 +544,7 @@ class CPU:
         self._instructions[0xE2] = None
         self._instructions[0xE3] = None
         self._instructions[0xE4] = None
-        self._instructions[0xE5] = None
+        self._instructions[0xE5] = self._push
         self._instructions[0xE6] = None
         self._instructions[0xE7] = self._rst
         self._instructions[0xE8] = None
@@ -509,7 +561,7 @@ class CPU:
         self._instructions[0xF2] = None
         self._instructions[0xF3] = self._di
         self._instructions[0xF4] = None
-        self._instructions[0xF5] = None
+        self._instructions[0xF5] = self._push
         self._instructions[0xF6] = None
         self._instructions[0xF7] = self._rst
         self._instructions[0xF8] = None

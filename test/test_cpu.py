@@ -70,7 +70,7 @@ def test_lxi_hl(cpu):
     assert cpu._l == 0xef
     assert cpu._cycles == 10
     
-def test_lxi_bc(cpu):
+def test_lxi_sp(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x31)    # Instruction Opcode
     cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
     cpu.step() 
@@ -173,3 +173,62 @@ def test_rst(cpu, opcode, rstaddr):
     assert cpu._cycles == 11
     assert cpu._sp == 0x1232
     assert cpu._machine.read_memory_word(0x1232) == 0x0001 # address of the next instruction
+
+def test_push_bc(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xc5)    # Instruction Opcode
+    cpu._sp = 0x1234
+    cpu._set_bc(0xbeef)
+    cpu.step()
+    assert cpu._cycles == 11
+    assert cpu._sp == 0x1232
+    assert cpu._machine.read_memory_word(0x1232) == 0xbeef
+
+def test_push_bc(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xc5)    # Instruction Opcode
+    cpu._sp = 0x1234
+    cpu._set_bc(0xbeef)
+    cpu.step()
+    assert cpu._cycles == 11
+    assert cpu._sp == 0x1232
+    assert cpu._machine.read_memory_word(0x1232) == 0xbeef
+
+def test_push_de(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xd5)    # Instruction Opcode
+    cpu._sp = 0x1234
+    cpu._set_de(0xbeef)
+    cpu.step()
+    assert cpu._cycles == 11
+    assert cpu._sp == 0x1232
+    assert cpu._machine.read_memory_word(0x1232) == 0xbeef
+
+def test_push_hl(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xe5)    # Instruction Opcode
+    cpu._sp = 0x1234
+    cpu._set_hl(0xbeef)
+    cpu.step()
+    assert cpu._cycles == 11
+    assert cpu._sp == 0x1232
+    assert cpu._machine.read_memory_word(0x1232) == 0xbeef
+
+def test_push_psw1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xf5)    # Instruction Opcode
+    cpu._sp = 0x1234
+    cpu._a = 0x42
+    cpu.step()
+    assert cpu._cycles == 11
+    assert cpu._sp == 0x1232
+    assert cpu._machine.read_memory_word(0x1232) == 0x4202 # bit1 of the PSW is always 1
+
+def test_push_psw2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xf5)    # Instruction Opcode
+    cpu._sp = 0x1234
+    cpu._a = 0x42
+    cpu._sign = True
+    cpu._zero = True
+    cpu._half_carry = True
+    cpu._parity = True
+    cpu._carry = True
+    cpu.step()
+    assert cpu._cycles == 11
+    assert cpu._sp == 0x1232
+    assert cpu._machine.read_memory_word(0x1232) == 0x42d7 # bit1 of the PSW is always 1
