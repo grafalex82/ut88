@@ -127,6 +127,25 @@ class CPU:
         self._carry = (value & 0x01) != 0
 
 
+    def _get_register(self, reg_idx):
+        if reg_idx == 0:
+            return self._b
+        if reg_idx == 1:
+            return self._c
+        if reg_idx == 2:
+            return self._d
+        if reg_idx == 3:
+            return self._e
+        if reg_idx == 4:
+            return self._h
+        if reg_idx == 5:
+            return self._l
+        if reg_idx == 6:
+            return self._machine.read_memory_byte(self._get_hl())
+        if reg_idx == 7:
+            return self._a
+
+
     def _set_register(self, reg_idx, value):
         if reg_idx == 0:
             self._b = value
@@ -200,13 +219,27 @@ class CPU:
         param2 = self._machine.read_memory_byte(self._pc - 1)
         logger.debug(f' {addr:04x}  {self._current_inst:02x} {param1:02x} {param2:02x}   {mnemonic}')
 
-    # Movement instructions
+    # Data transfer instructions
 
     def _nop(self):
         """ Do nothing """
         self._cycles += 4
 
         self._log_1b_instruction("NOP")
+
+
+    def _mov(self):
+        """ Move byte between 2 registers """
+        dst = (self._current_inst & 0x38) >> 3
+        src = self._current_inst & 0x07
+        value = self._get_register(src)
+        self._set_register(dst, value)
+
+        self._cycles += 5
+        if src == 6 or dst == 6:
+            self._cycles += 2
+
+        self._log_1b_instruction(f"MOV {self._reg_symb(dst)}, {self._reg_symb(src)}")
 
 
     def _lxi(self):
@@ -390,73 +423,73 @@ class CPU:
         self._instructions[0x3E] = self._mvi
         self._instructions[0x3F] = None
 
-        self._instructions[0x40] = None
-        self._instructions[0x41] = None
-        self._instructions[0x42] = None
-        self._instructions[0x43] = None
-        self._instructions[0x44] = None
-        self._instructions[0x45] = None
-        self._instructions[0x46] = None
-        self._instructions[0x47] = None
-        self._instructions[0x48] = None
-        self._instructions[0x49] = None
-        self._instructions[0x4A] = None
-        self._instructions[0x4B] = None
-        self._instructions[0x4C] = None
-        self._instructions[0x4D] = None
-        self._instructions[0x4E] = None
-        self._instructions[0x4F] = None
+        self._instructions[0x40] = self._mov
+        self._instructions[0x41] = self._mov
+        self._instructions[0x42] = self._mov
+        self._instructions[0x43] = self._mov
+        self._instructions[0x44] = self._mov
+        self._instructions[0x45] = self._mov
+        self._instructions[0x46] = self._mov
+        self._instructions[0x47] = self._mov
+        self._instructions[0x48] = self._mov
+        self._instructions[0x49] = self._mov
+        self._instructions[0x4A] = self._mov
+        self._instructions[0x4B] = self._mov
+        self._instructions[0x4C] = self._mov
+        self._instructions[0x4D] = self._mov
+        self._instructions[0x4E] = self._mov
+        self._instructions[0x4F] = self._mov
 
-        self._instructions[0x50] = None
-        self._instructions[0x51] = None
-        self._instructions[0x52] = None
-        self._instructions[0x53] = None
-        self._instructions[0x54] = None
-        self._instructions[0x55] = None
-        self._instructions[0x56] = None
-        self._instructions[0x57] = None
-        self._instructions[0x58] = None
-        self._instructions[0x59] = None
-        self._instructions[0x5A] = None
-        self._instructions[0x5B] = None
-        self._instructions[0x5C] = None
-        self._instructions[0x5D] = None
-        self._instructions[0x5E] = None
-        self._instructions[0x5F] = None
+        self._instructions[0x50] = self._mov
+        self._instructions[0x51] = self._mov
+        self._instructions[0x52] = self._mov
+        self._instructions[0x53] = self._mov
+        self._instructions[0x54] = self._mov
+        self._instructions[0x55] = self._mov
+        self._instructions[0x56] = self._mov
+        self._instructions[0x57] = self._mov
+        self._instructions[0x58] = self._mov
+        self._instructions[0x59] = self._mov
+        self._instructions[0x5A] = self._mov
+        self._instructions[0x5B] = self._mov
+        self._instructions[0x5C] = self._mov
+        self._instructions[0x5D] = self._mov
+        self._instructions[0x5E] = self._mov
+        self._instructions[0x5F] = self._mov
 
-        self._instructions[0x60] = None
-        self._instructions[0x61] = None
-        self._instructions[0x62] = None
-        self._instructions[0x63] = None
-        self._instructions[0x64] = None
-        self._instructions[0x65] = None
-        self._instructions[0x66] = None
-        self._instructions[0x67] = None
-        self._instructions[0x68] = None
-        self._instructions[0x69] = None
-        self._instructions[0x6A] = None
-        self._instructions[0x6B] = None
-        self._instructions[0x6C] = None
-        self._instructions[0x6D] = None
-        self._instructions[0x6E] = None
-        self._instructions[0x6F] = None
+        self._instructions[0x60] = self._mov
+        self._instructions[0x61] = self._mov
+        self._instructions[0x62] = self._mov
+        self._instructions[0x63] = self._mov
+        self._instructions[0x64] = self._mov
+        self._instructions[0x65] = self._mov
+        self._instructions[0x66] = self._mov
+        self._instructions[0x67] = self._mov
+        self._instructions[0x68] = self._mov
+        self._instructions[0x69] = self._mov
+        self._instructions[0x6A] = self._mov
+        self._instructions[0x6B] = self._mov
+        self._instructions[0x6C] = self._mov
+        self._instructions[0x6D] = self._mov
+        self._instructions[0x6E] = self._mov
+        self._instructions[0x6F] = self._mov
 
-        self._instructions[0x70] = None
-        self._instructions[0x71] = None
-        self._instructions[0x72] = None
-        self._instructions[0x73] = None
-        self._instructions[0x74] = None
-        self._instructions[0x75] = None
+        self._instructions[0x70] = self._mov
+        self._instructions[0x71] = self._mov
+        self._instructions[0x72] = self._mov
+        self._instructions[0x73] = self._mov
+        self._instructions[0x74] = self._mov
+        self._instructions[0x75] = self._mov
         self._instructions[0x76] = None
-        self._instructions[0x77] = None
-        self._instructions[0x78] = None
-        self._instructions[0x79] = None
-        self._instructions[0x7A] = None
-        self._instructions[0x7B] = None
-        self._instructions[0x7C] = None
-        self._instructions[0x7D] = None
-        self._instructions[0x7E] = None
-        self._instructions[0x7F] = None
+        self._instructions[0x77] = self._mov
+        self._instructions[0x78] = self._mov
+        self._instructions[0x79] = self._mov
+        self._instructions[0x7A] = self._mov
+        self._instructions[0x7B] = self._mov
+        self._instructions[0x7C] = self._mov
+        self._instructions[0x7D] = self._mov
+        self._instructions[0x7E] = self._mov
+        self._instructions[0x7F] = self._mov
 
         self._instructions[0x80] = None
         self._instructions[0x81] = None

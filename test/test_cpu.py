@@ -295,3 +295,32 @@ def test_inx_sp(cpu):
     assert cpu._cycles == 5
     assert cpu._sp == 0xbef0
 
+def test_mov_a_h(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x7c)    # Instruction Opcode
+    cpu._h = 0x42
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._a == 0x42
+
+def test_mov_b_e(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x43)    # Instruction Opcode
+    cpu._e = 0x42
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._b == 0x42
+
+def test_mov_m_d(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x72)    # Instruction Opcode
+    cpu._d = 0x42
+    cpu._set_hl(0x1234)
+    cpu.step()
+    assert cpu._cycles == 7
+    assert cpu._machine.read_memory_byte(0x1234) == 0x42
+
+def test_mov_l_m(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x6e)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0x1234, 0x42)    # Data
+    cpu._set_hl(0x1234)
+    cpu.step()
+    assert cpu._cycles == 7
+    assert cpu._l == 0x42
