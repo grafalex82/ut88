@@ -185,6 +185,15 @@ class CPU:
         self._log_2b_instruction(value, f"MVI {self._reg_symb(reg)}, 0x{value:02x}")
 
 
+    def _sta(self):
+        """ Store accumulator direct """
+        addr = self._fetch_next_word()
+        self._machine.write_memory_byte(addr, self._a)
+        self._cycles += 13
+
+        self._log_3b_instruction(addr, f"STA 0x{addr:04x}")
+
+
     def _jmp(self):
         """ Unconditional jump """
         addr = self._fetch_next_word()
@@ -264,7 +273,7 @@ class CPU:
 
         self._instructions[0x30] = None
         self._instructions[0x31] = self._lxi
-        self._instructions[0x32] = None
+        self._instructions[0x32] = self._sta
         self._instructions[0x33] = None
         self._instructions[0x34] = None
         self._instructions[0x35] = None

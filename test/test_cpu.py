@@ -153,3 +153,11 @@ def test_cpu_ei_di(cpu):
     cpu.step() # DI
     assert cpu._enable_interrupts == False
     assert cpu._cycles == 8     # 4 more cycles
+
+def test_sta(cpu):
+    cpu._a = 0x42   # Value to write
+    cpu._machine.write_memory_byte(0x0000, 0x32)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu.step()
+    assert cpu._machine.read_memory_byte(0xbeef) == 0x42
+    assert cpu._cycles == 13
