@@ -157,8 +157,9 @@ class CPU:
 
     def _nop(self):
         """ Do nothing """
-        self._log_1b_instruction("NOP")
         self._cycles += 4
+
+        self._log_1b_instruction("NOP")
         
 
     def _lxi(self):
@@ -166,9 +167,9 @@ class CPU:
         reg_pair = (self._current_inst & 0x30) >> 4
         value = self._fetch_next_word()
         self._set_register_pair(reg_pair, value)
+        self._cycles += 10
 
         self._log_3b_instruction(value, f"LXI {self._reg_pair_symb(reg_pair)}, 0x{value:04x}")
-        self._cycles += 10
 
 
     def _mvi(self):
@@ -176,9 +177,18 @@ class CPU:
         reg = (self._current_inst & 0x38) >> 3
         value = self._fetch_next_byte()
         self._set_register(reg, value)
+        self._cycles += (7 if reg != 6 else 10)
 
         self._log_2b_instruction(value, f"MVI {self._reg_symb(reg)}, 0x{value:02x}")
-        self._cycles += (7 if reg != 6 else 10)
+
+
+    def _jmp(self):
+        """ Unconditional jump """
+        addr = self._fetch_next_word()
+        self._pc = addr
+        self._cycles += 10
+
+        self._log_3b_instruction(addr, f"JMP 0x{addr:04x}")
 
 
     def init_instruction_table(self):
@@ -389,7 +399,7 @@ class CPU:
         self._instructions[0xC0] = None
         self._instructions[0xC1] = None
         self._instructions[0xC2] = None
-        self._instructions[0xC3] = None
+        self._instructions[0xC3] = self._jmp
         self._instructions[0xC4] = None
         self._instructions[0xC5] = None
         self._instructions[0xC6] = None
