@@ -161,3 +161,15 @@ def test_sta(cpu):
     cpu.step()
     assert cpu._machine.read_memory_byte(0xbeef) == 0x42
     assert cpu._cycles == 13
+
+@pytest.mark.parametrize("opcode, rstaddr", 
+    [(0xc7, 0x0000), (0xcf, 0x0008), (0xd7, 0x0010), (0xdf, 0x0018),
+     (0xe7, 0x0020), (0xef, 0x0028), (0xf7, 0x0030), (0xff, 0x0038)])
+def test_rst(cpu, opcode, rstaddr):
+    cpu._machine.write_memory_byte(0x0000, opcode)    # Instruction Opcode
+    cpu._sp = 0x1234
+    cpu.step()
+    assert cpu._pc == rstaddr
+    assert cpu._cycles == 11
+    assert cpu._sp == 0x1232
+    assert cpu._machine.read_memory_word(0x1232) == 0x0001 # address of the next instruction

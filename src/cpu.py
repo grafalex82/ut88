@@ -69,6 +69,17 @@ class CPU:
         return data
 
 
+    def _push_to_stack(self, value):
+        self._sp -= 2
+        self._machine.write_stack(self._sp, value)
+
+
+    def _pop_from_stack(self, value):
+        value = self._machine.read_stack(self._sp)
+        self._sp += 2
+        return value
+
+
     def _get_bc(self):
         return (self._b << 8) | self._c
 
@@ -201,6 +212,16 @@ class CPU:
         self._cycles += 10
 
         self._log_3b_instruction(addr, f"JMP 0x{addr:04x}")
+
+
+    def _rst(self):
+        """ Restart (special subroutine call) """
+        rst = (self._current_inst & 0x38) >> 3
+        self._push_to_stack(self._pc)
+        self._pc = rst << 3
+        self._cycles += 11
+
+        self._log_1b_instruction("RST {rst}")
 
 
     def _ei(self):
@@ -431,7 +452,7 @@ class CPU:
         self._instructions[0xC4] = None
         self._instructions[0xC5] = None
         self._instructions[0xC6] = None
-        self._instructions[0xC7] = None
+        self._instructions[0xC7] = self._rst
         self._instructions[0xC8] = None
         self._instructions[0xC9] = None
         self._instructions[0xCA] = None
@@ -439,7 +460,7 @@ class CPU:
         self._instructions[0xCC] = None
         self._instructions[0xCD] = None
         self._instructions[0xCE] = None
-        self._instructions[0xCF] = None
+        self._instructions[0xCF] = self._rst
 
         self._instructions[0xD0] = None
         self._instructions[0xD1] = None
@@ -448,7 +469,7 @@ class CPU:
         self._instructions[0xD4] = None
         self._instructions[0xD5] = None
         self._instructions[0xD6] = None
-        self._instructions[0xD7] = None
+        self._instructions[0xD7] = self._rst
         self._instructions[0xD8] = None
         self._instructions[0xD9] = None
         self._instructions[0xDA] = None
@@ -456,7 +477,7 @@ class CPU:
         self._instructions[0xDC] = None
         self._instructions[0xDD] = None
         self._instructions[0xDE] = None
-        self._instructions[0xDF] = None
+        self._instructions[0xDF] = self._rst
 
         self._instructions[0xE0] = None
         self._instructions[0xE1] = None
@@ -465,7 +486,7 @@ class CPU:
         self._instructions[0xE4] = None
         self._instructions[0xE5] = None
         self._instructions[0xE6] = None
-        self._instructions[0xE7] = None
+        self._instructions[0xE7] = self._rst
         self._instructions[0xE8] = None
         self._instructions[0xE9] = None
         self._instructions[0xEA] = None
@@ -473,7 +494,7 @@ class CPU:
         self._instructions[0xEC] = None
         self._instructions[0xED] = None
         self._instructions[0xEE] = None
-        self._instructions[0xEF] = None
+        self._instructions[0xEF] = self._rst
 
         self._instructions[0xF0] = None
         self._instructions[0xF1] = None
@@ -482,7 +503,7 @@ class CPU:
         self._instructions[0xF4] = None
         self._instructions[0xF5] = None
         self._instructions[0xF6] = None
-        self._instructions[0xF7] = None
+        self._instructions[0xF7] = self._rst
         self._instructions[0xF8] = None
         self._instructions[0xF9] = None
         self._instructions[0xFA] = None
@@ -490,4 +511,4 @@ class CPU:
         self._instructions[0xFC] = None
         self._instructions[0xFD] = None
         self._instructions[0xFE] = None
-        self._instructions[0xFF] = None
+        self._instructions[0xFF] = self._rst
