@@ -40,6 +40,9 @@ class CPU:
         self._parity = False  # odd or even
         self._carry = False
 
+        self._enable_interrupts = False
+
+
     def step(self):
         """
         Executes an instruction and updates processor state
@@ -189,6 +192,22 @@ class CPU:
         self._cycles += 10
 
         self._log_3b_instruction(addr, f"JMP 0x{addr:04x}")
+
+
+    def _ei(self):
+        """ Enable interrupts """
+        self._enable_interrupts = True
+        self._cycles += 4
+
+        self._log_1b_instruction("EI")
+
+
+    def _di(self):
+        """ Enable interrupts """
+        self._enable_interrupts = False
+        self._cycles += 4
+
+        self._log_1b_instruction("DI")
 
 
     def init_instruction_table(self):
@@ -450,7 +469,7 @@ class CPU:
         self._instructions[0xF0] = None
         self._instructions[0xF1] = None
         self._instructions[0xF2] = None
-        self._instructions[0xF3] = None
+        self._instructions[0xF3] = self._di
         self._instructions[0xF4] = None
         self._instructions[0xF5] = None
         self._instructions[0xF6] = None
@@ -458,7 +477,7 @@ class CPU:
         self._instructions[0xF8] = None
         self._instructions[0xF9] = None
         self._instructions[0xFA] = None
-        self._instructions[0xFB] = None
+        self._instructions[0xFB] = self._ei
         self._instructions[0xFC] = None
         self._instructions[0xFD] = None
         self._instructions[0xFE] = None

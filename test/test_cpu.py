@@ -31,6 +31,7 @@ def test_cpu_reset_values(cpu):
     assert cpu._half_carry == False
     assert cpu._parity == False
     assert cpu._carry == False
+    assert cpu._enable_interrupts == False
     assert cpu._pc == 0x0000
     assert cpu._sp == 0x0000    
 
@@ -139,3 +140,16 @@ def test_cpu_jmp(cpu):
     cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
     cpu.step()
     assert cpu._pc == 0xbeef
+    assert cpu._cycles == 10
+
+def test_cpu_ei_di(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xfb)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0x0001, 0xf3)    # Instruction Opcode
+    
+    cpu.step() # EI
+    assert cpu._enable_interrupts == True
+    assert cpu._cycles == 4
+
+    cpu.step() # DI
+    assert cpu._enable_interrupts == False
+    assert cpu._cycles == 8     # 4 more cycles
