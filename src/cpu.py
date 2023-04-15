@@ -156,17 +156,21 @@ class CPU:
 
 
     def _log_1b_instruction(self, mnemonic):
-        logger.debug(f' {self._current_inst:02x}         {mnemonic}')
+        addr = self._pc - 1
+        logger.debug(f' {addr:04x}  {self._current_inst:02x}         {mnemonic}')
 
 
-    def _log_2b_instruction(self, value, mnemonic):
-        logger.debug(f' {self._current_inst:02x} {value:02x}      {mnemonic}')
+    def _log_2b_instruction(self, mnemonic):
+        addr = self._pc - 2
+        param = self._machine.read_memory_byte(self._pc - 1)
+        logger.debug(f' {addr:04x}  {self._current_inst:02x} {param:02x}      {mnemonic}')
 
 
-    def _log_3b_instruction(self, value, mnemonic):
-        l = value & 0xff
-        h = value >> 8
-        logger.debug(f' {self._current_inst:02x} {l:02x} {h:02x}   {mnemonic}')
+    def _log_3b_instruction(self, mnemonic):
+        addr = self._pc - 3
+        param1 = self._machine.read_memory_byte(self._pc - 2)
+        param2 = self._machine.read_memory_byte(self._pc - 1)
+        logger.debug(f' {addr:04x}  {self._current_inst:02x} {param1:02x} {param2:02x}   {mnemonic}')
 
 
     def _nop(self):
@@ -174,7 +178,7 @@ class CPU:
         self._cycles += 4
 
         self._log_1b_instruction("NOP")
-        
+
 
     def _lxi(self):
         """ Load register pair immediate """
@@ -183,7 +187,7 @@ class CPU:
         self._set_register_pair(reg_pair, value)
         self._cycles += 10
 
-        self._log_3b_instruction(value, f"LXI {self._reg_pair_symb(reg_pair)}, 0x{value:04x}")
+        self._log_3b_instruction(f"LXI {self._reg_pair_symb(reg_pair)}, {value:04x}")
 
 
     def _mvi(self):
@@ -193,7 +197,7 @@ class CPU:
         self._set_register(reg, value)
         self._cycles += (7 if reg != 6 else 10)
 
-        self._log_2b_instruction(value, f"MVI {self._reg_symb(reg)}, 0x{value:02x}")
+        self._log_2b_instruction(f"MVI {self._reg_symb(reg)}, {value:02x}")
 
 
     def _sta(self):
@@ -202,26 +206,30 @@ class CPU:
         self._machine.write_memory_byte(addr, self._a)
         self._cycles += 13
 
-        self._log_3b_instruction(addr, f"STA 0x{addr:04x}")
+        self._log_3b_instruction(f"STA {addr:04x}")
 
 
     def _jmp(self):
         """ Unconditional jump """
         addr = self._fetch_next_word()
+
+        self._log_3b_instruction(f"JMP {addr:04x}")
+
         self._pc = addr
         self._cycles += 10
 
-        self._log_3b_instruction(addr, f"JMP 0x{addr:04x}")
 
 
     def _rst(self):
         """ Restart (special subroutine call) """
         rst = (self._current_inst & 0x38) >> 3
+
+        self._log_1b_instruction(f"RST {rst}")
+
         self._push_to_stack(self._pc)
         self._pc = rst << 3
         self._cycles += 11
 
-        self._log_1b_instruction("RST {rst}")
 
 
     def _ei(self):
