@@ -65,21 +65,70 @@ class CPU:
         self._pc += 2
         return data
 
+
+    def _get_bc(self):
+        return (self._b << 8) | self._c
+
+
+    def _get_de(self):
+        return (self._d << 8) | self._e
+
+
+    def _get_hl(self):
+        return (self._h << 8) | self._l
+
+
+    def _set_bc(self, value):
+        self._b = value >> 8
+        self._c = value & 0xff
+
+
+    def _set_de(self, value):
+        self._d = value >> 8
+        self._e = value & 0xff
+
+
+    def _set_hl(self, value):
+        self._h = value >> 8
+        self._l = value & 0xff
+
+
+    def _set_register(self, reg_idx, value):
+        if reg_idx == 0:
+            self._b = value
+        if reg_idx == 1:
+            self._c = value
+        if reg_idx == 2:
+            self._d = value
+        if reg_idx == 3:
+            self._e = value
+        if reg_idx == 4:
+            self._h = value
+        if reg_idx == 5:
+            self._l = value
+        if reg_idx == 6:
+            self._machine.write_memory_byte(self._get_hl(), value)
+        if reg_idx == 7:
+            self._a = value
+
+
     def _set_register_pair(self, reg_pair, value):
         h = value >> 8
         l = value & 0xff
 
         if reg_pair == 0:
-            self._b = value >> 8
-            self._c = value & 0xff
+            self._set_bc(value)
         if reg_pair == 1:
-            self._d = value >> 8
-            self._e = value & 0xff
+            self._set_de(value)
         if reg_pair == 2:
-            self._h = value >> 8
-            self._l = value & 0xff
+            self._set_hl(value)
         if reg_pair == 3:
             self._sp = value
+
+
+    def _reg_symb(self, reg_idx):
+        return "BCDEHLMA"[reg_idx]
+
 
     def _reg_pair_symb(self, reg_pair):
         if reg_pair == 0:
@@ -96,17 +145,18 @@ class CPU:
         logger.debug(f' {self._current_inst:02x}         {mnemonic}')
 
 
+    def _log_2b_instruction(self, value, mnemonic):
+        logger.debug(f' {self._current_inst:02x} {value:02x}      {mnemonic}')
+
+
     def _log_3b_instruction(self, value, mnemonic):
         l = value & 0xff
         h = value >> 8
         logger.debug(f' {self._current_inst:02x} {l:02x} {h:02x}   {mnemonic}')
 
-    def _nop(self):
-        """
-        Do nothing
 
-        :return:
-        """
+    def _nop(self):
+        """ Do nothing """
         self._log_1b_instruction("NOP")
         self._cycles += 4
         
@@ -121,6 +171,16 @@ class CPU:
         self._cycles += 10
 
 
+    def _mvi(self):
+        """ Move immediate to register or memory """
+        reg = (self._current_inst & 0x38) >> 3
+        value = self._fetch_next_byte()
+        self._set_register(reg, value)
+
+        self._log_2b_instruction(value, f"MVI {self._reg_symb(reg)}, 0x{value:02x}")
+        self._cycles += (7 if reg != 6 else 10)
+
+
     def init_instruction_table(self):
         self._instructions[0x00] = self._nop
         self._instructions[0x01] = self._lxi
@@ -128,7 +188,7 @@ class CPU:
         self._instructions[0x03] = None
         self._instructions[0x04] = None
         self._instructions[0x05] = None
-        self._instructions[0x06] = None
+        self._instructions[0x06] = self._mvi
         self._instructions[0x07] = None
         self._instructions[0x08] = None
         self._instructions[0x09] = None
@@ -136,7 +196,7 @@ class CPU:
         self._instructions[0x0B] = None
         self._instructions[0x0C] = None
         self._instructions[0x0D] = None
-        self._instructions[0x0E] = None
+        self._instructions[0x0E] = self._mvi
         self._instructions[0x0F] = None
 
         self._instructions[0x10] = None
@@ -145,7 +205,7 @@ class CPU:
         self._instructions[0x13] = None
         self._instructions[0x14] = None
         self._instructions[0x15] = None
-        self._instructions[0x16] = None
+        self._instructions[0x16] = self._mvi
         self._instructions[0x17] = None
         self._instructions[0x18] = None
         self._instructions[0x19] = None
@@ -153,7 +213,7 @@ class CPU:
         self._instructions[0x1B] = None
         self._instructions[0x1C] = None
         self._instructions[0x1D] = None
-        self._instructions[0x1E] = None
+        self._instructions[0x1E] = self._mvi
         self._instructions[0x1F] = None
 
         self._instructions[0x20] = None
@@ -162,7 +222,7 @@ class CPU:
         self._instructions[0x23] = None
         self._instructions[0x24] = None
         self._instructions[0x25] = None
-        self._instructions[0x26] = None
+        self._instructions[0x26] = self._mvi
         self._instructions[0x27] = None
         self._instructions[0x28] = None
         self._instructions[0x29] = None
@@ -170,7 +230,7 @@ class CPU:
         self._instructions[0x2B] = None
         self._instructions[0x2C] = None
         self._instructions[0x2D] = None
-        self._instructions[0x2E] = None
+        self._instructions[0x2E] = self._mvi
         self._instructions[0x2F] = None
 
         self._instructions[0x30] = None
@@ -179,7 +239,7 @@ class CPU:
         self._instructions[0x33] = None
         self._instructions[0x34] = None
         self._instructions[0x35] = None
-        self._instructions[0x36] = None
+        self._instructions[0x36] = self._mvi
         self._instructions[0x37] = None
         self._instructions[0x38] = None
         self._instructions[0x39] = None
@@ -187,7 +247,7 @@ class CPU:
         self._instructions[0x3B] = None
         self._instructions[0x3C] = None
         self._instructions[0x3D] = None
-        self._instructions[0x3E] = None
+        self._instructions[0x3E] = self._mvi
         self._instructions[0x3F] = None
 
         self._instructions[0x40] = None
