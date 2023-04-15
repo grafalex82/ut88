@@ -232,3 +232,66 @@ def test_push_psw2(cpu):
     assert cpu._cycles == 11
     assert cpu._sp == 0x1232
     assert cpu._machine.read_memory_word(0x1232) == 0x42d7 # bit1 of the PSW is always 1
+
+def test_dcx_bc(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x0b)    # Instruction Opcode
+    cpu._set_bc(0xbeef)
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._b == 0xbe
+    assert cpu._c == 0xee
+
+def test_dcx_de(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x1b)    # Instruction Opcode
+    cpu._set_de(0xbeef)
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._d == 0xbe
+    assert cpu._e == 0xee
+
+def test_dcx_hl(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x2b)    # Instruction Opcode
+    cpu._set_hl(0xbeef)
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._h == 0xbe
+    assert cpu._l == 0xee
+
+def test_dcx_sp(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x3b)    # Instruction Opcode
+    cpu._sp = 0xbeef
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._sp == 0xbeee
+
+def test_inx_bc(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x03)    # Instruction Opcode
+    cpu._set_bc(0xbeef)
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._b == 0xbe
+    assert cpu._c == 0xf0
+
+def test_inx_de(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x13)    # Instruction Opcode
+    cpu._set_de(0xbeef)
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._d == 0xbe
+    assert cpu._e == 0xf0
+
+def test_inx_hl(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x23)    # Instruction Opcode
+    cpu._set_hl(0xbeef)
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._h == 0xbe
+    assert cpu._l == 0xf0
+
+def test_inx_sp(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x33)    # Instruction Opcode
+    cpu._sp = 0xbeef
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._sp == 0xbef0
+
