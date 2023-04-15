@@ -324,3 +324,149 @@ def test_mov_l_m(cpu):
     cpu.step()
     assert cpu._cycles == 7
     assert cpu._l == 0x42
+
+def test_add(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x80)    # Instruction Opcode
+    cpu._a = 0x6c
+    cpu._b = 0x2e
+    cpu.step()
+    assert cpu._a == 0x9a
+    assert cpu._cycles == 4
+    assert cpu._zero == False
+    assert cpu._sign == True
+    assert cpu._parity == True
+    assert cpu._carry == False
+    assert cpu._half_carry == True
+
+def test_adc_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x89)    # Instruction Opcode
+    cpu._a = 0x3d
+    cpu._c = 0x42
+    cpu._carry = False
+    cpu.step()
+    assert cpu._a == 0x7f
+    assert cpu._cycles == 4
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == False
+    assert cpu._carry == False
+    assert cpu._half_carry == False
+
+def test_adc_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x8a)    # Instruction Opcode
+    cpu._a = 0x3d
+    cpu._d = 0x42
+    cpu._carry = True
+    cpu.step()
+    assert cpu._a == 0x80
+    assert cpu._cycles == 4
+    assert cpu._zero == False
+    assert cpu._sign == True
+    assert cpu._parity == False
+    assert cpu._carry == False
+    assert cpu._half_carry == True
+
+def test_sub(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x97)    # Instruction Opcode
+    cpu._a = 0x3e
+    cpu.step()
+    assert cpu._a == 0x00
+    assert cpu._cycles == 4
+    assert cpu._zero == True
+    assert cpu._sign == False
+    assert cpu._parity == True
+    assert cpu._carry == False
+    assert cpu._half_carry == True
+
+def test_sbb(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x9b)    # Instruction Opcode
+    cpu._a = 0x04
+    cpu._e = 0x02
+    cpu._carry = True
+    cpu.step()
+    assert cpu._a == 0x01
+    assert cpu._cycles == 4
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == False
+    assert cpu._carry == False
+    assert cpu._half_carry == True
+
+def test_ana(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xa5)    # Instruction Opcode
+    cpu._a = 0xfc
+    cpu._l = 0x0f
+    cpu.step()
+    assert cpu._a == 0x0c
+    assert cpu._cycles == 4
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == True
+    assert cpu._carry == False
+    assert cpu._half_carry == False
+
+def test_xra(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xac)    # Instruction Opcode
+    cpu._a = 0x5c
+    cpu._h = 0x78
+    cpu.step()
+    assert cpu._a == 0x24
+    assert cpu._cycles == 4
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == True
+    assert cpu._carry == False
+    assert cpu._half_carry == False
+
+def test_ora(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xb6)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0x1234, 0x0f)    # Instruction Opcode
+    cpu._a = 0x33
+    cpu._set_hl(0x1234)
+    cpu.step()
+    assert cpu._a == 0x3f
+    assert cpu._cycles == 7
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == True
+    assert cpu._carry == False
+    assert cpu._half_carry == False
+
+def test_cmp_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xb8)    # Instruction Opcode
+    cpu._a = 0x0a
+    cpu._b = 0x05
+    cpu.step()
+    assert cpu._a == 0x0a # Does not change
+    assert cpu._cycles == 4
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == True
+    assert cpu._carry == False
+    assert cpu._half_carry == True
+
+def test_cmp_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xb8)    # Instruction Opcode
+    cpu._a = 0x02
+    cpu._b = 0x05
+    cpu.step()
+    assert cpu._a == 0x02 # Does not change
+    assert cpu._cycles == 4
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == False
+    assert cpu._carry == True
+    assert cpu._half_carry == False
+
+def test_cmp_3(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xb8)    # Instruction Opcode
+    cpu._a = 0xe5
+    cpu._b = 0x05
+    cpu.step()
+    assert cpu._a == 0xe5 # Does not change
+    assert cpu._cycles == 4
+    assert cpu._zero == False
+    assert cpu._sign == True
+    assert cpu._parity == False
+    assert cpu._carry == False
+    assert cpu._half_carry == True

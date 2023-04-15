@@ -334,6 +334,76 @@ class CPU:
 
     # Arithmetic instructions
 
+    def _count_bits(self, n):
+        """ Return number of set bits """
+        if (n == 0):
+            return 0
+        else:
+            return 1 + self._count_bits(n & (n - 1))
+
+
+    def _alu(self):
+        """ 
+        Implementation of the following instructions:
+            - ADD - add a register to the accumulator
+            - ADC - add a register to the accumulator with carry
+            - SUB - subtract a register from the accumulator
+            - SBB - subtract a register from the accumulator with carry
+            - ANA - logical AND a register with the accumulator
+            - XRA - logical XOR a register with the accumulator
+            - ORA - logical OR a register with the accumulator
+            - CMP - compare a register with the accumulator (set flags, but not change accumulator)
+        """
+        op = (self._current_inst & 0x38) >> 3
+        op_name = ["ADD", "ADC", "SUB", "SBB", "ANA", "XRA", "ORA", "CMP"][op]
+        reg = self._current_inst & 0x07
+        value = self._get_register(reg)
+
+        # Perform the operation
+        if op == 0: # ADD
+            res = self._a + value
+            self._carry = res > 0xff
+            self._half_carry = ((self._a & 0x0f) + (value & 0x0f)) > 0x0f
+        if op == 1: # ADC
+            carry = 1 if self._carry else 0
+            print(f"carry={carry}")
+            res = self._a + value + carry
+            self._carry = res > 0xff
+            self._half_carry = ((self._a & 0x0f) + (value & 0x0f) + carry) > 0x0f
+        if op == 2 or op == 7: # SUB and CMP
+            res = self._a - value
+            self._carry = res < 0
+            neg_value = ~value + 1
+            self._half_carry = ((self._a & 0x0f) + (neg_value & 0x0f)) > 0x0f
+        if op == 3: # SBB
+            carry = 1 if self._carry else 0
+            res = self._a - value - carry
+            self._carry = res < 0 
+            neg_value = ~value + 1
+            self._half_carry = ((self._a & 0x0f) + (neg_value & 0x0f) + carry) > 0x0f
+        if op == 4: # AND
+            res = self._a & value
+        if op == 5: # XOR
+            res = self._a ^ value
+        if op == 6: # OR
+            res = self._a | value
+
+        # Store result for all operations, except for CMP
+        if op != 7:
+            self._a = res & 0xff
+
+        # Update common flags
+        if op >= 4 and op < 7: self._carry = False
+        if op >= 4 and op < 7: self._half_carry = False
+        self._zero = (res & 0xff) == 0
+        self._parity = self._count_bits(self._a) % 2 == 0
+        self._sign = (self._a & 0x80) != 0
+
+        self._cycles += 4 if reg != 6 else 7
+
+        self._log_1b_instruction(f"{op_name} {self._reg_symb(reg)}")
+
+
     def _dcx(self):
         """ Decrement a register pair """
         reg_pair = (self._current_inst & 0x30) >> 4
@@ -491,73 +561,73 @@ class CPU:
         self._instructions[0x7E] = self._mov
         self._instructions[0x7F] = self._mov
 
-        self._instructions[0x80] = None
-        self._instructions[0x81] = None
-        self._instructions[0x82] = None
-        self._instructions[0x83] = None
-        self._instructions[0x84] = None
-        self._instructions[0x85] = None
-        self._instructions[0x86] = None
-        self._instructions[0x87] = None
-        self._instructions[0x88] = None
-        self._instructions[0x89] = None
-        self._instructions[0x8A] = None
-        self._instructions[0x8B] = None
-        self._instructions[0x8C] = None
-        self._instructions[0x8D] = None
-        self._instructions[0x8E] = None
-        self._instructions[0x8F] = None
+        self._instructions[0x80] = self._alu
+        self._instructions[0x81] = self._alu
+        self._instructions[0x82] = self._alu
+        self._instructions[0x83] = self._alu
+        self._instructions[0x84] = self._alu
+        self._instructions[0x85] = self._alu
+        self._instructions[0x86] = self._alu
+        self._instructions[0x87] = self._alu
+        self._instructions[0x88] = self._alu
+        self._instructions[0x89] = self._alu
+        self._instructions[0x8A] = self._alu
+        self._instructions[0x8B] = self._alu
+        self._instructions[0x8C] = self._alu
+        self._instructions[0x8D] = self._alu
+        self._instructions[0x8E] = self._alu
+        self._instructions[0x8F] = self._alu
 
-        self._instructions[0x90] = None
-        self._instructions[0x91] = None
-        self._instructions[0x92] = None
-        self._instructions[0x93] = None
-        self._instructions[0x94] = None
-        self._instructions[0x95] = None
-        self._instructions[0x96] = None
-        self._instructions[0x97] = None
-        self._instructions[0x98] = None
-        self._instructions[0x99] = None
-        self._instructions[0x9A] = None
-        self._instructions[0x9B] = None
-        self._instructions[0x9C] = None
-        self._instructions[0x9D] = None
-        self._instructions[0x9E] = None
-        self._instructions[0x9F] = None
+        self._instructions[0x90] = self._alu
+        self._instructions[0x91] = self._alu
+        self._instructions[0x92] = self._alu
+        self._instructions[0x93] = self._alu
+        self._instructions[0x94] = self._alu
+        self._instructions[0x95] = self._alu
+        self._instructions[0x96] = self._alu
+        self._instructions[0x97] = self._alu
+        self._instructions[0x98] = self._alu
+        self._instructions[0x99] = self._alu
+        self._instructions[0x9A] = self._alu
+        self._instructions[0x9B] = self._alu
+        self._instructions[0x9C] = self._alu
+        self._instructions[0x9D] = self._alu
+        self._instructions[0x9E] = self._alu
+        self._instructions[0x9F] = self._alu
 
-        self._instructions[0xA0] = None
-        self._instructions[0xA1] = None
-        self._instructions[0xA2] = None
-        self._instructions[0xA3] = None
-        self._instructions[0xA4] = None
-        self._instructions[0xA5] = None
-        self._instructions[0xA6] = None
-        self._instructions[0xA7] = None
-        self._instructions[0xA8] = None
-        self._instructions[0xA9] = None
-        self._instructions[0xAA] = None
-        self._instructions[0xAB] = None
-        self._instructions[0xAC] = None
-        self._instructions[0xAD] = None
-        self._instructions[0xAE] = None
-        self._instructions[0xAF] = None
+        self._instructions[0xA0] = self._alu
+        self._instructions[0xA1] = self._alu
+        self._instructions[0xA2] = self._alu
+        self._instructions[0xA3] = self._alu
+        self._instructions[0xA4] = self._alu
+        self._instructions[0xA5] = self._alu
+        self._instructions[0xA6] = self._alu
+        self._instructions[0xA7] = self._alu
+        self._instructions[0xA8] = self._alu
+        self._instructions[0xA9] = self._alu
+        self._instructions[0xAA] = self._alu
+        self._instructions[0xAB] = self._alu
+        self._instructions[0xAC] = self._alu
+        self._instructions[0xAD] = self._alu
+        self._instructions[0xAE] = self._alu
+        self._instructions[0xAF] = self._alu
 
-        self._instructions[0xB0] = None
-        self._instructions[0xB1] = None
-        self._instructions[0xB2] = None
-        self._instructions[0xB3] = None
-        self._instructions[0xB4] = None
-        self._instructions[0xB5] = None
-        self._instructions[0xB6] = None
-        self._instructions[0xB7] = None
-        self._instructions[0xB8] = None
-        self._instructions[0xB9] = None
-        self._instructions[0xBA] = None
-        self._instructions[0xBB] = None
-        self._instructions[0xBC] = None
-        self._instructions[0xBD] = None
-        self._instructions[0xBE] = None
-        self._instructions[0xBF] = None
+        self._instructions[0xB0] = self._alu
+        self._instructions[0xB1] = self._alu
+        self._instructions[0xB2] = self._alu
+        self._instructions[0xB3] = self._alu
+        self._instructions[0xB4] = self._alu
+        self._instructions[0xB5] = self._alu
+        self._instructions[0xB6] = self._alu
+        self._instructions[0xB7] = self._alu
+        self._instructions[0xB8] = self._alu
+        self._instructions[0xB9] = self._alu
+        self._instructions[0xBA] = self._alu
+        self._instructions[0xBB] = self._alu
+        self._instructions[0xBC] = self._alu
+        self._instructions[0xBD] = self._alu
+        self._instructions[0xBE] = self._alu
+        self._instructions[0xBF] = self._alu
 
         self._instructions[0xC0] = None
         self._instructions[0xC1] = None
