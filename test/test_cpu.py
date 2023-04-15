@@ -18,6 +18,22 @@ def cpu():
     machine.add_memory(RAM(0x0000, 0xffff))
     return CPU(machine) 
 
+def test_cpu_reset_values(cpu):
+    assert cpu._a == 0x00
+    assert cpu._b == 0x00
+    assert cpu._c == 0x00
+    assert cpu._d == 0x00
+    assert cpu._e == 0x00
+    assert cpu._h == 0x00
+    assert cpu._l == 0x00
+    assert cpu._sign == False
+    assert cpu._zero == False
+    assert cpu._half_carry == False
+    assert cpu._parity == False
+    assert cpu._carry == False
+    assert cpu._pc == 0x0000
+    assert cpu._sp == 0x0000
+
 def test_cpu_nop(cpu):
     cpu.step() # empty RAM shall have zeroes, which is a NOP instruction
     assert cpu._pc == 0x0001
