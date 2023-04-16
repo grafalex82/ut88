@@ -142,6 +142,134 @@ def test_jmp(cpu):
     assert cpu._pc == 0xbeef
     assert cpu._cycles == 10
 
+def test_jz_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xca)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._zero = True
+    cpu.step()
+    assert cpu._pc == 0xbeef
+    assert cpu._cycles == 15
+
+def test_jz_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xca)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._zero = False
+    cpu.step()
+    assert cpu._pc == 0x0003
+    assert cpu._cycles == 10
+
+def test_jnz_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xc2)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._zero = True
+    cpu.step()
+    assert cpu._pc == 0x0003
+    assert cpu._cycles == 10
+
+def test_jnz_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xc2)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._zero = False
+    cpu.step()
+    assert cpu._pc == 0xbeef
+    assert cpu._cycles == 15
+
+def test_jc_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xda)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._carry = True
+    cpu.step()
+    assert cpu._pc == 0xbeef
+    assert cpu._cycles == 15
+
+def test_jc_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xda)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._carry = False
+    cpu.step()
+    assert cpu._pc == 0x0003
+    assert cpu._cycles == 10
+
+def test_jnc_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xd2)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._carry = True
+    cpu.step()
+    assert cpu._pc == 0x0003
+    assert cpu._cycles == 10
+
+def test_jnc_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xd2)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._carry = False
+    cpu.step()
+    assert cpu._pc == 0xbeef
+    assert cpu._cycles == 15
+
+def test_jpe_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xea)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._parity = True
+    cpu.step()
+    assert cpu._pc == 0xbeef
+    assert cpu._cycles == 15
+
+def test_jpe_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xea)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._parity = False
+    cpu.step()
+    assert cpu._pc == 0x0003
+    assert cpu._cycles == 10
+
+def test_jpo_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xe2)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._parity = True
+    cpu.step()
+    assert cpu._pc == 0x0003
+    assert cpu._cycles == 10
+
+def test_jpo_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xe2)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._parity = False
+    cpu.step()
+    assert cpu._pc == 0xbeef
+    assert cpu._cycles == 15
+
+def test_jn_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xfa)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._sign = True
+    cpu.step()
+    assert cpu._pc == 0xbeef
+    assert cpu._cycles == 15
+
+def test_jn_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xfa)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._sign = False
+    cpu.step()
+    assert cpu._pc == 0x0003
+    assert cpu._cycles == 10
+
+def test_jp_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xf2)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._sign = True
+    cpu.step()
+    assert cpu._pc == 0x0003
+    assert cpu._cycles == 10
+
+def test_jp_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xf2)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._sign = False
+    cpu.step()
+    assert cpu._pc == 0xbeef
+    assert cpu._cycles == 15
+
 def test_ei_di(cpu):
     cpu._machine.write_memory_byte(0x0000, 0xfb)    # Instruction Opcode
     cpu._machine.write_memory_byte(0x0001, 0xf3)    # Instruction Opcode
@@ -470,3 +598,5 @@ def test_cmp_3(cpu):
     assert cpu._parity == False
     assert cpu._carry == False
     assert cpu._half_carry == True
+
+
