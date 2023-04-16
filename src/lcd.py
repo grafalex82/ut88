@@ -1,6 +1,7 @@
 from utils import *
+from interfaces import *
 
-class LCD:
+class LCD(MemoryDevice):
     """
     Basic UT-88 configuration outputs data to a 6 digit 7-segment LCD display.
     Schematically this display connected to the system as a 3-byte memory space.
@@ -11,22 +12,8 @@ class LCD:
         
     """
     def __init__(self):
-        self._startaddr = 0x9000
-        self._endaddr = 0x9001
+        MemoryDevice.__init__(self, 0x9000, 0x9002)
         self._ram = [0] * 3
-
-
-    def get_start_addr(self):
-        return self._startaddr
-
-
-    def get_end_addr(self):
-        return self._endaddr
-
-
-    def _check_addr(self, addr):
-        if addr < self._startaddr or addr > self._endaddr:
-            raise MemoryError(f"Address 0x{addr:04x} is out of memory range 0x{self._startaddr:04x}-0x{self._endaddr:04x}")
 
 
     def _check_value(self, value, max):
@@ -35,14 +22,14 @@ class LCD:
 
 
     def write_byte(self, addr, value):
-        self._check_addr(addr)
+        self.validate_addr(addr)
         self._check_value(value, 0xff)
 
         self._ram[addr - self._startaddr] = value
 
 
     def write_word(self, addr, value):
-        self._check_addr(addr)
+        self.validate_addr(addr)
         self._check_value(value, 0xffff)
 
         self._ram[addr - self._startaddr] = value & 0xff
