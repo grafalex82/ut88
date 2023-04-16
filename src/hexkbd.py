@@ -36,7 +36,7 @@ class HexKeyboard:
 
     def read_io(self, addr):
         if addr != 0xa0:
-            raise IOError(f"Incorrect IO address {addr}")
+            raise IOError(f"Incorrect IO address {addr:x}")
 
         return self._pressed_key
 

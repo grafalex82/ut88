@@ -7,7 +7,7 @@ import sys
 sys.path.append('../src')
 
 from hexkbd import HexKeyboard
-
+from utils import *
 
 @pytest.fixture
 def kbd():
@@ -37,3 +37,7 @@ def test_io_read(kbd):
 
     kbd.release_key()
     assert kbd.read_io(0xa0) == 0x00
+
+def test_io_wrong_addr(kbd):
+    with pytest.raises(IOError):
+        kbd.read_io(0x42)
