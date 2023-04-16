@@ -1,6 +1,11 @@
 from utils import *
 
-class IO:
+class IODevice:
+    """
+    IODevice class is a base class for all devices connected to the Machine via IO lines.
+    Some devices are read-only, some devices are write-only. A derived class must reimplement
+    read_io() and/or write_io() functions according to the provided functionality
+    """
     def __init__(self, startaddr, endaddr):
         self._startaddr = startaddr
         self._endaddr = endaddr

@@ -1,6 +1,6 @@
 from interfaces import *
 
-class HexKeyboard(IO):
+class HexKeyboard(IODevice):
     """
         The UT-88 compulter at minimum configuration (CPU unit) interacts with
         the user using 17 digits keyboard. The keyboard is connected to the I/O
@@ -10,7 +10,7 @@ class HexKeyboard(IO):
         - back button       - 0x80
     """
     def __init__(self):
-        IO.__init__(self, 0xa0, 0xa0)
+        IODevice.__init__(self, 0xa0, 0xa0)
         self._pressed_key = 0
 
 
