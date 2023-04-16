@@ -1,4 +1,5 @@
 import logging
+from emulator import Emulator
 from machine import Machine
 from cpu import CPU
 from ram import RAM
@@ -15,11 +16,11 @@ def main():
     machine.add_memory(ROM("../resources/Monitor0.bin", 0x0000))
     machine.add_memory(LCD())
     kbd = HexKeyboard()
+    kbd.press_key("3")  # Test LCD command
     machine.add_io(kbd)
-    cpu = CPU(machine) 
 
-    while True:
-        cpu.step()
+    emulator = Emulator(machine)
+    emulator.run()
 
 if __name__ == '__main__':
     main()
