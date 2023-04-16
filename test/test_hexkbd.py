@@ -41,3 +41,7 @@ def test_io_read(kbd):
 def test_io_wrong_addr(kbd):
     with pytest.raises(IOError):
         kbd.read_io(0x42)
+
+def test_io_write(kbd):
+    with pytest.raises(IOError):
+        kbd.write_io(0x42, 0x24)
