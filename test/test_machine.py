@@ -10,6 +10,7 @@ from machine import Machine
 from utils import *
 from ram import RAM
 from rom import ROM
+from hexkbd import HexKeyboard
 
 @pytest.fixture
 def machine():
@@ -39,3 +40,7 @@ def test_memory_addr_validation(machine):
     with pytest.raises(MemoryError) as e:
         machine.read_memory_byte(0x1234)
     assert "No memory registered for address 0x1234" in str(e.value)
+
+def test_io_read(machine):
+    machine.add_io(HexKeyboard())
+    assert machine.read_io(0xa0) == 0x00

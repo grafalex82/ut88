@@ -21,15 +21,28 @@ class MemoryMgr:
 class Machine:
     def __init__(self):
         self._memories = MemoryMgr()
+        self._io = {}
 
     def add_memory(self, memory):
         self._memories.add_memory(memory)
+
+    def add_io(self, io):
+        start, end = io.get_addr_space()
+        for addr in range(start, end+1):
+            self._io[addr] = io
 
     def _get_memory(self, addr):
         mem = self._memories.get_memory_for_addr(addr)
         if not mem:
             raise MemoryError(f"No memory registered for address 0x{addr:04x}")
         return mem
+
+    def _get_io(self, addr):
+        io = self._io.get(addr, None)
+        if not io:
+            raise IOError(f"No IO registered for address 0x{addr:02x}")
+        return io
+        
 
     def read_memory_byte(self, addr):
         mem = self._get_memory(addr)
@@ -54,3 +67,11 @@ class Machine:
     def read_stack(self, addr):
         mem = self._get_memory(addr)
         return mem.read_stack(addr)
+
+    def read_io(self, addr):
+        io = self._get_io(addr)
+        return io.read_io(addr)
+        
+    def write_io(self, addr, value):
+        io = self._get_io(addr)
+        io.read_io(addr, value)
