@@ -655,6 +655,139 @@ def test_cmp_3(cpu):
     assert cpu._carry == False
     assert cpu._half_carry == True
 
+def test_adi_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xc6)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0x0001, 0x42)    # value
+    cpu._a = 0x14
+    cpu.step()
+    assert cpu._a == 0x56
+    assert cpu._cycles == 7
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == True
+    assert cpu._carry == False
+    assert cpu._half_carry == False
+
+def test_adi_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xc6)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0x0001, 0xbe)    # value
+    cpu._a = 0x56
+    cpu.step()
+    assert cpu._a == 0x14
+    assert cpu._cycles == 7
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == True
+    assert cpu._carry == True
+    assert cpu._half_carry == True
+
+def test_aci(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xce)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0x0001, 0x42)    # value
+    cpu._a = 0x14
+    cpu._carry = True
+    cpu.step()
+    assert cpu._a == 0x57
+    assert cpu._cycles == 7
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == False
+    assert cpu._carry == False
+    assert cpu._half_carry == False
+
+def test_sui(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xd6)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0x0001, 0x01)    # value
+    cpu._a = 0x00
+    cpu.step()
+    assert cpu._a == 0xff
+    assert cpu._cycles == 7
+    assert cpu._zero == False
+    assert cpu._sign == True
+    assert cpu._parity == True
+    assert cpu._carry == True
+    assert cpu._half_carry == False
+
+def test_sbi_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xde)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0x0001, 0x01)    # value
+    cpu._a = 0x00
+    cpu._carry = False
+    cpu.step()
+    assert cpu._a == 0xff
+    assert cpu._cycles == 7
+    assert cpu._zero == False
+    assert cpu._sign == True
+    assert cpu._parity == True
+    assert cpu._carry == True
+    assert cpu._half_carry == False
+
+def test_sbi_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xde)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0x0001, 0x01)    # value
+    cpu._a = 0x00
+    cpu._carry = True
+    cpu.step()
+    assert cpu._a == 0xfe
+    assert cpu._cycles == 7
+    assert cpu._zero == False
+    assert cpu._sign == True
+    assert cpu._parity == False
+    assert cpu._carry == True
+    assert cpu._half_carry == False
+
+def test_ani(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xe6)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0x0001, 0x0f)    # value
+    cpu._a = 0x3a
+    cpu.step()
+    assert cpu._a == 0x0a
+    assert cpu._cycles == 7
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == True
+    assert cpu._carry == False
+    assert cpu._half_carry == False
+
+def test_xri(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xee)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0x0001, 0x81)    # value
+    cpu._a = 0x3b
+    cpu.step()
+    assert cpu._a == 0xba
+    assert cpu._cycles == 7
+    assert cpu._zero == False
+    assert cpu._sign == True
+    assert cpu._parity == False
+    assert cpu._carry == False
+    assert cpu._half_carry == False
+
+def test_ori(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xf6)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0x0001, 0x0f)    # value
+    cpu._a = 0xb5
+    cpu.step()
+    assert cpu._a == 0xbf
+    assert cpu._cycles == 7
+    assert cpu._zero == False
+    assert cpu._sign == True
+    assert cpu._parity == False
+    assert cpu._carry == False
+    assert cpu._half_carry == False
+
+def test_cpi(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xfe)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0x0001, 0x40)    # value
+    cpu._a = 0x4a
+    cpu.step()
+    assert cpu._a == 0x4a # not changed
+    assert cpu._cycles == 7
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == False
+    assert cpu._carry == False
+    assert cpu._half_carry == False
+
 def test_out(cpu):
     io = MockIO(0x42)
     cpu._machine.add_io(io)

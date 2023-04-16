@@ -417,23 +417,9 @@ class CPU:
         else:
             return 1 + self._count_bits(n & (n - 1))
 
-
-    def _alu(self):
-        """ 
-        Implementation of the following instructions:
-            - ADD - add a register to the accumulator
-            - ADC - add a register to the accumulator with carry
-            - SUB - subtract a register from the accumulator
-            - SBB - subtract a register from the accumulator with carry
-            - ANA - logical AND a register with the accumulator
-            - XRA - logical XOR a register with the accumulator
-            - ORA - logical OR a register with the accumulator
-            - CMP - compare a register with the accumulator (set flags, but not change accumulator)
-        """
-        op = (self._current_inst & 0x38) >> 3
-        op_name = ["ADD", "ADC", "SUB", "SBB", "ANA", "XRA", "ORA", "CMP"][op]
-        reg = self._current_inst & 0x07
-        value = self._get_register(reg)
+    def _alu_op(self, op, value):
+        """ Internal implementation of an ALU operation between the accumulator and value.
+        The function updates flags as a result of the operation """
 
         # Perform the operation
         if op == 0: # ADD
@@ -456,7 +442,7 @@ class CPU:
             res = self._a - value - carry
             self._carry = res < 0 
             neg_value = ~value + 1
-            self._half_carry = ((self._a & 0x0f) + (neg_value & 0x0f) + carry) > 0x0f
+            self._half_carry = ((self._a & 0x0f) + ((neg_value - carry) & 0x0f)) > 0x0f
         if op == 4: # AND
             res = self._a & value
         if op == 5: # XOR
@@ -475,9 +461,51 @@ class CPU:
         self._parity = self._count_bits(self._a) % 2 == 0
         self._sign = (self._a & 0x80) != 0
 
+
+    def _alu(self):
+        """ 
+        Implementation of the following instructions:
+            - ADD - add a register to the accumulator
+            - ADC - add a register to the accumulator with carry
+            - SUB - subtract a register from the accumulator
+            - SBB - subtract a register from the accumulator with carry
+            - ANA - logical AND a register with the accumulator
+            - XRA - logical XOR a register with the accumulator
+            - ORA - logical OR a register with the accumulator
+            - CMP - compare a register with the accumulator (set flags, but not change accumulator)
+        """
+        op = (self._current_inst & 0x38) >> 3
+        op_name = ["ADD", "ADC", "SUB", "SBB", "ANA", "XRA", "ORA", "CMP"][op]
+        reg = self._current_inst & 0x07
+        value = self._get_register(reg)
+
+        self._alu_op(op, value)
         self._cycles += 4 if reg != 6 else 7
 
         self._log_1b_instruction(f"{op_name} {self._reg_symb(reg)}")
+
+
+    def _alu_immediate(self):
+        """ 
+        Implementation of ALU instructions between the accumulator register and 
+        immediate operand:
+            - ADI - add the operand to the accumulator
+            - ACI - add the operand to the accumulator with carry
+            - SUI - subtract the operand from the accumulator
+            - SBI - subtract the operand from the accumulator with carry
+            - ANI - logical AND the operand with the accumulator
+            - XRI - logical XOR the operand with the accumulator
+            - ORI - logical OR the operand with the accumulator
+            - CPI - compare the operand with the accumulator (set flags, but not change accumulator)
+        """
+        op = (self._current_inst & 0x38) >> 3
+        op_name = ["ADI", "ACI", "SUI", "SBI", "ANI", "XRI", "ORI", "CPI"][op]
+        value = self._fetch_next_byte()
+
+        self._alu_op(op, value)
+        self._cycles += 7
+
+        self._log_2b_instruction(f"{op_name} {value:02x}")
 
 
     def _dcx(self):
@@ -711,7 +739,7 @@ class CPU:
         self._instructions[0xC3] = self._jmp
         self._instructions[0xC4] = None
         self._instructions[0xC5] = self._push
-        self._instructions[0xC6] = None
+        self._instructions[0xC6] = self._alu_immediate
         self._instructions[0xC7] = self._rst
         self._instructions[0xC8] = None
         self._instructions[0xC9] = self._ret
@@ -719,7 +747,7 @@ class CPU:
         self._instructions[0xCB] = None
         self._instructions[0xCC] = None
         self._instructions[0xCD] = None
-        self._instructions[0xCE] = None
+        self._instructions[0xCE] = self._alu_immediate
         self._instructions[0xCF] = self._rst
 
         self._instructions[0xD0] = None
@@ -728,7 +756,7 @@ class CPU:
         self._instructions[0xD3] = self._out
         self._instructions[0xD4] = None
         self._instructions[0xD5] = self._push
-        self._instructions[0xD6] = None
+        self._instructions[0xD6] = self._alu_immediate
         self._instructions[0xD7] = self._rst
         self._instructions[0xD8] = None
         self._instructions[0xD9] = None
@@ -736,7 +764,7 @@ class CPU:
         self._instructions[0xDB] = self._in
         self._instructions[0xDC] = None
         self._instructions[0xDD] = None
-        self._instructions[0xDE] = None
+        self._instructions[0xDE] = self._alu_immediate
         self._instructions[0xDF] = self._rst
 
         self._instructions[0xE0] = None
@@ -745,7 +773,7 @@ class CPU:
         self._instructions[0xE3] = None
         self._instructions[0xE4] = None
         self._instructions[0xE5] = self._push
-        self._instructions[0xE6] = None
+        self._instructions[0xE6] = self._alu_immediate
         self._instructions[0xE7] = self._rst
         self._instructions[0xE8] = None
         self._instructions[0xE9] = None
@@ -753,7 +781,7 @@ class CPU:
         self._instructions[0xEB] = None
         self._instructions[0xEC] = None
         self._instructions[0xED] = None
-        self._instructions[0xEE] = None
+        self._instructions[0xEE] = self._alu_immediate
         self._instructions[0xEF] = self._rst
 
         self._instructions[0xF0] = None
@@ -762,7 +790,7 @@ class CPU:
         self._instructions[0xF3] = self._di
         self._instructions[0xF4] = None
         self._instructions[0xF5] = self._push
-        self._instructions[0xF6] = None
+        self._instructions[0xF6] = self._alu_immediate
         self._instructions[0xF7] = self._rst
         self._instructions[0xF8] = None
         self._instructions[0xF9] = None
@@ -770,5 +798,5 @@ class CPU:
         self._instructions[0xFB] = self._ei
         self._instructions[0xFC] = None
         self._instructions[0xFD] = None
-        self._instructions[0xFE] = None
+        self._instructions[0xFE] = self._alu_immediate
         self._instructions[0xFF] = self._rst
