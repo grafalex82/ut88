@@ -309,6 +309,8 @@ class CPU:
         op = (self._current_inst & 0x38) >> 3
         op_symb = ["JNZ", "JZ", "JNC", "JC", "JPO", "JPE", "JP", "JN"][op]
 
+        self._log_3b_instruction(f"{op_symb} {addr:04x}")
+
         if op == 0:
             condition = not self._zero
         if op == 1:
@@ -331,8 +333,6 @@ class CPU:
             self._cycles += 15
         else:
             self._cycles += 10
-
-        self._log_3b_instruction(f"{op_symb} {addr:04x}")
 
 
     def _rst(self):
