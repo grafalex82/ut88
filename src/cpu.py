@@ -364,6 +364,14 @@ class CPU:
         self._cycles += 11
 
     
+    def _ret(self):
+        """ Return from a subroutine """
+
+        self._log_1b_instruction(f"RET")
+
+        self._pc = self._pop_from_stack()
+        self._cycles += 10
+
     # Flags and modes instructions
 
     def _ei(self):
@@ -688,7 +696,7 @@ class CPU:
         self._instructions[0xC6] = None
         self._instructions[0xC7] = self._rst
         self._instructions[0xC8] = None
-        self._instructions[0xC9] = None
+        self._instructions[0xC9] = self._ret
         self._instructions[0xCA] = self._jmp_cond
         self._instructions[0xCB] = None
         self._instructions[0xCC] = None

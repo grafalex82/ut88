@@ -302,6 +302,15 @@ def test_rst(cpu, opcode, rstaddr):
     assert cpu._sp == 0x1232
     assert cpu._machine.read_memory_word(0x1232) == 0x0001 # address of the next instruction
 
+def test_ret(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xc9)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x1234, 0xbeef)  # Return address
+    cpu._sp = 0x1234
+    cpu.step()
+    assert cpu._pc == 0xbeef
+    assert cpu._sp == 0x1236
+    assert cpu._cycles == 10
+
 def test_push_bc(cpu):
     cpu._machine.write_memory_byte(0x0000, 0xc5)    # Instruction Opcode
     cpu._sp = 0x1234
