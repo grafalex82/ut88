@@ -371,6 +371,20 @@ class CPU:
             self._cycles += 10
 
 
+    def _pchl(self):
+        """ Load HL value to PC register """
+        self._pc = self._get_hl()
+        self._cycles += 5
+        self._log_1b_instruction(f"PCHL")
+
+
+    def _sphl(self):
+        """ Load HL value to SP register """
+        self._sp = self._get_hl()
+        self._cycles += 5
+        self._log_1b_instruction(f"SPHL")
+
+
     def _rst(self):
         """ Restart (special subroutine call) """
         rst = (self._current_inst & 0x38) >> 3
@@ -776,7 +790,7 @@ class CPU:
         self._instructions[0xE6] = self._alu_immediate
         self._instructions[0xE7] = self._rst
         self._instructions[0xE8] = None
-        self._instructions[0xE9] = None
+        self._instructions[0xE9] = self._pchl
         self._instructions[0xEA] = self._jmp_cond
         self._instructions[0xEB] = None
         self._instructions[0xEC] = None
@@ -793,7 +807,7 @@ class CPU:
         self._instructions[0xF6] = self._alu_immediate
         self._instructions[0xF7] = self._rst
         self._instructions[0xF8] = None
-        self._instructions[0xF9] = None
+        self._instructions[0xF9] = self._sphl
         self._instructions[0xFA] = self._jmp_cond
         self._instructions[0xFB] = self._ei
         self._instructions[0xFC] = None

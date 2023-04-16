@@ -271,6 +271,20 @@ def test_jp_2(cpu):
     assert cpu._pc == 0xbeef
     assert cpu._cycles == 15
 
+def test_pchl(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xe9)    # Instruction Opcode
+    cpu._set_hl(0x1234)
+    cpu.step()
+    assert cpu._pc == 0x1234
+    assert cpu._cycles == 5
+
+def test_sphl(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xf9)    # Instruction Opcode
+    cpu._set_hl(0x1234)
+    cpu.step()
+    assert cpu._sp == 0x1234
+    assert cpu._cycles == 5
+
 def test_ei_di(cpu):
     cpu._machine.write_memory_byte(0x0000, 0xfb)    # Instruction Opcode
     cpu._machine.write_memory_byte(0x0001, 0xf3)    # Instruction Opcode
