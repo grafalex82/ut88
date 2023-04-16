@@ -274,6 +274,15 @@ class CPU:
         self._log_3b_instruction(f"STA {addr:04x}")
 
 
+    def _lda(self):
+        """ Load accumulator direct """
+        addr = self._fetch_next_word()
+        self._a = self._machine.read_memory_byte(addr)
+        self._cycles += 13
+
+        self._log_3b_instruction(f"LDA {addr:04x}")
+
+
     def _push(self):
         """ Push register pair to stack """
         reg_pair = (self._current_inst & 0x30) >> 4
@@ -373,16 +382,16 @@ class CPU:
 
     def _pchl(self):
         """ Load HL value to PC register """
+        self._log_1b_instruction(f"PCHL")
         self._pc = self._get_hl()
         self._cycles += 5
-        self._log_1b_instruction(f"PCHL")
 
 
     def _sphl(self):
         """ Load HL value to SP register """
+        self._log_1b_instruction(f"SPHL")
         self._sp = self._get_hl()
         self._cycles += 5
-        self._log_1b_instruction(f"SPHL")
 
 
     def _rst(self):
@@ -604,7 +613,7 @@ class CPU:
         self._instructions[0x37] = None
         self._instructions[0x38] = None
         self._instructions[0x39] = None
-        self._instructions[0x3A] = None
+        self._instructions[0x3A] = self._lda
         self._instructions[0x3B] = self._dcx
         self._instructions[0x3C] = None
         self._instructions[0x3D] = None

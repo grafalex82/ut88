@@ -305,6 +305,14 @@ def test_sta(cpu):
     assert cpu._machine.read_memory_byte(0xbeef) == 0x42
     assert cpu._cycles == 13
 
+def test_lda(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x3a)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
+    cpu._machine.write_memory_byte(0xbeef, 0x42)    # Data to read
+    cpu.step()
+    assert cpu._a == 0x42
+    assert cpu._cycles == 13
+
 @pytest.mark.parametrize("opcode, rstaddr", 
     [(0xc7, 0x0000), (0xcf, 0x0008), (0xd7, 0x0010), (0xdf, 0x0018),
      (0xe7, 0x0020), (0xef, 0x0028), (0xf7, 0x0030), (0xff, 0x0038)])
