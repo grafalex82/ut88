@@ -74,7 +74,7 @@ class CPU:
         self._machine.write_stack(self._sp, value)
 
 
-    def _pop_from_stack(self, value):
+    def _pop_from_stack(self):
         value = self._machine.read_stack(self._sp)
         self._sp += 2
         return value
@@ -289,6 +289,24 @@ class CPU:
         self._cycles += 11
 
         self._log_1b_instruction(f"PUSH {reg_pair_name}")
+
+
+    def _pop(self):
+        """ Pop register pair from stack """
+        reg_pair = (self._current_inst & 0x30) >> 4
+
+        value = self._pop_from_stack()
+
+        if reg_pair != 3:
+            reg_pair_name = self._reg_pair_symb(reg_pair)
+            self._set_register_pair(reg_pair, value)
+        else:
+            reg_pair_name = "PSW"
+            self._set_psw(value)
+
+        self._cycles += 10
+
+        self._log_1b_instruction(f"POP {reg_pair_name}")
 
 
     # Execution flow instructions
@@ -662,7 +680,7 @@ class CPU:
         self._instructions[0xBF] = self._alu
 
         self._instructions[0xC0] = None
-        self._instructions[0xC1] = None
+        self._instructions[0xC1] = self._pop
         self._instructions[0xC2] = self._jmp_cond
         self._instructions[0xC3] = self._jmp
         self._instructions[0xC4] = None
@@ -679,7 +697,7 @@ class CPU:
         self._instructions[0xCF] = self._rst
 
         self._instructions[0xD0] = None
-        self._instructions[0xD1] = None
+        self._instructions[0xD1] = self._pop
         self._instructions[0xD2] = self._jmp_cond
         self._instructions[0xD3] = None
         self._instructions[0xD4] = None
@@ -696,7 +714,7 @@ class CPU:
         self._instructions[0xDF] = self._rst
 
         self._instructions[0xE0] = None
-        self._instructions[0xE1] = None
+        self._instructions[0xE1] = self._pop
         self._instructions[0xE2] = self._jmp_cond
         self._instructions[0xE3] = None
         self._instructions[0xE4] = None
@@ -713,7 +731,7 @@ class CPU:
         self._instructions[0xEF] = self._rst
 
         self._instructions[0xF0] = None
-        self._instructions[0xF1] = None
+        self._instructions[0xF1] = self._pop
         self._instructions[0xF2] = self._jmp_cond
         self._instructions[0xF3] = self._di
         self._instructions[0xF4] = None

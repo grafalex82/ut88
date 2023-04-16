@@ -311,15 +311,6 @@ def test_push_bc(cpu):
     assert cpu._sp == 0x1232
     assert cpu._machine.read_memory_word(0x1232) == 0xbeef
 
-def test_push_bc(cpu):
-    cpu._machine.write_memory_byte(0x0000, 0xc5)    # Instruction Opcode
-    cpu._sp = 0x1234
-    cpu._set_bc(0xbeef)
-    cpu.step()
-    assert cpu._cycles == 11
-    assert cpu._sp == 0x1232
-    assert cpu._machine.read_memory_word(0x1232) == 0xbeef
-
 def test_push_de(cpu):
     cpu._machine.write_memory_byte(0x0000, 0xd5)    # Instruction Opcode
     cpu._sp = 0x1234
@@ -360,6 +351,61 @@ def test_push_psw2(cpu):
     assert cpu._cycles == 11
     assert cpu._sp == 0x1232
     assert cpu._machine.read_memory_word(0x1232) == 0x42d7 # bit1 of the PSW is always 1
+
+def test_pop_bc(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xc1)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x1234, 0xbeef)  # Data to pop
+    cpu._sp = 0x1234
+    cpu.step()
+    assert cpu._cycles == 10
+    assert cpu._sp == 0x1236
+    assert cpu._get_bc() == 0xbeef
+
+def test_pop_de(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xd1)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x1234, 0xbeef)  # Data to pop
+    cpu._sp = 0x1234
+    cpu.step()
+    assert cpu._cycles == 10
+    assert cpu._sp == 0x1236
+    assert cpu._get_de() == 0xbeef
+
+def test_pop_hl(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xe1)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x1234, 0xbeef)  # Data to pop
+    cpu._sp = 0x1234
+    cpu.step()
+    assert cpu._cycles == 10
+    assert cpu._sp == 0x1236
+    assert cpu._get_hl() == 0xbeef
+
+def test_pop_psw_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xf1)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x1234, 0xbe02)  # Data to pop (A=0xbe, all flags are off)
+    cpu._sp = 0x1234
+    cpu.step()
+    assert cpu._cycles == 10
+    assert cpu._sp == 0x1236
+    assert cpu._a == 0xbe
+    assert cpu._carry == False
+    assert cpu._half_carry == False
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == False
+
+def test_pop_psw_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xf1)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x1234, 0xbed7)  # Data to pop (A=0xbe, all flags are on)
+    cpu._sp = 0x1234
+    cpu.step()
+    assert cpu._cycles == 10
+    assert cpu._sp == 0x1236
+    assert cpu._a == 0xbe
+    assert cpu._carry == True
+    assert cpu._half_carry == True
+    assert cpu._zero == True
+    assert cpu._sign == True
+    assert cpu._parity == True
 
 def test_dcx_bc(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x0b)    # Instruction Opcode
