@@ -309,6 +309,24 @@ class CPU:
         self._log_1b_instruction(f"POP {reg_pair_name}")
 
 
+    def _in(self):
+        """ IO Input """
+        addr = self._fetch_next_byte()
+        self._log_2b_instruction(f"IN {addr:02x}")
+
+        self._a = self._machine.read_io(addr)
+        self._cycles += 10
+
+
+    def _out(self):
+        """ IO Output """
+        addr = self._fetch_next_byte()
+        self._log_2b_instruction(f"OUT {addr:02x}")
+
+        self._machine.write_io(addr, self._a)
+        self._cycles += 10
+
+
     # Execution flow instructions
 
     def _jmp(self):
@@ -707,7 +725,7 @@ class CPU:
         self._instructions[0xD0] = None
         self._instructions[0xD1] = self._pop
         self._instructions[0xD2] = self._jmp_cond
-        self._instructions[0xD3] = None
+        self._instructions[0xD3] = self._out
         self._instructions[0xD4] = None
         self._instructions[0xD5] = self._push
         self._instructions[0xD6] = None
@@ -715,7 +733,7 @@ class CPU:
         self._instructions[0xD8] = None
         self._instructions[0xD9] = None
         self._instructions[0xDA] = self._jmp_cond
-        self._instructions[0xDB] = None
+        self._instructions[0xDB] = self._in
         self._instructions[0xDC] = None
         self._instructions[0xDD] = None
         self._instructions[0xDE] = None

@@ -11,6 +11,7 @@ from cpu import CPU
 from rom import ROM
 from ram import RAM
 from utils import *
+from mock import *
 
 @pytest.fixture
 def cpu():
@@ -654,4 +655,20 @@ def test_cmp_3(cpu):
     assert cpu._carry == False
     assert cpu._half_carry == True
 
+def test_out(cpu):
+    io = MockIO(0x42)
+    cpu._machine.add_io(io)
+    cpu._machine.write_memory_byte(0x0000, 0xd3)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0x0001, 0x42)    # IO addr
+    cpu._a = 0x55
+    cpu.step()
+    assert io.read_io(0x42) == 0x55
 
+def test_in(cpu):
+    io = MockIO(0x42)
+    io.write_io(0x42, 0x55)
+    cpu._machine.add_io(io)
+    cpu._machine.write_memory_byte(0x0000, 0xdb)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0x0001, 0x42)    # IO addr
+    cpu.step()
+    assert cpu._a == 0x55
