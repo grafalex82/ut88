@@ -14,8 +14,9 @@ def ram():
     return RAM(0x0000, 0xffff) 
 
 def test_addr(ram):
-    assert ram.get_start_addr() == 0x0000
-    assert ram.get_end_addr() == 0xffff
+    start, end = ram.get_addr_space()
+    assert start == 0x0000
+    assert end == 0xffff
 
 def test_read_default_byte(ram):
     assert ram.read_byte(0x1234) == 0x00

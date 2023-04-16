@@ -8,8 +8,7 @@ class MemoryMgr:
         self._memories = []
 
     def add_memory(self, memory):
-        startaddr = memory.get_start_addr()
-        endaddr = memory.get_end_addr()
+        startaddr, endaddr = memory.get_addr_space()
         self._memories.append((startaddr, endaddr, memory))
 
     def get_memory_for_addr(self, addr):
