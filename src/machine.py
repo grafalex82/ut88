@@ -74,4 +74,4 @@ class Machine:
         
     def write_io(self, addr, value):
         io = self._get_io(addr)
-        io.read_io(addr, value)
+        io.write_io(addr, value)
