@@ -22,7 +22,8 @@ class Emulator:
         for br in br_list:  
             br()
 
-    def run(self):
-        while True:
+    def run(self, num_cycles=0):
+        stop_at = self._cpu._cycles + num_cycles
+        while num_cycles == 0 or self._cpu._cycles <= stop_at:
             self._handle_breakpoints()
             self._cpu.step()
