@@ -283,6 +283,24 @@ class CPU:
         self._log_3b_instruction(f"LDA {addr:04x}")
 
 
+    def _shld(self):
+        """ Store H and L direct"""
+        addr = self._fetch_next_word()
+        self._machine.write_memory_word(addr, self._get_hl())
+        self._cycles += 16
+
+        self._log_3b_instruction(f"SHLD {addr:04x}")
+
+
+    def _lhld(self):
+        """ Load H and L direct"""
+        addr = self._fetch_next_word()
+        self._set_hl(self._machine.read_memory_word(addr))
+        self._cycles += 16
+
+        self._log_3b_instruction(f"LHLD {addr:04x}")
+
+
     def _push(self):
         """ Push register pair to stack """
         reg_pair = (self._current_inst & 0x30) >> 4
@@ -588,7 +606,7 @@ class CPU:
 
         self._instructions[0x20] = None
         self._instructions[0x21] = self._lxi
-        self._instructions[0x22] = None
+        self._instructions[0x22] = self._shld
         self._instructions[0x23] = self._inx
         self._instructions[0x24] = None
         self._instructions[0x25] = None
@@ -596,7 +614,7 @@ class CPU:
         self._instructions[0x27] = None
         self._instructions[0x28] = None
         self._instructions[0x29] = None
-        self._instructions[0x2A] = None
+        self._instructions[0x2A] = self._lhld
         self._instructions[0x2B] = self._dcx
         self._instructions[0x2C] = None
         self._instructions[0x2D] = None
