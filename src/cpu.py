@@ -407,6 +407,26 @@ class CPU:
         self._cycles += 10
 
 
+    def _check_condition(self, op):
+        """ Helper function to check condition on conditional JUMP, CALL, and RET """
+        if op == 0:
+            return not self._zero
+        if op == 1:
+            return self._zero
+        if op == 2:
+            return not self._carry
+        if op == 3:
+            return self._carry
+        if op == 4:
+            return not self._parity
+        if op == 5:
+            return self._parity
+        if op == 6:
+            return not self._sign
+        if op == 7:
+            return self._sign
+
+
     def _jmp_cond(self):
         """ Conditional jump """
         addr = self._fetch_next_word()
@@ -415,28 +435,24 @@ class CPU:
 
         self._log_3b_instruction(f"{op_symb} {addr:04x}")
 
-        if op == 0:
-            condition = not self._zero
-        if op == 1:
-            condition = self._zero
-        if op == 2:
-            condition = not self._carry
-        if op == 3:
-            condition = self._carry
-        if op == 4:
-            condition = not self._parity
-        if op == 5:
-            condition = self._parity
-        if op == 6:
-            condition = not self._sign
-        if op == 7:
-            condition = self._sign
-
-        if condition:
+        if self._check_condition(op):
             self._pc = addr
-            self._cycles += 15
+
+        self._cycles += 10
+
+
+    def _ret_cond(self):
+        """ Conditional return """
+        op = (self._current_inst & 0x38) >> 3
+        op_symb = ["RNZ", "RZ", "RNC", "RC", "RPO", "RPE", "RP", "RN"][op]
+
+        self._log_1b_instruction(f"{op_symb}")
+
+        if self._check_condition(op):
+            self._pc = self._pop_from_stack()
+            self._cycles += 11
         else:
-            self._cycles += 10
+            self._cycles += 5
 
 
     def _pchl(self):
@@ -482,6 +498,7 @@ class CPU:
 
         self._pc = self._pop_from_stack()
         self._cycles += 10
+
 
     # Flags and modes instructions
 
@@ -909,7 +926,7 @@ class CPU:
         self._instructions[0xBE] = self._alu
         self._instructions[0xBF] = self._alu
 
-        self._instructions[0xC0] = None
+        self._instructions[0xC0] = self._ret_cond
         self._instructions[0xC1] = self._pop
         self._instructions[0xC2] = self._jmp_cond
         self._instructions[0xC3] = self._jmp
@@ -917,7 +934,7 @@ class CPU:
         self._instructions[0xC5] = self._push
         self._instructions[0xC6] = self._alu_immediate
         self._instructions[0xC7] = self._rst
-        self._instructions[0xC8] = None
+        self._instructions[0xC8] = self._ret_cond
         self._instructions[0xC9] = self._ret
         self._instructions[0xCA] = self._jmp_cond
         self._instructions[0xCB] = None
@@ -926,7 +943,7 @@ class CPU:
         self._instructions[0xCE] = self._alu_immediate
         self._instructions[0xCF] = self._rst
 
-        self._instructions[0xD0] = None
+        self._instructions[0xD0] = self._ret_cond
         self._instructions[0xD1] = self._pop
         self._instructions[0xD2] = self._jmp_cond
         self._instructions[0xD3] = self._out
@@ -934,7 +951,7 @@ class CPU:
         self._instructions[0xD5] = self._push
         self._instructions[0xD6] = self._alu_immediate
         self._instructions[0xD7] = self._rst
-        self._instructions[0xD8] = None
+        self._instructions[0xD8] = self._ret_cond
         self._instructions[0xD9] = None
         self._instructions[0xDA] = self._jmp_cond
         self._instructions[0xDB] = self._in
@@ -943,7 +960,7 @@ class CPU:
         self._instructions[0xDE] = self._alu_immediate
         self._instructions[0xDF] = self._rst
 
-        self._instructions[0xE0] = None
+        self._instructions[0xE0] = self._ret_cond
         self._instructions[0xE1] = self._pop
         self._instructions[0xE2] = self._jmp_cond
         self._instructions[0xE3] = self._xthl
@@ -951,7 +968,7 @@ class CPU:
         self._instructions[0xE5] = self._push
         self._instructions[0xE6] = self._alu_immediate
         self._instructions[0xE7] = self._rst
-        self._instructions[0xE8] = None
+        self._instructions[0xE8] = self._ret_cond
         self._instructions[0xE9] = self._pchl
         self._instructions[0xEA] = self._jmp_cond
         self._instructions[0xEB] = self._xchg
@@ -960,7 +977,7 @@ class CPU:
         self._instructions[0xEE] = self._alu_immediate
         self._instructions[0xEF] = self._rst
 
-        self._instructions[0xF0] = None
+        self._instructions[0xF0] = self._ret_cond
         self._instructions[0xF1] = self._pop
         self._instructions[0xF2] = self._jmp_cond
         self._instructions[0xF3] = self._di
@@ -968,7 +985,7 @@ class CPU:
         self._instructions[0xF5] = self._push
         self._instructions[0xF6] = self._alu_immediate
         self._instructions[0xF7] = self._rst
-        self._instructions[0xF8] = None
+        self._instructions[0xF8] = self._ret_cond
         self._instructions[0xF9] = self._sphl
         self._instructions[0xFA] = self._jmp_cond
         self._instructions[0xFB] = self._ei
