@@ -50,6 +50,9 @@ def main():
         
         emulator.run(10000)
 
+        if pygame.key.get_pressed()[pygame.K_ESCAPE]:
+            emulator.reset()
+
         lcd.update(screen)
         kbd.update()
         pygame.display.flip()

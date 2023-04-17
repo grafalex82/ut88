@@ -27,3 +27,7 @@ class Emulator:
         while num_cycles == 0 or self._cpu._cycles <= stop_at:
             self._handle_breakpoints()
             self._cpu.step()
+
+    def reset(self):
+        self._machine.reset()
+
