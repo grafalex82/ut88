@@ -24,6 +24,9 @@ class IODevice:
     def write_io(self, addr, value):
         self.validate_addr(addr)
         raise IOError(f"Writing IO {addr:x} is not supported")
+    
+    def update(self):
+        pass
 
 
 
@@ -63,6 +66,9 @@ class MemoryDevice:
         self.validate_addr(addr)
         raise MemoryError(f"Writing address 0x{addr:04x} is not supported")
 
+    def update(self):
+        pass
+
 
 class StackDevice:
     """
@@ -91,3 +97,6 @@ class StackDevice:
     def read_stack(self, ptr):
         self.validate_addr(addr)
         raise MemoryError(f"Reading stack address 0x{addr:04x} is not supported")
+
+    def update(self):
+        pass

@@ -17,11 +17,24 @@ class MemoryMgr:
                 return mem[2]
         return None
 
+    def update(self):
+        for mem in self._memories:
+            mem[2].update()
+
+
 
 class Machine:
+    """
+    Machine class emulates everything related to electrical connectivity within 
+    the computer in a specific configuration. It handles all the relationships
+    between the components, such as memories, I/O devices, and other devices
+    not logically connected, but still a part of the system (e.g. a 1 second timer).
+    
+    """
     def __init__(self):
         self._memories = MemoryMgr()
         self._io = {}
+        self._other = []
         self._cpu = None
         self._strict = False
 
@@ -38,6 +51,22 @@ class Machine:
         start, end = io.get_addr_space()
         for addr in range(start, end+1):
             self._io[addr] = io
+
+    def add_other_device(self, device):
+        self._other.append(device)
+
+    def update(self):
+        """ 
+        Updates the state of all devices in the system, allowing them to 
+        act on a time-based manner
+        """
+        self._memories.update()
+
+        for _, io in self._io.items():
+            io.update()
+
+        for dev in self._other:
+            dev.update()
 
     def _get_memory(self, addr):
         mem = self._memories.get_memory_for_addr(addr)
