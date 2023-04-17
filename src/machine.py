@@ -107,3 +107,11 @@ class Machine:
         io = self._get_io(addr)
         if io:
             io.write_io(addr, value)
+
+    def schedule_interrupt(self):
+        # Typically the machine would have i8259 interrupt controller
+        # which would expose to the data line a 3 byte CALL instruction.
+        # UT-88 computer does not have an interrupt controller. Instead
+        # it relies on data bus pull-up registers, that "generate" RST7
+        # instruction (0xff opcode).
+        self._cpu.schedule_interrupt([0xff])

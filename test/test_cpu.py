@@ -39,7 +39,7 @@ def test_reset_values(cpu):
     assert cpu._cycles == 0
 
 def test_machine_reset(cpu):
-    # This is actually a machine test, but it is more convenient to do it here
+    # This is actually a Machine test, but it is more convenient to do it here
     cpu._machine.write_memory_byte(0x0000, 0x00)    # Instruction Opcode
     cpu.step()
     cpu._machine.reset()
@@ -68,6 +68,16 @@ def test_interrupt_3byte(cpu):
     cpu._sp = 0x1234
     cpu.step()
     assert cpu._pc == 0xbeef                        # expecting CALL executed
+    assert cpu._machine.read_memory_word(0x1232) == 0x0000  # Current instruction address
+
+def test_machine_interrupt(cpu):
+    # This is another Machine class test, that is more convenient to test via CPU
+    cpu._machine.schedule_interrupt()               # Machine will schedule RST7 as interrupt instruction
+    cpu._machine.write_memory_byte(0x0000, 0x00)    # Instruction Opcode
+    cpu._enable_interrupts = True
+    cpu._sp = 0x1234
+    cpu.step()
+    assert cpu._pc == 0x0038                        # expecting RST7 executed
     assert cpu._machine.read_memory_word(0x1232) == 0x0000  # Current instruction address
 
 def test_interrupt_insufficient_instructions(cpu):
