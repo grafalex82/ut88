@@ -634,6 +634,24 @@ class CPU:
         self._log_2b_instruction(f"{op_name} {value:02x}")
 
 
+    def _daa(self):
+        """ Decimal adjust accumulator """
+        if (self._a & 0xf) > 9 or self._half_carry:
+            self._a = (self._a + 0x6) & 0xff
+            self._half_carry = True
+
+        if (self._a & 0xf0) > 0x90 or self._carry:
+            self._a = (self._a + 0x60) & 0xff
+            self._carry = True
+
+        self._zero = (self._a & 0xff) == 0
+        self._parity = self._count_bits(self._a) % 2 == 0
+        self._sign = (self._a & 0x80) != 0
+
+        self._cycles += 4
+        self._log_1b_instruction(f"DAA")
+        
+
     def _dcr(self):
         """ Decrement a register """
         reg = (self._current_inst & 0x38) >> 3
@@ -759,7 +777,7 @@ class CPU:
         self._cycles += 4
 
         self._log_1b_instruction(f"CMA")
-
+        
 
     def init_instruction_table(self):
         self._instructions[0x00] = self._nop
@@ -803,7 +821,7 @@ class CPU:
         self._instructions[0x24] = self._inr
         self._instructions[0x25] = self._dcr
         self._instructions[0x26] = self._mvi
-        self._instructions[0x27] = None
+        self._instructions[0x27] = self._daa
         self._instructions[0x28] = None
         self._instructions[0x29] = self._dad
         self._instructions[0x2A] = self._lhld

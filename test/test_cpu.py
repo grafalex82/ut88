@@ -1485,6 +1485,20 @@ def test_cma(cpu):
     assert cpu._a == 0xae
     assert cpu._cycles == 4
 
+def test_daa(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x27)    # Instruction Opcode
+    cpu._a = 0x9b
+    cpu._half_carry == False
+    cpu._carry == False
+    cpu.step()
+    assert cpu._a == 0x01
+    assert cpu._cycles == 4
+    assert cpu._half_carry == True
+    assert cpu._carry == True
+    assert cpu._sign == False
+    assert cpu._zero == False
+    assert cpu._parity == False
+
 def test_out(cpu):
     io = MockIO(0x42)
     cpu._machine.add_io(io)
