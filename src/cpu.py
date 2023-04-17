@@ -453,6 +453,17 @@ class CPU:
         self._cycles += 5
 
 
+    def _call(self):
+        """ Call a subroutine """
+        addr = self._fetch_next_word()
+
+        self._log_3b_instruction(f"CALL {addr:04x}")
+
+        self._push_to_stack(self._pc)
+        self._pc = addr
+        self._cycles += 17
+
+
     def _rst(self):
         """ Restart (special subroutine call) """
         rst = (self._current_inst & 0x38) >> 3
@@ -911,7 +922,7 @@ class CPU:
         self._instructions[0xCA] = self._jmp_cond
         self._instructions[0xCB] = None
         self._instructions[0xCC] = None
-        self._instructions[0xCD] = None
+        self._instructions[0xCD] = self._call
         self._instructions[0xCE] = self._alu_immediate
         self._instructions[0xCF] = self._rst
 
