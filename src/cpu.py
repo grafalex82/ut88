@@ -600,6 +600,46 @@ class CPU:
         self._log_1b_instruction(f"INX {self._reg_pair_symb(reg_pair)}")
 
 
+    def _rlc(self):
+        """ Rotate accumulator left """
+        self._carry = True if (self._a >> 7) == 1 else False
+        self._a = ((self._a << 1) & 0xff) | (self._a >> 7)
+        self._cycles += 4
+
+        self._log_1b_instruction(f"RLC")
+
+
+    def _rrc(self):
+        """ Rotate accumulator right """
+        self._carry = True if (self._a & 0x01) == 1 else False
+        self._a = ((self._a >> 1) & 0xFF) | ((self._a << 7) & 0xFF)
+        self._cycles += 4
+
+        self._log_1b_instruction(f"RRC")
+
+
+    def _ral(self):
+        """ Rotate accumulator left through carry """
+        temp = self._a
+        self._a = (self._a << 1) & 0xFF
+        self._a |= 1 if self._carry else 0
+        self._carry = (temp & 0x80) > 0
+        self._cycles += 4
+
+        self._log_1b_instruction(f"RAL")
+
+
+    def _rar(self):
+        """ Rotate accumulator right through carry """
+        temp = self._a
+        self._a >>= 1
+        self._a |= 0x80 if self._carry else 0
+        self._carry = (temp & 0x01) > 0
+        self._cycles += 4
+
+        self._log_1b_instruction(f"RAR")
+
+
     def init_instruction_table(self):
         self._instructions[0x00] = self._nop
         self._instructions[0x01] = self._lxi
@@ -608,7 +648,7 @@ class CPU:
         self._instructions[0x04] = self._inr
         self._instructions[0x05] = self._dcr
         self._instructions[0x06] = self._mvi
-        self._instructions[0x07] = None
+        self._instructions[0x07] = self._rlc
         self._instructions[0x08] = None
         self._instructions[0x09] = None
         self._instructions[0x0A] = None
@@ -616,7 +656,7 @@ class CPU:
         self._instructions[0x0C] = self._inr
         self._instructions[0x0D] = self._dcr
         self._instructions[0x0E] = self._mvi
-        self._instructions[0x0F] = None
+        self._instructions[0x0F] = self._rrc
 
         self._instructions[0x10] = None
         self._instructions[0x11] = self._lxi
@@ -625,7 +665,7 @@ class CPU:
         self._instructions[0x14] = self._inr
         self._instructions[0x15] = self._dcr
         self._instructions[0x16] = self._mvi
-        self._instructions[0x17] = None
+        self._instructions[0x17] = self._ral
         self._instructions[0x18] = None
         self._instructions[0x19] = None
         self._instructions[0x1A] = None
@@ -633,7 +673,7 @@ class CPU:
         self._instructions[0x1C] = self._inr
         self._instructions[0x1D] = self._dcr
         self._instructions[0x1E] = self._mvi
-        self._instructions[0x1F] = None
+        self._instructions[0x1F] = self._rar
 
         self._instructions[0x20] = None
         self._instructions[0x21] = self._lxi

@@ -967,6 +967,74 @@ def test_cpi(cpu):
     assert cpu._carry == False
     assert cpu._half_carry == False
 
+def test_rlc_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x07)    # Instruction Opcode
+    cpu._a = 0x5a
+    cpu.step()
+    assert cpu._a == 0xb4
+    assert cpu._cycles == 4
+    assert cpu._carry == False
+
+def test_rlc_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x07)    # Instruction Opcode
+    cpu._a = 0xa5
+    cpu.step()
+    assert cpu._a == 0x4b
+    assert cpu._cycles == 4
+    assert cpu._carry == True
+
+def test_rrc_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x0f)    # Instruction Opcode
+    cpu._a = 0x5a
+    cpu.step()
+    assert cpu._a == 0x2d
+    assert cpu._cycles == 4
+    assert cpu._carry == False
+
+def test_rrc_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x0f)    # Instruction Opcode
+    cpu._a = 0xa5
+    cpu.step()
+    assert cpu._a == 0xd2
+    assert cpu._cycles == 4
+    assert cpu._carry == True
+
+def test_ral_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x17)    # Instruction Opcode
+    cpu._a = 0x5a
+    cpu._carry = True
+    cpu.step()
+    assert cpu._a == 0xb5
+    assert cpu._cycles == 4
+    assert cpu._carry == False
+
+def test_ral_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x17)    # Instruction Opcode
+    cpu._a = 0xa5
+    cpu._carry = False
+    cpu.step()
+    assert cpu._a == 0x4a
+    assert cpu._cycles == 4
+    assert cpu._carry == True
+
+def test_rar_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x1f)    # Instruction Opcode
+    cpu._a = 0x5a
+    cpu._carry = True
+    cpu.step()
+    assert cpu._a == 0xad
+    assert cpu._cycles == 4
+    assert cpu._carry == False
+
+def test_rar_2(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x1f)    # Instruction Opcode
+    cpu._a = 0xa5
+    cpu._carry = False
+    cpu.step()
+    assert cpu._a == 0x52
+    assert cpu._cycles == 4
+    assert cpu._carry == True
+
 def test_out(cpu):
     io = MockIO(0x42)
     cpu._machine.add_io(io)
