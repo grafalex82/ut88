@@ -1,3 +1,4 @@
+import pygame
 from interfaces import *
 
 class HexKeyboard(IODevice):
@@ -12,6 +13,22 @@ class HexKeyboard(IODevice):
     def __init__(self):
         IODevice.__init__(self, 0xa0, 0xa0)
         self._pressed_key = 0
+
+
+    def update(self):
+        self._pressed_key = 0x00
+
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_0]:                        # 0
+            self._pressed_key = 0x10
+        for k in range(pygame.K_1, pygame.K_1 + 9): # 1 to 9
+            if keys[k]:
+                self._pressed_key = k - pygame.K_1 + 1
+        for k in range(pygame.K_a, pygame.K_a + 6): # A to F
+            if keys[k]:
+                self._pressed_key = k - pygame.K_a + 10
+        if keys[pygame.K_BACKSPACE]:                # Step back
+            self._pressed_key = 0x80
 
 
     def press_key(self, key):

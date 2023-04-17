@@ -29,7 +29,6 @@ def main():
     lcd = LCD()
     machine.add_memory(lcd)
     kbd = HexKeyboard()
-    kbd.press_key("3")  # Test LCD
     machine.add_io(kbd)
 
     emulator = Emulator(machine)
@@ -52,6 +51,7 @@ def main():
         emulator.run(10000)
 
         lcd.update(screen)
+        kbd.update()
         pygame.display.flip()
         clock.tick(60)
         pygame.display.set_caption(f"UT-88 Emulator (FPS={clock.get_fps()})")
