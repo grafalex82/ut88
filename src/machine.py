@@ -22,10 +22,14 @@ class Machine:
     def __init__(self):
         self._memories = MemoryMgr()
         self._io = {}
+        self._cpu = None
         self._strict = False
 
     def set_strict_validation(self, strict = False):
         self._strict = strict
+
+    def set_cpu(self, cpu):
+        self._cpu = cpu
 
     def add_memory(self, memory):
         self._memories.add_memory(memory)
@@ -55,6 +59,10 @@ class Machine:
                 logger.debug(msg)
         return io
         
+    def reset(self):
+        # Only CPU is reset during the machine reset
+        # Memory data will survive
+        self._cpu.reset()
 
     def read_memory_byte(self, addr):
         mem = self._get_memory(addr)

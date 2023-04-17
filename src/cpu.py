@@ -6,6 +6,7 @@ logger = logging.getLogger('cpu')
 class CPU:
     def __init__(self, machine):
         self._machine = machine
+        machine.set_cpu(self)
 
         self.reset()
 
