@@ -1478,6 +1478,13 @@ def test_cmc_1(cpu):
     assert cpu._carry == False
     assert cpu._cycles == 4
 
+def test_cma(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x2f)    # Instruction Opcode
+    cpu._a = 0x51
+    cpu.step()
+    assert cpu._a == 0xae
+    assert cpu._cycles == 4
+
 def test_out(cpu):
     io = MockIO(0x42)
     cpu._machine.add_io(io)

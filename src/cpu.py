@@ -753,6 +753,14 @@ class CPU:
         self._log_1b_instruction(f"STC")
         
 
+    def _cma(self):
+        """ Complement accumulator """
+        self._a = (~self._a) & 0xFF
+        self._cycles += 4
+
+        self._log_1b_instruction(f"CMA")
+
+
     def init_instruction_table(self):
         self._instructions[0x00] = self._nop
         self._instructions[0x01] = self._lxi
@@ -803,7 +811,7 @@ class CPU:
         self._instructions[0x2C] = self._inr
         self._instructions[0x2D] = self._dcr
         self._instructions[0x2E] = self._mvi
-        self._instructions[0x2F] = None
+        self._instructions[0x2F] = self._cma
 
         self._instructions[0x30] = None
         self._instructions[0x31] = self._lxi
