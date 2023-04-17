@@ -658,6 +658,41 @@ def test_inx_sp(cpu):
     assert cpu._cycles == 5
     assert cpu._sp == 0xbef0
 
+def test_dad_bc(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x09)    # Instruction Opcode
+    cpu._set_hl(0xa17b)
+    cpu._set_bc(0x339f)
+    cpu.step()
+    assert cpu._get_hl() == 0xd51a
+    assert cpu._carry == False
+    assert cpu._cycles == 10
+
+def test_dad_de(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x19)    # Instruction Opcode
+    cpu._set_hl(0xa17b)
+    cpu._set_de(0xbeef)
+    cpu.step()
+    assert cpu._get_hl() == 0x606a
+    assert cpu._carry == True
+    assert cpu._cycles == 10
+
+def test_dad_hl(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x29)    # Instruction Opcode
+    cpu._set_hl(0xbeef)
+    cpu.step()
+    assert cpu._get_hl() == 0x7dde
+    assert cpu._carry == True
+    assert cpu._cycles == 10
+
+def test_dad_sp(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x39)    # Instruction Opcode
+    cpu._set_hl(0x1234)
+    cpu._sp = 0xbeef
+    cpu.step()
+    assert cpu._get_hl() == 0xd123
+    assert cpu._carry == False
+    assert cpu._cycles == 10
+
 def test_mov_a_h(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x7c)    # Instruction Opcode
     cpu._h = 0x42

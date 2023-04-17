@@ -640,6 +640,19 @@ class CPU:
         self._log_1b_instruction(f"INX {self._reg_pair_symb(reg_pair)}")
 
 
+    def _dad(self):
+        """ Double Add """
+        reg_pair = (self._current_inst & 0x30) >> 4
+        value = self._get_register_pair(reg_pair)
+        res = self._get_hl() + value
+        self._set_hl(res & 0xffff)
+        self._carry = (res >= 0x10000)
+
+        self._cycles += 10
+
+        self._log_1b_instruction(f"DAD {self._reg_pair_symb(reg_pair)}")
+
+
     def _rlc(self):
         """ Rotate accumulator left """
         self._carry = True if (self._a >> 7) == 1 else False
@@ -690,7 +703,7 @@ class CPU:
         self._instructions[0x06] = self._mvi
         self._instructions[0x07] = self._rlc
         self._instructions[0x08] = None
-        self._instructions[0x09] = None
+        self._instructions[0x09] = self._dad
         self._instructions[0x0A] = self._ldax
         self._instructions[0x0B] = self._dcx
         self._instructions[0x0C] = self._inr
@@ -707,7 +720,7 @@ class CPU:
         self._instructions[0x16] = self._mvi
         self._instructions[0x17] = self._ral
         self._instructions[0x18] = None
-        self._instructions[0x19] = None
+        self._instructions[0x19] = self._dad
         self._instructions[0x1A] = self._ldax
         self._instructions[0x1B] = self._dcx
         self._instructions[0x1C] = self._inr
@@ -724,7 +737,7 @@ class CPU:
         self._instructions[0x26] = self._mvi
         self._instructions[0x27] = None
         self._instructions[0x28] = None
-        self._instructions[0x29] = None
+        self._instructions[0x29] = self._dad
         self._instructions[0x2A] = self._lhld
         self._instructions[0x2B] = self._dcx
         self._instructions[0x2C] = self._inr
@@ -741,7 +754,7 @@ class CPU:
         self._instructions[0x36] = self._mvi
         self._instructions[0x37] = None
         self._instructions[0x38] = None
-        self._instructions[0x39] = None
+        self._instructions[0x39] = self._dad
         self._instructions[0x3A] = self._lda
         self._instructions[0x3B] = self._dcx
         self._instructions[0x3C] = self._inr
