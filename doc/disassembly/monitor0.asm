@@ -9,15 +9,33 @@
 ; by 8 bytes, the routine implementation starts at RST address, and continues elsewhere.
 ;
 ; RST routines are:
-; - RST 0 (address 0x0000) - reset routine
-; - RST 3 (address 0x0018) - 1 second delay
-; - RST 4 (address 0x0020) - wait for a button press, return key code in A
-; - RST 5 (address 0x0028) - display A and HL registers on the LCD
+; - RST 0 (address 0x0000)  - reset routine
+; - RST 2 (address 0x0010)  - wait for a byte (2 digit) pressed on the keypad, return in A
+; - RST 3 (address 0x0018)  - 1 second delay
+; - RST 4 (address 0x0020)  - wait for a button press, return key code in A
+; - RST 5 (address 0x0028)  - display A and HL registers on the LCD
+; - RST 6 (address 0x0030)  - wait for a 2 byte (4 digit) value typed on the keyboard, return in DE
 ; 
-; The Monitor0 also interacts with the user with the following commands (entered
-; using HEX keyboard)
-; - 3   - Run an LCD test
-; - 4   - Run memory test for the range of 0xc000 - 0xc400
+; When Monior0 starts, it displays 11 on the rightmost LCD digits - this is a ready signal.
+; The Monitor0 interacts with the user with the following commands (entered using HEX keyboard)
+; - 0 <addr>    - Manually enter data starting <addr>. 
+;                   - Current address is displayed on the LCD
+;                   - Monitor0 waits for the byte to be entered
+;                   - Entered byte is stored at the current address, then address advances
+;                   - Reset to exit memory write mode (memory data will be preserved)
+; - 1           - Manually enter data starting address 0xc000 (similar to command 0)
+; - 2           - Read memory data starting the address 0xc000 (similar to command 5)
+; - 3           - Run an LCD test
+; - 4           - Run memory test for the range of 0xc000 - 0xc400.
+;                   - If a memory error found, the LCD will display the address and the read value
+;                   - Address 0xc400 on the display means no memory errors found
+;                   - Reset to exit memory test mode
+; - 5 <addr>    - Display data starting address <addr>
+;                   - Current address and the byte at the address are displayed on the LCD
+;                   - Press a button for the next byte
+;                   - Reset to exit memory read mode (memory data will be preserved)
+; - 6           - Start the program starting address 0xc000
+; - 7 <addr>    - Start the program starting the user address
 ;
 
 ; Reset entry point
@@ -29,12 +47,25 @@ RST0:
     0003  3e 11      MVI A, 11
     0005  c3 3b 00   JMP RST0_CONT (003b)   ; Continuate elsewhere, as RST1 handler is located at 0x0008
 
-0000                          c3 00 01 f7 eb c3 7d 00
+RST1:
+0008    ...
+0000                          c3 00 01
 
+; Command 5 - read memory data at the provided address
 CMD_5:
-    000b
+    000b  f7         RST 6                  ; Wait for the address type on the keyboard
+    000c  eb         XCHG                   ; Move the address to HL
+    000d  c3 7d 00   JMP RAM_READ (007d)    ; Continue elsewhere
 
-0010  d5 af 57 e7 07 c3 47 00 
+; RST2 - wait for entering a 2-digit byte value using the keypad
+RST2:
+    0010  d5         PUSH DE                ; Prepare
+    0011  af         XRA A
+    0012  57         MOV D, A
+    0013  e7         RST 4                  ; Read first digit
+
+    0014  07         RLC                    ; Move received half byte to left
+    0015  c3 47 00   JMP RST2_CONT (0047)   ; Continue elsewhere
 
 ; RST3 - 1 second delay routine
 RST3: 
@@ -48,19 +79,32 @@ RST3:
 RST4:
     0020  df         RST 3                  ; 1 second delay
     0021  c3 5f 00   JMP RST4_CONT (005f)   ; continue elsewhere
+    0024  00         NOP
 
-0020             00 c3 00 c0          
-
+; Command 6 - Start the program from 0xc000
 CMD_6:
-    0025
+    0025  c3 00 c0   JMP c000               ; Direct jump to the starting address
 
+; RST5 - display HL and A values on the LCD
 RST5:
     0028  32 00 90   STA 9000               ; Write A and HL to respective LCD address
     002b  22 01 90   SHLD 9001              
     002e  c9         RET
     002f  00         NOP
 
-0030  f5 d7 57 d7 5f f1 c9 00 c3 c1 00 
+; RST6 - Wait for 2 byte value from the keyboard, return in DE
+RST6:
+    0030  f5         PUSH PSW
+    0031  d7         RST 2                  ; Wait for a high address byte entered on keypad
+    0032  57         MOV D, A               ; and store it in D
+
+    0033  d7         RST 2                  ; Wait for the low address byte
+    0034  5f         MOV E, A               ; Return the entered address in DE
+    0035  f1         POP PSW
+    0036  c9         RET    
+
+
+0030                       00 c3 c1 00 
 
 RST0_CONT:
     003b  fb         EI                     ; Continue initial initialization, enable interrputs
@@ -76,8 +120,22 @@ RST0_CONT:
 
     0046  e9         PCHL                   ; Execute the command
 
-0040                       07 07 07 b2 57 32 00 90 e7
-0050  b2 32 00 90 d1 c9
+
+RST2_CONT:
+    0047  07         RLC                    ; Finish moving entered half a byte to upper half
+    0048  07         RLC
+    0049  07         RLC
+
+    004a  b2         ORA D                  ; Temporary Store entered half a byte in D
+    004b  57         MOV D, A
+    004c  32 00 90   STA 9000               ; And display it on the screen
+
+    004f  e7         RST 4                  ; Enter second half a byte
+    0050  b2         ORA D                  ; Add the previous half of the byte
+    0051  32 00 90   STA 9000               ; And display it on the screen
+
+    0054  d1         POP DE                 ; Return the entered byte in A
+    0055  c9         RET    
 
 RST3_CONT:
     0056  2b         DCX HL                 ; Decrement HL...
@@ -104,26 +162,59 @@ BACK_BTN:
 
 
 0060                                            2b 3b
-0070  3b af ef d7 77 df 23 c3 71 00 21 00 c0 e7 7e ef
+0070  3b
 
+RAM_WRITE:
+    0071  af         XRA A                  ; Display current address and 0x00 value
+    0072  ef         RST 5
+
+    0073  d7         RST 2                  ; Wait for the data byte entered using keyborad
+    0074  77         MOV M, A               ; Store the byte
+    0075  df         RST 3                  ; and let it be displed for a second
+
+    0076  23         INX HL                 ; Then move to the next byte
+    0077  c3 71 00   JMP 0071    
+
+; Command 2 - read memory starting from address 0xc000
 CMD_2:
-    007a
+    007a  21 00 c0   LXI HL, c000           ; Load the starting address
 
-0080  23 c3 7d 00 f7 eb af ef df e9 21 00 c0 c3 71 00
+RAM_READ:
+    007d  e7         RST 4                  ; Wait for the button press
+    
+    007e  7e         MOV A, M               ; Load and display the value at the current address
+    007f  ef         RST 5
 
+    0080  23         INX HL                 ; Advance the address and repeat
+    0081  c3 7d 00   JMP 007d
+
+
+; Command 7 - Start the program starting the given address
 CMD_7:
-    0084
+    0084  f7         RST 6                  ; Enter the address to start from
+    0085  eb         XCHG
+
+RUN_PROG:
+    0086  af         XRA A                  ; Display the address for a second
+    0087  ef         RST 5
+    0088  df         RST 3
+
+    0089  e9         PCHL                   ; Execute the program starting the given address
 
 CMD_1:
-    008a
+    008a  21 00 c0   LXI HL, c000           ; Load 0xc000 as a starting address
+    008d  c3 71 00   JMP RAM_WRITE (0071)   ; And jump to the RAM manual write function
 
-0090  f3 f7 eb c3 71 00             df c6 11 fe 10 c2
+
+0090  f3                            df c6 11 fe 10 c2
 
 CMD_C:
     0090
 
 CMD_0:
-    0091    
+    0091  f7         RST 6                  ; Wait for the address typed on the keyboard, returned in DE
+    0092  eb         XCHG                   ; Load the enterred address into HL
+    0093  c3 71 00   JMP RAM_WRITE (0071)   ; And continue at the ram writing function
 
 ; Command 3 - test LCD. Displays numbers from 0 to F on all 6-digits of the LCD
 CMD_3:
@@ -141,7 +232,6 @@ CMD_3_DISPLAY_DIGIT:
     
     00a2  c7         RST 0                  ; Reset to the main loop
 
-00a0           21 00 c0 af 77 7e b7 c2 bb 00 3d 77 7e
 
 ; Command 4 - test RAM
 CMD_4:
@@ -166,10 +256,13 @@ CMD_4_LOOP:
     00b8  ca a6 00   JZ CMD_4_LOOP (00a6)
 
 CMD_4_ERROR:
-00bb
+    00bb  7e         MOV A, M               ; Display the read value and its address
+    00bc  ef         RST 5
 
-00b0                                   7e ef e7 c3 a6
-00c0  00 f3 f5 c5 d5 e5 21 e4 00 11 fd c3 06 03 1a 3c
+    00bd  e7         RST 4                  ; Wait for button, and repeat
+    00be  c3 a6 00   JMP CMD_4_LOOP
+
+00c0     f3 f5 c5 d5 e5 21 e4 00 11 fd c3 06 03 1a 3c
 00d0  27 12 be c2 de 00 af 12 23 13 05 c2 ce 00 e1 d1
 00e0  c1 f1 fb c9 60 60 24 c3 9a 01 c3 c2 01 c3 75 01
 
@@ -240,6 +333,3 @@ CMD_HANDLERS:
 03d0  23 c3 ba 03 f5 7e ef d7 77 f1 c3 ba 03 c5 d5 e5
 03e0  f5 7e ef e7 e3 3e af ef e7 e3 69 60 3e bc ef e7
 03f0  eb 3e de ef e7 f1 e1 d1 c1 c9 ff ff ff ff ff ff
-
-
-
