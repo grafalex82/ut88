@@ -549,6 +549,36 @@ class CPU:
         self._log_2b_instruction(f"{op_name} {value:02x}")
 
 
+    def _dcr(self):
+        """ Decrement a register """
+        reg = (self._current_inst & 0x38) >> 3
+        value = (self._get_register(reg) - 1) & 0xff
+        self._set_register(reg, value)
+
+        self._zero = (value & 0xff) == 0
+        self._parity = self._count_bits(value) % 2 == 0
+        self._sign = (value & 0x80) != 0
+        self._half_carry = value == 0x0f
+
+        self._log_1b_instruction(f"DCR {self._reg_symb(reg)}")
+        self._cycles += 10 if reg == 6 else 5
+
+
+    def _inr(self):
+        """ Increment a register """
+        reg = (self._current_inst & 0x38) >> 3
+        value = (self._get_register(reg) + 1) & 0xff
+        self._set_register(reg, value)
+
+        self._zero = (value & 0xff) == 0
+        self._parity = self._count_bits(value) % 2 == 0
+        self._sign = (value & 0x80) != 0
+        self._half_carry = (value & 0xf) == 0x0
+
+        self._log_1b_instruction(f"INR {self._reg_symb(reg)}")
+        self._cycles += 10 if reg == 6 else 5
+
+
     def _dcx(self):
         """ Decrement a register pair """
         reg_pair = (self._current_inst & 0x30) >> 4
@@ -574,16 +604,16 @@ class CPU:
         self._instructions[0x01] = self._lxi
         self._instructions[0x02] = None
         self._instructions[0x03] = self._inx
-        self._instructions[0x04] = None
-        self._instructions[0x05] = None
+        self._instructions[0x04] = self._inr
+        self._instructions[0x05] = self._dcr
         self._instructions[0x06] = self._mvi
         self._instructions[0x07] = None
         self._instructions[0x08] = None
         self._instructions[0x09] = None
         self._instructions[0x0A] = None
         self._instructions[0x0B] = self._dcx
-        self._instructions[0x0C] = None
-        self._instructions[0x0D] = None
+        self._instructions[0x0C] = self._inr
+        self._instructions[0x0D] = self._dcr
         self._instructions[0x0E] = self._mvi
         self._instructions[0x0F] = None
 
@@ -591,16 +621,16 @@ class CPU:
         self._instructions[0x11] = self._lxi
         self._instructions[0x12] = None
         self._instructions[0x13] = self._inx
-        self._instructions[0x14] = None
-        self._instructions[0x15] = None
+        self._instructions[0x14] = self._inr
+        self._instructions[0x15] = self._dcr
         self._instructions[0x16] = self._mvi
         self._instructions[0x17] = None
         self._instructions[0x18] = None
         self._instructions[0x19] = None
         self._instructions[0x1A] = None
         self._instructions[0x1B] = self._dcx
-        self._instructions[0x1C] = None
-        self._instructions[0x1D] = None
+        self._instructions[0x1C] = self._inr
+        self._instructions[0x1D] = self._dcr
         self._instructions[0x1E] = self._mvi
         self._instructions[0x1F] = None
 
@@ -608,16 +638,16 @@ class CPU:
         self._instructions[0x21] = self._lxi
         self._instructions[0x22] = self._shld
         self._instructions[0x23] = self._inx
-        self._instructions[0x24] = None
-        self._instructions[0x25] = None
+        self._instructions[0x24] = self._inr
+        self._instructions[0x25] = self._dcr
         self._instructions[0x26] = self._mvi
         self._instructions[0x27] = None
         self._instructions[0x28] = None
         self._instructions[0x29] = None
         self._instructions[0x2A] = self._lhld
         self._instructions[0x2B] = self._dcx
-        self._instructions[0x2C] = None
-        self._instructions[0x2D] = None
+        self._instructions[0x2C] = self._inr
+        self._instructions[0x2D] = self._dcr
         self._instructions[0x2E] = self._mvi
         self._instructions[0x2F] = None
 
@@ -625,16 +655,16 @@ class CPU:
         self._instructions[0x31] = self._lxi
         self._instructions[0x32] = self._sta
         self._instructions[0x33] = self._inx
-        self._instructions[0x34] = None
-        self._instructions[0x35] = None
+        self._instructions[0x34] = self._inr
+        self._instructions[0x35] = self._dcr
         self._instructions[0x36] = self._mvi
         self._instructions[0x37] = None
         self._instructions[0x38] = None
         self._instructions[0x39] = None
         self._instructions[0x3A] = self._lda
         self._instructions[0x3B] = self._dcx
-        self._instructions[0x3C] = None
-        self._instructions[0x3D] = None
+        self._instructions[0x3C] = self._inr
+        self._instructions[0x3D] = self._dcr
         self._instructions[0x3E] = self._mvi
         self._instructions[0x3F] = None
 

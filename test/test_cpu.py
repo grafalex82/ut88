@@ -455,6 +455,140 @@ def test_pop_psw_2(cpu):
     assert cpu._sign == True
     assert cpu._parity == True
 
+def test_dcr_a(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x3d)    # Instruction Opcode
+    cpu._a = 0x42
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._a == 0x41
+    assert cpu._half_carry == False
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == True
+
+def test_dcr_b(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x05)    # Instruction Opcode
+    cpu._b = 0xa2
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._b == 0xa1
+    assert cpu._half_carry == False
+    assert cpu._zero == False
+    assert cpu._sign == True
+    assert cpu._parity == False
+
+def test_dcr_c(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x0d)    # Instruction Opcode
+    cpu._c = 0x01
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._c == 0x00
+    assert cpu._half_carry == False
+    assert cpu._zero == True
+    assert cpu._sign == False
+    assert cpu._parity == True
+
+def test_dcr_d(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x15)    # Instruction Opcode
+    cpu._d = 0x00
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._d == 0xff
+    assert cpu._half_carry == False
+    assert cpu._zero == False
+    assert cpu._sign == True
+    assert cpu._parity == True
+
+def test_dcr_e(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x1d)    # Instruction Opcode
+    cpu._e = 0x10
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._e == 0x0f
+    assert cpu._half_carry == True
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == True
+
+def test_dcr_m(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x35)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0xbeef, 0x42)    # Data byte
+    cpu._set_hl(0xbeef)
+    cpu.step()
+    assert cpu._cycles == 10
+    assert cpu._machine.read_memory_byte(0xbeef) == 0x41
+    assert cpu._half_carry == False
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == True
+
+def test_inr_a(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x3c)    # Instruction Opcode
+    cpu._a = 0x42
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._a == 0x43
+    assert cpu._half_carry == False
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == False
+
+def test_inr_b(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x04)    # Instruction Opcode
+    cpu._b = 0xa2
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._b == 0xa3
+    assert cpu._half_carry == False
+    assert cpu._zero == False
+    assert cpu._sign == True
+    assert cpu._parity == True
+
+def test_inr_c(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x0c)    # Instruction Opcode
+    cpu._c = 0xff
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._c == 0x00
+    assert cpu._half_carry == True
+    assert cpu._zero == True
+    assert cpu._sign == False
+    assert cpu._parity == True
+
+def test_inr_d(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x14)    # Instruction Opcode
+    cpu._d = 0x00
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._d == 0x01
+    assert cpu._half_carry == False
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == False
+
+def test_inr_e(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x1c)    # Instruction Opcode
+    cpu._e = 0x3f
+    cpu.step()
+    assert cpu._cycles == 5
+    assert cpu._e == 0x40
+    assert cpu._half_carry == True
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == False
+
+def test_inr_m(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x34)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0xbeef, 0x42)    # Data byte
+    cpu._set_hl(0xbeef)
+    cpu.step()
+    assert cpu._cycles == 10
+    assert cpu._machine.read_memory_byte(0xbeef) == 0x43
+    assert cpu._half_carry == False
+    assert cpu._zero == False
+    assert cpu._sign == False
+    assert cpu._parity == False
+
 def test_dcx_bc(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x0b)    # Instruction Opcode
     cpu._set_bc(0xbeef)
