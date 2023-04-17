@@ -42,13 +42,12 @@ class CPU:
         self._carry = False
 
         self._enable_interrupts = False
+        self._interrupt_instructions = []
 
 
     def step(self):
         """
         Executes an instruction and updates processor state
-
-        :return:
         """
         self._current_inst = self._fetch_next_byte()
         instruction = self._instructions[self._current_inst]
@@ -57,16 +56,38 @@ class CPU:
         else:
             raise InvalidInstruction(f"Incorrect OPCODE 0x{self._current_inst:02x} (at addr 0x{(self._pc - 1):04x})")
 
+    
+    def schedule_interrupt(self, instructions):
+        """
+        Trigger the interrupt execution.
+        
+        Typically an interrupt controller will catch the data bus, and feed the
+        CPU up to 3 instructions. This function allows emulating this behavior by
+        adding passed instructions to the instruction fetch queue.
+        """
+        self._interrupt_instructions = instructions
+
 
     def _fetch_next_byte(self):
-        data = self._machine.read_memory_byte(self._pc)
-        self._pc += 1
+        if self._enable_interrupts and self._interrupt_instructions:
+            data = self._interrupt_instructions[0]
+            del self._interrupt_instructions[0]
+        else:
+            data = self._machine.read_memory_byte(self._pc)
+            self._pc += 1
         return data
 
 
     def _fetch_next_word(self):
-        data = self._machine.read_memory_word(self._pc)
-        self._pc += 2
+        if self._enable_interrupts and self._interrupt_instructions:
+            if len(self._interrupt_instructions) < 2:
+                raise InvalidInstruction(f"Insufficient interrupt instructions (expecting 2, only 1 given)")            
+            data = self._interrupt_instructions[0] | (self._interrupt_instructions[1] << 8)
+            del self._interrupt_instructions[0]
+            del self._interrupt_instructions[0]
+        else:
+            data = self._machine.read_memory_word(self._pc)
+            self._pc += 2
         return data
 
 

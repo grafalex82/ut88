@@ -45,6 +45,39 @@ def test_machine_reset(cpu):
     cpu._machine.reset()
     assert cpu._pc == 0x0000
 
+def test_interrupt_disabled(cpu):
+    cpu.schedule_interrupt([0xff])                  # Schedule RST7 as interrupt instruction
+    cpu._machine.write_memory_byte(0x0000, 0x00)    # Instruction Opcode
+    cpu.step()
+    assert cpu._pc == 0x0001                        # Interrupts are disabled, so normal NOP is executed
+    assert cpu._cycles == 4
+
+def test_interrupt_1byte(cpu):
+    cpu.schedule_interrupt([0xff])                  # Schedule RST7 as interrupt instruction
+    cpu._machine.write_memory_byte(0x0000, 0x00)    # Instruction Opcode
+    cpu._enable_interrupts = True
+    cpu._sp = 0x1234
+    cpu.step()
+    assert cpu._pc == 0x0038                        # expecting RST7 executed
+    assert cpu._machine.read_memory_word(0x1232) == 0x0000  # Current instruction address
+
+def test_interrupt_3byte(cpu):
+    cpu.schedule_interrupt([0xcd, 0xef, 0xbe])      # Schedule CALL 0xbeef as interrupt instructions
+    cpu._machine.write_memory_byte(0x0000, 0x00)    # Instruction Opcode
+    cpu._enable_interrupts = True
+    cpu._sp = 0x1234
+    cpu.step()
+    assert cpu._pc == 0xbeef                        # expecting CALL executed
+    assert cpu._machine.read_memory_word(0x1232) == 0x0000  # Current instruction address
+
+def test_interrupt_insufficient_instructions(cpu):
+    cpu.schedule_interrupt([0xcd, 0xef])            # Schedule malformed interrupt instruction
+    cpu._machine.write_memory_byte(0x0000, 0x00)    # Instruction Opcode
+    cpu._enable_interrupts = True
+    cpu._sp = 0x1234
+    with pytest.raises(InvalidInstruction):
+        cpu.step()
+
 def test_nop(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x00)    # Instruction Opcode
     cpu.step()
