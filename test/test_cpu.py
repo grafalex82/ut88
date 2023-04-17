@@ -688,6 +688,25 @@ def test_mov_l_m(cpu):
     assert cpu._cycles == 7
     assert cpu._l == 0x42
 
+def test_xchg(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xeb)    # Instruction Opcode
+    cpu._set_hl(0x1234)
+    cpu._set_de(0xbeef)
+    cpu.step()
+    assert cpu._get_hl() == 0xbeef
+    assert cpu._get_de() == 0x1234
+    assert cpu._cycles == 5
+
+def test_xthl(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0xe3)    # Instruction Opcode
+    cpu._machine.write_memory_word(0x4321, 0xbeef)  # data to be exchanged
+    cpu._set_hl(0x1234)
+    cpu._sp = 0x4321
+    cpu.step()
+    assert cpu._get_hl() == 0xbeef
+    assert cpu._machine.read_memory_word(0x4321) == 0x1234
+    assert cpu._cycles == 18
+
 def test_add(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x80)    # Instruction Opcode
     cpu._a = 0x6c

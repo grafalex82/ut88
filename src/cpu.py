@@ -302,6 +302,26 @@ class CPU:
         self._log_3b_instruction(f"LHLD {addr:04x}")
 
 
+    def _xchg(self):
+        """ Exchange DE and HL """
+        value = self._get_hl()
+        self._set_hl(self._get_de())
+        self._set_de(value)
+        self._cycles += 5
+
+        self._log_1b_instruction(f"XCHG")
+
+
+    def _xthl(self):
+        """ Exchange HL and 2 bytes on the stack """
+        value = self._get_hl()
+        self._set_hl(self._machine.read_stack(self._sp))
+        self._machine.write_stack(self._sp, value)
+        self._cycles += 18
+
+        self._log_1b_instruction(f"XTHL")
+
+
     def _push(self):
         """ Push register pair to stack """
         reg_pair = (self._current_inst & 0x30) >> 4
@@ -882,7 +902,7 @@ class CPU:
         self._instructions[0xE0] = None
         self._instructions[0xE1] = self._pop
         self._instructions[0xE2] = self._jmp_cond
-        self._instructions[0xE3] = None
+        self._instructions[0xE3] = self._xthl
         self._instructions[0xE4] = None
         self._instructions[0xE5] = self._push
         self._instructions[0xE6] = self._alu_immediate
@@ -890,7 +910,7 @@ class CPU:
         self._instructions[0xE8] = None
         self._instructions[0xE9] = self._pchl
         self._instructions[0xEA] = self._jmp_cond
-        self._instructions[0xEB] = None
+        self._instructions[0xEB] = self._xchg
         self._instructions[0xEC] = None
         self._instructions[0xED] = None
         self._instructions[0xEE] = self._alu_immediate
