@@ -30,7 +30,7 @@ class LCD(MemoryDevice):
         return x + self._images[digit2].get_width()
 
 
-    def update(self, screen):
+    def update_screen(self, screen):
         x = self._draw_byte(screen, self._ram[2], 0)
         x = self._draw_byte(screen, self._ram[1], x)
         self._draw_byte(screen, self._ram[0], x)

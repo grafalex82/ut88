@@ -7,6 +7,7 @@ from ram import RAM
 from rom import ROM
 from lcd import LCD
 from hexkbd import HexKeyboard
+from timer import Timer
 
 def enable_debug_logging():
     logging.disable(logging.NOTSET)
@@ -30,6 +31,8 @@ def main():
     machine.add_memory(lcd)
     kbd = HexKeyboard()
     machine.add_io(kbd)
+    timer = Timer(machine)
+    machine.add_other_device(timer)
 
     emulator = Emulator(machine)
     emulator.add_breakpoint(0x0018, disable_debug_logging)  # Suppress logging for RST3 (wait 1s)
@@ -40,7 +43,9 @@ def main():
     emulator.add_breakpoint(0x0021, disable_debug_logging)  # Suppress logging for RST4 (wait for a button)
     emulator.add_breakpoint(0x0021, lambda: print("RST 4: Wait a button"))
     emulator.add_breakpoint(0x006d, enable_debug_logging)
-
+    emulator.add_breakpoint(0x006e, enable_debug_logging)
+    emulator.add_breakpoint(0x0038, enable_debug_logging)
+    
     while True:
         screen.fill(pygame.Color('black'))
         
@@ -53,7 +58,8 @@ def main():
         if pygame.key.get_pressed()[pygame.K_ESCAPE]:
             emulator.reset()
 
-        lcd.update(screen)
+        machine.update()
+        lcd.update_screen(screen)
         kbd.update()
         pygame.display.flip()
         clock.tick(60)
