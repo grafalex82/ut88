@@ -36,7 +36,17 @@
 ;                   - Reset to exit memory read mode (memory data will be preserved)
 ; - 6           - Start the program starting address 0xc000
 ; - 7 <addr>    - Start the program starting the user address
+; - 8 <a1> <a2> - Calculate CRC for the address range a1-a2
+; - B           - Display current time (0x3cfd - seconds, 0x3cfe - minutes, 0x3cff - hours)
 ;
+; Bugs and issues:
+; - RST4 is a handy routine for waiting a keyboard input. But Step Back button is also 
+;   processed in the RST4. And instead of returning the step back button code to the caller
+;   it rudely switches to RAM write (Command 0) execution, regardless of what was executed before
+; - Command 8 gently saves all the registers, and restores them back. But it ends up calling a
+;   RST0 (reset) function eventually. So the code could save 8 bytes as no one really interested
+;   in those registers
+
 
 ; Reset entry point
 RST0:
@@ -158,11 +168,9 @@ RST4_CONT:
     006d  c9         RET
 
 BACK_BTN:
-
-
-
-0060                                            2b 3b
-0070  3b
+    006e  2b         DCX HL                 ; Rudely return from the RST4, and switch to RAM write mode
+    006f  3b         DCX SP
+    0070  3b         DCX SP                 
 
 RAM_WRITE:
     0071  af         XRA A                  ; Display current address and 0x00 value
@@ -206,10 +214,9 @@ CMD_1:
     008d  c3 71 00   JMP RAM_WRITE (0071)   ; And jump to the RAM manual write function
 
 
-0090  f3                            df c6 11 fe 10 c2
-
+; Command C - set new time. In fact a synonym for Command 0 (write memory), but disabling interrupts first
 CMD_C:
-    0090
+    0090  f3         DI                     ; Disable interrupt before setting new time
 
 CMD_0:
     0091  f7         RST 6                  ; Wait for the address typed on the keyboard, returned in DE
@@ -264,7 +271,7 @@ CMD_4_ERROR:
 
 00c0     f3 f5 c5 d5 e5 21 e4 00 11 fd c3 06 03 1a 3c
 00d0  27 12 be c2 de 00 af 12 23 13 05 c2 ce 00 e1 d1
-00e0  c1 f1 fb c9 60 60 24 c3 9a 01 c3 c2 01 c3 75 01
+00e0  c1 f1 fb c9 60 60 24 c3 9a 01 c3 c2 01 
 
 CMD_9:
     00e7
@@ -272,13 +279,13 @@ CMD_9:
 CMD_A:
     00ea
 
+; Command 8 - CRC of the memory region
 CMD_8:
-    00ed
+    00ed  c3 75 01   JMP CMD_8_CONT (0175)
 
+; Command B - display current time
 CMD_B:
-    00f0
-
-00f0  c3 f5 01 
+    00f0  c3 f5 01   JMP CMD_B_CONT (01f5)
 
 ; Command handlers addresses (low byte)
 CMD_HANDLERS:
@@ -292,15 +299,68 @@ CMD_HANDLERS:
 0140  6e 01 db a1 5f 7a b7 f2 63 01 79 fe e6 c2 57 01
 0150  af 32 fc c3 c3 61 01 fe 19 c2 30 01 3e ff 32 fc
 0160  c3 16 09 15 c2 30 01 3a fc c3 a9 d1 c1 c9 06 2d
-0170  05 c2 70 01 c9 c5 d5 e5 f5 f7 42 4b f7 2e 00 65
-0180  0a d5 5f 16 00 19 d1 cd 94 01 03 c2 80 01 ef f1
-0190  e1 d1 c1 c7 7a b8 c0 7b b9 c9 c5 d5 e5 f5 f7 42
+0170  05 c2 70 01 c9 
+
+; Command 8 - Calculate CRC of the memory region
+CMD_8_CONT:
+    0175  c5         PUSH BC
+    0176  d5         PUSH DE
+    0177  e5         PUSH HL
+    0178  f5         PUSH PSW
+
+    0179  f7         RST 6                  ; Read the starting address
+    017a  42         MOV B, D               ; And move it to BC
+    017b  4b         MOV C, E
+
+    017c  f7         RST 6                  ; Read the ending address to DE
+
+    017d  2e 00      MVI L, 00              ; Zero CRC value accumulator in HL
+    017f  65         MOV H, L
+
+CRC_NEXT:
+    0180  0a         LDAX BC                ; Load the value at BC address
+    0181  d5         PUSH DE
+    0182  5f         MOV E, A               ; And add it to HL
+    0183  16 00      MVI D, 00
+    0185  19         DAD DE
+    0186  d1         POP DE
+
+    0187  cd 94 01   CALL CMD_BC_DE (0194)  ; Check if we reached the end address
+    018a  03         INX BC                 ; Advance the address and continue
+    018b  c2 80 01   JNZ CRC_NEXT (0180)
+
+    018e  ef         RST 5                  ; Display the result
+
+    018f  f1         POP PSW                ; Finish and reset
+    0190  e1         POP HL
+    0191  d1         POP DE
+    0192  c1         POP BC
+    0193  c7         RST 0    
+
+CMP_BC_DE:
+    0194  7a         MOV A, D               ; Compare D and B
+    0195  b8         CMP B
+    0196  c0         RNZ
+    0197  7b         MOV A, E               ; Compare E and C
+    0198  b9         CMP C
+    0199  c9         RET
+
+0190                                c5 d5 e5 f5 f7 42
 01a0  4b f7 c5 af 6f cf 2c c2 a5 01 3e e6 cf 78 cf 79
 01b0  cf 7a cf 7b cf 0a cf cd 94 01 03 c2 b5 01 c1 c3
 01c0  7d 01 c5 d5 e5 f5 f7 3e ff cd 28 01 67 cd ee 01
 01d0  6f 19 44 4d c5 cd ee 01 67 cd ee 01 6f 19 eb cd
 01e0  ee 01 02 cd 94 01 03 c2 df 01 c1 c3 7d 01 3e 08
-01f0  cd 28 01 c9 00 2a fe c3 3a fd c3 ef df c3 f5 01
+01f0  cd 28 01 c9 00 
+
+CMD_B_CONT:
+    01f5  2a fe c3   LHLD c3fe              ; Load minutes and hours to HL
+    01f8  3a fd c3   LDA c3fd               ; Load seconds to A
+    01fb  ef         RST 5                  ; Display the time
+
+    01fc  df         RST 3                  ; Repeat after a pause
+    01fd  c3 f5 01   JMP CMD_B_CONT (01f5)
+
 0200  cd 24 02 da 0a 02 cd 0e 02 c7 cd 19 02 c7 1a 77
 0210  cd 94 01 1b 2b c2 0e 02 c9 0a 77 cd 94 01 03 23
 0220  c2 19 02 c9 f7 d5 f7 eb 22 f2 c3 e1 22 f0 c3 f7
