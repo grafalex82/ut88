@@ -441,6 +441,42 @@ class CPU:
         self._cycles += 10
 
 
+    def _call(self):
+        """ Call a subroutine """
+        addr = self._fetch_next_word()
+
+        self._log_3b_instruction(f"CALL {addr:04x}")
+
+        self._push_to_stack(self._pc)
+        self._pc = addr
+        self._cycles += 17
+
+
+    def _call_cond(self):
+        """ Conditional call """
+        addr = self._fetch_next_word()
+        op = (self._current_inst & 0x38) >> 3
+        op_symb = ["CNZ", "CZ", "CNC", "CC", "CPO", "CPE", "CP", "CN"][op]
+
+        self._log_3b_instruction(f"{op_symb} {addr:04x}")
+
+        if self._check_condition(op):
+            self._push_to_stack(self._pc)
+            self._pc = addr
+            self._cycles += 17
+        else:
+            self._cycles += 11
+
+
+    def _ret(self):
+        """ Return from a subroutine """
+
+        self._log_1b_instruction(f"RET")
+
+        self._pc = self._pop_from_stack()
+        self._cycles += 10
+
+
     def _ret_cond(self):
         """ Conditional return """
         op = (self._current_inst & 0x38) >> 3
@@ -455,6 +491,17 @@ class CPU:
             self._cycles += 5
 
 
+    def _rst(self):
+        """ Restart (special subroutine call) """
+        rst = (self._current_inst & 0x38) >> 3
+
+        self._log_1b_instruction(f"RST {rst}")
+
+        self._push_to_stack(self._pc)
+        self._pc = rst << 3
+        self._cycles += 11
+
+    
     def _pchl(self):
         """ Load HL value to PC register """
         self._log_1b_instruction(f"PCHL")
@@ -467,37 +514,6 @@ class CPU:
         self._log_1b_instruction(f"SPHL")
         self._sp = self._get_hl()
         self._cycles += 5
-
-
-    def _call(self):
-        """ Call a subroutine """
-        addr = self._fetch_next_word()
-
-        self._log_3b_instruction(f"CALL {addr:04x}")
-
-        self._push_to_stack(self._pc)
-        self._pc = addr
-        self._cycles += 17
-
-
-    def _rst(self):
-        """ Restart (special subroutine call) """
-        rst = (self._current_inst & 0x38) >> 3
-
-        self._log_1b_instruction(f"RST {rst}")
-
-        self._push_to_stack(self._pc)
-        self._pc = rst << 3
-        self._cycles += 11
-
-    
-    def _ret(self):
-        """ Return from a subroutine """
-
-        self._log_1b_instruction(f"RET")
-
-        self._pc = self._pop_from_stack()
-        self._cycles += 10
 
 
     # Flags and modes instructions
@@ -930,7 +946,7 @@ class CPU:
         self._instructions[0xC1] = self._pop
         self._instructions[0xC2] = self._jmp_cond
         self._instructions[0xC3] = self._jmp
-        self._instructions[0xC4] = None
+        self._instructions[0xC4] = self._call_cond
         self._instructions[0xC5] = self._push
         self._instructions[0xC6] = self._alu_immediate
         self._instructions[0xC7] = self._rst
@@ -938,7 +954,7 @@ class CPU:
         self._instructions[0xC9] = self._ret
         self._instructions[0xCA] = self._jmp_cond
         self._instructions[0xCB] = None
-        self._instructions[0xCC] = None
+        self._instructions[0xCC] = self._call_cond
         self._instructions[0xCD] = self._call
         self._instructions[0xCE] = self._alu_immediate
         self._instructions[0xCF] = self._rst
@@ -947,7 +963,7 @@ class CPU:
         self._instructions[0xD1] = self._pop
         self._instructions[0xD2] = self._jmp_cond
         self._instructions[0xD3] = self._out
-        self._instructions[0xD4] = None
+        self._instructions[0xD4] = self._call_cond
         self._instructions[0xD5] = self._push
         self._instructions[0xD6] = self._alu_immediate
         self._instructions[0xD7] = self._rst
@@ -955,7 +971,7 @@ class CPU:
         self._instructions[0xD9] = None
         self._instructions[0xDA] = self._jmp_cond
         self._instructions[0xDB] = self._in
-        self._instructions[0xDC] = None
+        self._instructions[0xDC] = self._call_cond
         self._instructions[0xDD] = None
         self._instructions[0xDE] = self._alu_immediate
         self._instructions[0xDF] = self._rst
@@ -964,7 +980,7 @@ class CPU:
         self._instructions[0xE1] = self._pop
         self._instructions[0xE2] = self._jmp_cond
         self._instructions[0xE3] = self._xthl
-        self._instructions[0xE4] = None
+        self._instructions[0xE4] = self._call_cond
         self._instructions[0xE5] = self._push
         self._instructions[0xE6] = self._alu_immediate
         self._instructions[0xE7] = self._rst
@@ -972,7 +988,7 @@ class CPU:
         self._instructions[0xE9] = self._pchl
         self._instructions[0xEA] = self._jmp_cond
         self._instructions[0xEB] = self._xchg
-        self._instructions[0xEC] = None
+        self._instructions[0xEC] = self._call_cond
         self._instructions[0xED] = None
         self._instructions[0xEE] = self._alu_immediate
         self._instructions[0xEF] = self._rst
@@ -981,7 +997,7 @@ class CPU:
         self._instructions[0xF1] = self._pop
         self._instructions[0xF2] = self._jmp_cond
         self._instructions[0xF3] = self._di
-        self._instructions[0xF4] = None
+        self._instructions[0xF4] = self._call_cond
         self._instructions[0xF5] = self._push
         self._instructions[0xF6] = self._alu_immediate
         self._instructions[0xF7] = self._rst
@@ -989,7 +1005,7 @@ class CPU:
         self._instructions[0xF9] = self._sphl
         self._instructions[0xFA] = self._jmp_cond
         self._instructions[0xFB] = self._ei
-        self._instructions[0xFC] = None
+        self._instructions[0xFC] = self._call_cond
         self._instructions[0xFD] = None
         self._instructions[0xFE] = self._alu_immediate
         self._instructions[0xFF] = self._rst
