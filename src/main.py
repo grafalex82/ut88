@@ -16,7 +16,8 @@ def disable_debug_logging():
 
 def main():
     pygame.init()
-    screen = pygame.display.set_mode((800, 600))
+    screen = pygame.display.set_mode((450, 94))
+    pygame.display.set_caption("UT-88 Emulator")
     clock = pygame.time.Clock()
 
     logging.basicConfig(level=logging.DEBUG)
@@ -50,8 +51,10 @@ def main():
         
         emulator.run(10000)
 
+        lcd.update(screen)
         pygame.display.flip()
-        clock.tick()
+        clock.tick(60)
+        pygame.display.set_caption(f"UT-88 Emulator (FPS={clock.get_fps()})")
 
     #emulator.run()
 

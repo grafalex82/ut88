@@ -1,5 +1,8 @@
+import pygame
+
 from utils import *
 from interfaces import *
+
 
 class LCD(MemoryDevice):
     """
@@ -14,6 +17,23 @@ class LCD(MemoryDevice):
     def __init__(self):
         MemoryDevice.__init__(self, 0x9000, 0x9002)
         self._ram = [0] * 3
+
+        self._images = [pygame.image.load(f"..\\resources\\digit_{d:1X}.png") for d in range(0x10)]
+
+
+    def _draw_byte(self, screen, byte, x):
+        digit1 = (byte & 0xf0) >> 4
+        screen.blit(self._images[digit1], (x, 0))
+        x += self._images[digit1].get_width()
+        digit2 = byte & 0xf
+        screen.blit(self._images[digit2], (x, 0))
+        return x + self._images[digit2].get_width()
+
+
+    def update(self, screen):
+        x = self._draw_byte(screen, self._ram[2], 0)
+        x = self._draw_byte(screen, self._ram[1], x)
+        self._draw_byte(screen, self._ram[0], x)
 
 
     def _check_value(self, value, max):
