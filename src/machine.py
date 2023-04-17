@@ -22,6 +22,10 @@ class Machine:
     def __init__(self):
         self._memories = MemoryMgr()
         self._io = {}
+        self._strict = False
+
+    def set_strict_validation(self, strict = False):
+        self._strict = strict
 
     def add_memory(self, memory):
         self._memories.add_memory(memory)
@@ -34,44 +38,64 @@ class Machine:
     def _get_memory(self, addr):
         mem = self._memories.get_memory_for_addr(addr)
         if not mem:
-            raise MemoryError(f"No memory registered for address 0x{addr:04x}")
+            msg = f"No memory registered for address 0x{addr:04x}"
+            if self._strict:
+                raise MemoryError(msg)
+            else:
+                logger.debug(msg)
         return mem
 
     def _get_io(self, addr):
         io = self._io.get(addr, None)
         if not io:
-            raise IOError(f"No IO registered for address 0x{addr:02x}")
+            msg = f"No IO registered for address 0x{addr:02x}"
+            if self._strict:
+                raise IOError(msg)
+            else:
+                logger.debug(msg)
         return io
         
 
     def read_memory_byte(self, addr):
         mem = self._get_memory(addr)
+        if not mem:
+            return 0xff
         return mem.read_byte(addr)
 
     def read_memory_word(self, addr):
         mem = self._get_memory(addr)
+        if not mem:
+            return 0xffff
         return mem.read_word(addr)
 
     def write_memory_byte(self, addr, value):
         mem = self._get_memory(addr)
-        mem.write_byte(addr, value)
+        if mem:
+            mem.write_byte(addr, value)
 
     def write_memory_word(self, addr, value):
         mem = self._get_memory(addr)
-        mem.write_word(addr, value)
+        if mem:
+            mem.write_word(addr, value)
 
     def write_stack(self, addr, value):
         mem = self._get_memory(addr)
-        mem.write_stack(addr, value)
+        if mem:
+            mem.write_stack(addr, value)
 
     def read_stack(self, addr):
         mem = self._get_memory(addr)
+        if not mem:
+            return 0xffff
         return mem.read_stack(addr)
 
     def read_io(self, addr):
         io = self._get_io(addr)
+        if not io:
+            return 0xff
         return io.read_io(addr)
         
     def write_io(self, addr, value):
         io = self._get_io(addr)
-        io.write_io(addr, value)
+        if io:
+            io.write_io(addr, value)

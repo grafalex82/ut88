@@ -37,6 +37,7 @@ def test_rom_read(machine):
     assert machine.read_memory_word(0x4242) == 0x09e5
 
 def test_memory_addr_validation(machine):
+    machine.set_strict_validation(True)
     with pytest.raises(MemoryError) as e:
         machine.read_memory_byte(0x1234)
     assert "No memory registered for address 0x1234" in str(e.value)
@@ -50,7 +51,26 @@ def test_io_read_write(machine):
     assert machine.read_io(0x42) == 0x12
 
 def test_io_addr_validation(machine):
+    machine.set_strict_validation(True)
     machine.add_io(MockIO(0x42))
     with pytest.raises(IOError) as e:
         machine.read_io(0x24)
     assert "No IO registered for address 0x24" in str(e.value)
+
+def test_read_no_memory(machine):
+    assert machine.read_memory_byte(0x1234) == 0xff
+    assert machine.read_memory_word(0x1234) == 0xffff
+
+def test_write_no_memory(machine):
+    # Just check it does not throw the error
+    machine.set_strict_validation(False)
+    machine.write_memory_byte(0x1234, 0x42)
+    machine.write_memory_word(0x1234, 0x1234)
+
+def test_read_no_io(machine):
+    assert machine.read_io(0x42) == 0xff
+
+def test_write_no_io(machine):
+    # Just check it does not throw the error
+    machine.set_strict_validation(False)
+    machine.write_io(0x12, 0x42)
