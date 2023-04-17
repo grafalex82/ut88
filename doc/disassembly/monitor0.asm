@@ -16,7 +16,8 @@
 ; 
 ; The Monitor0 also interacts with the user with the following commands (entered
 ; using HEX keyboard)
-; - TBD
+; - 3   - Run an LCD test
+; - 4   - Run memory test for the range of 0xc000 - 0xc400
 ;
 
 ; Reset entry point
@@ -73,7 +74,9 @@ RST0_CONT:
     0044  6f         MOV L, A
     0045  6e         MOV L, M               ; Load the command handler address to L (H is 0x00)
 
-0040                    e9 07 07 07 b2 57 32 00 90 e7
+    0046  e9         PCHL                   ; Execute the command
+
+0040                       07 07 07 b2 57 32 00 90 e7
 0050  b2 32 00 90 d1 c9
 
 RST3_CONT:
@@ -140,10 +143,32 @@ CMD_3_DISPLAY_DIGIT:
 
 00a0           21 00 c0 af 77 7e b7 c2 bb 00 3d 77 7e
 
+; Command 4 - test RAM
 CMD_4:
-    00a3
+    00a3  21 00 c0   LXI HL, c000           ; Load RAM start address (0xc000)
 
-00b0  3c c2 bb 00 23 7c e6 04 ca a6 00 7e ef e7 c3 a6
+CMD_4_LOOP:
+    00a6  af         XRA A                  ; Store a 0x00 value
+    00a7  77         MOV M, A
+    00a8  7e         MOV A, M               ; Load value back and check if it is still zero
+    00a9  b7         ORA A
+    00aa  c2 bb 00   JNZ CMD_4_ERROR (00bb)
+
+    00ad  3d         DCR A                  ; Store a 0xff value
+    00ae  77         MOV M, A
+    00af  7e         MOV A, M               ; Load it back and check if it is still 0xff
+    00b0  3c         INR A
+    00b1  c2 bb 00   JNZ CMD_4_ERROR (00bb)
+
+    00b4  23         INX HL                 ; Repeat until 0xc400 is reached
+    00b5  7c         MOV A, H
+    00b6  e6 04      ANI 04
+    00b8  ca a6 00   JZ CMD_4_LOOP (00a6)
+
+CMD_4_ERROR:
+00bb
+
+00b0                                   7e ef e7 c3 a6
 00c0  00 f3 f5 c5 d5 e5 21 e4 00 11 fd c3 06 03 1a 3c
 00d0  27 12 be c2 de 00 af 12 23 13 05 c2 ce 00 e1 d1
 00e0  c1 f1 fb c9 60 60 24 c3 9a 01 c3 c2 01 c3 75 01
@@ -163,7 +188,8 @@ CMD_B:
 00f0  c3 f5 01 
 
 ; Command handlers addresses (low byte)
-00f3  db "91 8a 7a 96 a3 0b 25 84 ed e7 ea f0 90"       
+CMD_HANDLERS:
+    db    91, 8a, 7a, 96, a3, 0b, 25, 84, ed, e7, ea, f0, 90       
 
 
 0100  c5 d5 f5 57 0e 08 7a 07 57 3e 01 aa d3 a1 cd 21
