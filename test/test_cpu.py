@@ -707,6 +707,38 @@ def test_xthl(cpu):
     assert cpu._machine.read_memory_word(0x4321) == 0x1234
     assert cpu._cycles == 18
 
+def test_ldax_bc(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x0a)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0xbeef, 0x42)    # Data to load
+    cpu._set_bc(0xbeef)
+    cpu.step()
+    assert cpu._a == 0x42
+    assert cpu._cycles == 7
+
+def test_ldax_de(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x1a)    # Instruction Opcode
+    cpu._machine.write_memory_byte(0xbeef, 0x42)    # Data to load
+    cpu._set_de(0xbeef)
+    cpu.step()
+    assert cpu._a == 0x42
+    assert cpu._cycles == 7
+
+def test_stax_bc(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x02)    # Instruction Opcode
+    cpu._a = 0x42
+    cpu._set_bc(0xbeef)
+    cpu.step()
+    assert cpu._machine.read_memory_byte(0xbeef) == 0x42
+    assert cpu._cycles == 7
+
+def test_stax_de(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x12)    # Instruction Opcode
+    cpu._a = 0x42
+    cpu._set_de(0xbeef)
+    cpu.step()
+    assert cpu._machine.read_memory_byte(0xbeef) == 0x42
+    assert cpu._cycles == 7
+
 def test_add(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x80)    # Instruction Opcode
     cpu._a = 0x6c

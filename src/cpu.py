@@ -284,6 +284,26 @@ class CPU:
         self._log_3b_instruction(f"LDA {addr:04x}")
 
 
+    def _ldax(self):
+        """ Load accumulator """
+        reg_pair = (self._current_inst & 0x10) >> 4
+        addr = self._get_register_pair(reg_pair)
+        self._a = self._machine.read_memory_byte(addr)
+        self._cycles += 7
+
+        self._log_1b_instruction(f"LDAX {self._reg_pair_symb(reg_pair)}")
+
+
+    def _stax(self):
+        """ Store accumulator """
+        reg_pair = (self._current_inst & 0x10) >> 4
+        addr = self._get_register_pair(reg_pair)
+        self._machine.write_memory_byte(addr, self._a)
+        self._cycles += 7
+
+        self._log_1b_instruction(f"STAX {self._reg_pair_symb(reg_pair)}")
+
+
     def _shld(self):
         """ Store H and L direct"""
         addr = self._fetch_next_word()
@@ -663,7 +683,7 @@ class CPU:
     def init_instruction_table(self):
         self._instructions[0x00] = self._nop
         self._instructions[0x01] = self._lxi
-        self._instructions[0x02] = None
+        self._instructions[0x02] = self._stax
         self._instructions[0x03] = self._inx
         self._instructions[0x04] = self._inr
         self._instructions[0x05] = self._dcr
@@ -671,7 +691,7 @@ class CPU:
         self._instructions[0x07] = self._rlc
         self._instructions[0x08] = None
         self._instructions[0x09] = None
-        self._instructions[0x0A] = None
+        self._instructions[0x0A] = self._ldax
         self._instructions[0x0B] = self._dcx
         self._instructions[0x0C] = self._inr
         self._instructions[0x0D] = self._dcr
@@ -680,7 +700,7 @@ class CPU:
 
         self._instructions[0x10] = None
         self._instructions[0x11] = self._lxi
-        self._instructions[0x12] = None
+        self._instructions[0x12] = self._stax
         self._instructions[0x13] = self._inx
         self._instructions[0x14] = self._inr
         self._instructions[0x15] = self._dcr
@@ -688,7 +708,7 @@ class CPU:
         self._instructions[0x17] = self._ral
         self._instructions[0x18] = None
         self._instructions[0x19] = None
-        self._instructions[0x1A] = None
+        self._instructions[0x1A] = self._ldax
         self._instructions[0x1B] = self._dcx
         self._instructions[0x1C] = self._inr
         self._instructions[0x1D] = self._dcr
