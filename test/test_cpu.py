@@ -1458,6 +1458,26 @@ def test_rar_2(cpu):
     assert cpu._cycles == 4
     assert cpu._carry == True
 
+def test_stc(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x37)    # Instruction Opcode
+    cpu.step()
+    assert cpu._carry == True
+    assert cpu._cycles == 4
+
+def test_cmc_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x3f)    # Instruction Opcode
+    cpu._carry = False
+    cpu.step()
+    assert cpu._carry == True
+    assert cpu._cycles == 4
+
+def test_cmc_1(cpu):
+    cpu._machine.write_memory_byte(0x0000, 0x3f)    # Instruction Opcode
+    cpu._carry = True
+    cpu.step()
+    assert cpu._carry == False
+    assert cpu._cycles == 4
+
 def test_out(cpu):
     io = MockIO(0x42)
     cpu._machine.add_io(io)

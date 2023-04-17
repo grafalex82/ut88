@@ -737,6 +737,22 @@ class CPU:
         self._log_1b_instruction(f"RAR")
 
 
+    def _stc(self):
+        """ Set carry bit """
+        self._carry = True
+        self._cycles += 4
+
+        self._log_1b_instruction(f"STC")
+        
+
+    def _cmc(self):
+        """ Complement carry bit """
+        self._carry = not self._carry
+        self._cycles += 4
+
+        self._log_1b_instruction(f"STC")
+        
+
     def init_instruction_table(self):
         self._instructions[0x00] = self._nop
         self._instructions[0x01] = self._lxi
@@ -796,7 +812,7 @@ class CPU:
         self._instructions[0x34] = self._inr
         self._instructions[0x35] = self._dcr
         self._instructions[0x36] = self._mvi
-        self._instructions[0x37] = None
+        self._instructions[0x37] = self._stc
         self._instructions[0x38] = None
         self._instructions[0x39] = self._dad
         self._instructions[0x3A] = self._lda
@@ -804,7 +820,7 @@ class CPU:
         self._instructions[0x3C] = self._inr
         self._instructions[0x3D] = self._dcr
         self._instructions[0x3E] = self._mvi
-        self._instructions[0x3F] = None
+        self._instructions[0x3F] = self._cmc
 
         self._instructions[0x40] = self._mov
         self._instructions[0x41] = self._mov
