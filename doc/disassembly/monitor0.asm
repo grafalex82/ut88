@@ -46,6 +46,8 @@
 ; - Command 8 gently saves all the registers, and restores them back. But it ends up calling a
 ;   RST0 (reset) function eventually. So the code could save 8 bytes as no one really interested
 ;   in those registers
+; - Command B (display current time) uses RST 3 delay routine between displaying a new time value.
+;   This causes a non-uniform displaying, some values are skipped
 
 
 ; Reset entry point
@@ -111,10 +113,13 @@ RST6:
     0033  d7         RST 2                  ; Wait for the low address byte
     0034  5f         MOV E, A               ; Return the entered address in DE
     0035  f1         POP PSW
-    0036  c9         RET    
+    0036  c9         RET
+    0037  00         NOP
 
+; RST7 - 1 second timer interrupt handler
+RST7:
+    0038  c3 c1 00   JMP TIMER_INT (00c1)   ; Just jump to the actual handler
 
-0030                       00 c3 c1 00 
 
 RST0_CONT:
     003b  fb         EI                     ; Continue initial initialization, enable interrputs
@@ -269,9 +274,46 @@ CMD_4_ERROR:
     00bd  e7         RST 4                  ; Wait for button, and repeat
     00be  c3 a6 00   JMP CMD_4_LOOP
 
-00c0     f3 f5 c5 d5 e5 21 e4 00 11 fd c3 06 03 1a 3c
-00d0  27 12 be c2 de 00 af 12 23 13 05 c2 ce 00 e1 d1
-00e0  c1 f1 fb c9 60 60 24 c3 9a 01 c3 c2 01 
+TIMER_INT:
+    00c1  f3         DI                     ; Save registers, and disable interrupts
+    00c2  f5         PUSH PSW
+    00c3  c5         PUSH BC
+    00c4  d5         PUSH DE
+    00c5  e5         PUSH HL
+
+    00c6  21 e4 00   LXI HL, 00e4           ; Maximum for corresponding value
+    00c9  11 fd c3   LXI DE, c3fd           ; Start with seconds
+    00cc  06 03      MVI B, 03              ; 3 values to increment
+
+TIMER_ADV:
+    00ce  1a         LDAX DE                ; Increment value
+    00cf  3c         INR A                  ; 
+    00d0  27         DAA
+    00d1  12         STAX DE
+
+    00d2  be         CMP M                  ; Check if maximum reached
+    00d3  c2 de 00   JNZ 00de
+
+    00d6  af         XRA A                  ; Zero and store the value if maximum reached
+    00d7  12         STAX DE
+
+    00d8  23         INX HL                 ; Advance maximum values and time values addresses
+    00d9  13         INX DE
+    
+    00da  05         DCR B                  ; Repeat for seconds, minutes, and hours
+    00db  c2 ce 00   JNZ TIMER_ADV (00ce)
+
+    00de  e1         POP HL                 ; Restore registers and interrupts
+    00df  d1         POP DE
+    00e0  c1         POP BC
+    00e1  f1         POP PSW
+    00e2  fb         EI
+    00e3  c9         RET
+
+    00e4             60, 60, 24             ; Maximum values for seconds, minutes, and hours
+
+
+00e0                       c3 9a 01 c3 c2 01 
 
 CMD_9:
     00e7
