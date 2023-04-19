@@ -31,15 +31,45 @@ class TapeRecorder(IODevice):
         IODevice.__init__(self, 0xa1, 0xa1)
         self._reset_buffer()
 
+
     def _reset_buffer(self):
         self._buffer = bytearray()
         self._byte = 0
         self._bits = 0
 
+
     def dump_to_file(self, fname):
         with open(fname, "wb") as f:
             f.write(self._buffer)
         self._reset_buffer()
+
+
+    def load_from_file(self, fname):
+        self._reset_buffer()
+        with open(fname, "rb") as f:
+            self._buffer = f.read()
+
+
+    def read_io(self, addr):
+        self.validate_addr(addr)
+
+        if self._bits == 0: # Load the next byte
+            self._byte = self._buffer[0]
+            self._buffer = self._buffer[1:]
+
+        self._bits += 1
+        value = 1 if self._byte & 0x80 else 0
+
+        if self._bits % 2:
+            value ^= 1      # Odd calls shall return inverted bits, every second call return4s non-inverted
+        else:
+            self._byte = (self._byte << 1) & 0xff
+
+        if self._bits == 16: # Prepare for the next byte
+            self._bits = 0
+
+        return value
+    
 
     def write_io(self, addr, value):
         self.validate_addr(addr)
