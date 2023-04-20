@@ -62,6 +62,7 @@ def test_read_bytes(tmp_path):
 
     # Byte 1    
     assert recorder.read_io(0xa1) == 1  # Inverted bit
+    assert recorder.read_io(0xa1) == 1  # Duplicate bit at the beginning of each byte
     assert recorder.read_io(0xa1) == 0  # Real data bit
     assert recorder.read_io(0xa1) == 0  # Inverted bit
     assert recorder.read_io(0xa1) == 1  # Real data bit
@@ -80,6 +81,7 @@ def test_read_bytes(tmp_path):
 
     # Byte 2 (0xd2)
     assert recorder.read_io(0xa1) == 0  # Inverted bit
+    assert recorder.read_io(0xa1) == 0  # Duplicate bit at the beginning of each byte
     assert recorder.read_io(0xa1) == 1  # Real data bit
     assert recorder.read_io(0xa1) == 0  # Inverted bit
     assert recorder.read_io(0xa1) == 1  # Real data bit
