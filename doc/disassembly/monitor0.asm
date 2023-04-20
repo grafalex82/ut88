@@ -10,6 +10,9 @@
 ;     - memory copying programs
 ;     - TBD 
 ;
+; This disassembly listing includes only the first part of the Monitor. See the second part
+; disassembly in a separate listing.
+;
 ; Monitor0 exposes a few handy routines for the purposes of Monitor itself and the
 ; user application. Unlike typical approach, when CALL 3-byte instruction is used to
 ; execute these routines, the Monitor0 uses RSTx 1-byte instructions. This is clever
@@ -620,35 +623,3 @@ CMD_B_CONT:
     01fc  df         RST 3                  ; Repeat after a pause
     01fd  c3 f5 01   JMP CMD_B_CONT (01f5)
 
-0200  cd 24 02 da 0a 02 cd 0e 02 c7 cd 19 02 c7 1a 77
-0210  cd 94 01 1b 2b c2 0e 02 c9 0a 77 cd 94 01 03 23
-0220  c2 19 02 c9 f7 d5 f7 eb 22 f2 c3 e1 22 f0 c3 f7
-0230  eb 22 f4 c3 7d 93 6f 7c 9a 67 22 f8 c3 4d 44 2a
-0240  f2 c3 e5 09 22 f6 c3 2a f0 c3 4d 44 d1 2a f4 c3
-0250  7d 91 7c 98 d8 2a f6 c3 c9 7c ba c0 7d bb c9 cd
-0260  24 02 cd 66 02 c7 2a f4 c3 56 e5 cd b9 02 60 e3
-0270  78 fe 03 c2 a5 02 23 4e 23 46 2b e5 2a f0 c3 79
-0280  95 78 9c da a3 02 2a f2 c3 7d 91 7c 98 da a3 02
-0290  2a f8 c3 7d 81 5f 7c 88 57 e1 73 23 72 23 33 33
-02a0  c3 ab 02 e1 2b c1 23 05 c2 a6 02 5d 54 2a f6 c3
-02b0  23 cd 59 02 eb c2 69 02 c9 01 06 03 21 d3 02 7a
-02c0  a6 23 be c8 23 0d c2 bf 02 0e 03 05 78 fe 01 c2
-02d0  bf 02 c9 ff cd c7 c4 ff c3 c7 c2 e7 22 cf 01 c7
-02e0  06 c7 c6 f7 d3 f7 eb 22 f0 c3 22 f4 c3 e5 f7 eb
-02f0  22 f2 c3 22 f6 c3 f7 eb 22 fa c3 d1 7d 93 6f 7c
-0300  9a 67 22 f8 c3 cd 66 02 c7 f7 d5 f7 eb 22 f2 c3
-0310  f7 eb 22 fa c3 f7 eb 22 ee c3 e1 22 f0 c3 56 e5
-0320  cd b9 02 60 e3 78 fe 03 c2 4a 03 23 5e 23 56 2b
-0330  e5 2a fa c3 cd 59 02 c2 48 03 2a ee c3 eb e1 73
-0340  23 72 23 33 33 c3 50 03 e1 2b c1 23 05 c2 4b 03
-0350  5d 54 2a f2 c3 23 cd 59 02 eb c2 1e 03 c7 f7 eb
-0360  22 f0 c3 4d 44 f7 6b 62 22 f2 c3 23 22 f6 c3 cd
-0370  0e 02 af 77 e5 23 22 f4 c3 21 01 00 22 f8 c3 cd
-0380  66 02 e1 7e ef d7 77 c7 f7 eb 22 f0 c3 22 f4 c3
-0390  4d 44 e5 f7 6b 62 22 f2 c3 e1 c5 03 cd 19 02 af
-03a0  77 2b 22 f6 c3 21 ff ff 22 f8 c3 cd 66 02 e1 c3
-03b0  7d 00 f7 4b 42 f7 d5 f7 eb d1 0a be c2 d4 03 79
-03c0  bb c2 cf 03 78 ba c2 cf 03 3e 11 6f 67 ef c7 03
-03d0  23 c3 ba 03 f5 7e ef d7 77 f1 c3 ba 03 c5 d5 e5
-03e0  f5 7e ef e7 e3 3e af ef e7 e3 69 60 3e bc ef e7
-03f0  eb 3e de ef e7 f1 e1 d1 c1 c9 ff ff ff ff ff ff
