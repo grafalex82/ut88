@@ -107,6 +107,11 @@ ENTER_ADDR:
     0255  2a f6 c3   LHLD c3f6              ; Otherwise carry bit is off, HL=dest end addr
     0258  c9         RET
 
+
+
+
+
+
 0250                             7c ba c0 7d bb c9 cd
 0260  24 02 cd 66 02 c7 2a f4 c3 56 e5 cd b9 02 60 e3
 0270  78 fe 03 c2 a5 02 23 4e 23 46 2b e5 2a f0 c3 79
@@ -129,8 +134,71 @@ ENTER_ADDR:
 0380  66 02 e1 7e ef d7 77 c7 f7 eb 22 f0 c3 22 f4 c3
 0390  4d 44 e5 f7 6b 62 22 f2 c3 e1 c5 03 cd 19 02 af
 03a0  77 2b 22 f6 c3 21 ff ff 22 f8 c3 cd 66 02 e1 c3
-03b0  7d 00 f7 4b 42 f7 d5 f7 eb d1 0a be c2 d4 03 79
-03c0  bb c2 cf 03 78 ba c2 cf 03 3e 11 6f 67 ef c7 03
-03d0  23 c3 ba 03 f5 7e ef d7 77 f1 c3 ba 03 c5 d5 e5
+03b0  7d 00 
+
+;============================================================================
+; Memory compare program
+; Parameters:
+; - Source start address
+; - Source end address
+; - Destination start address
+;
+; In case of success, the program displays 11 on all displays
+;
+; In case of a difference, the program displays the address of difference, and value
+; on target memory cell. Then program accepts the new value for the cell, then returns
+; to the memory compare process.
+MEM_CMP:
+    03b2  f7         RST 6                  ; Enter source start addr to BC
+    03b3  4b         MOV C, E
+    03b4  42         MOV B, D
+
+    03b5  f7         RST 6                  ; Enter source end addr to DE
+    03b6  d5         PUSH DE
+
+    03b7  f7         RST 6                  ; Enter destination address to HL
+    03b8  eb         XCHG
+    03b9  d1         POP DE
+
+MEM_CMP_LOOP:
+    03ba  0a         LDAX BC                ; Compare bytes at [BC] and [HL]
+    03bb  be         CMP M]
+    03bc  c2 d4 03   JNZ MEM_CMP_ERR (03d4) ; Display the memory mismatch error
+
+    03bf  79         MOV A, C               ; Check if end address (in DE) is reached
+    03c0  bb         CMP E
+    03c1  c2 cf 03   JNZ MEM_CMP_CONT (03cf)
+    03c4  78         MOV A, B
+    03c5  ba         CMP D
+    03c6  c2 cf 03   JNZ MEM_CMP_CONT (03cf)
+
+    03c9  3e 11      MVI A, 11              ; Display 11 on all displays, indicating success
+    03cb  6f         MOV L, A
+    03cc  67         MOV H, A
+    03cd  ef         RST 5
+
+    03ce  c7         RST 0                  ; The end (reset)
+
+MEM_CMP_CONT:
+    03cf  03         INX BC                 ; Increment pointers and repeat
+    03d0  23         INX HL
+    03d1  c3 ba 03   JMP MEM_CMP_LOOP (03ba)
+
+MEM_CMP_ERR:
+    03d4  f5         PUSH PSW               ; Display address of difference, and the value
+    03d5  7e         MOV A, M
+    03d6  ef         RST 5
+
+    03d7  d7         RST 2                  ; Enter and store new value for the destination memory cell
+    03d8  77         MOV M, A
+
+    03d9  f1         POP PSW                ; Return to the memory compare program
+    03da  c3 ba 03   JMP MEM_CMP_LOOP
+
+
+
+
+
+03d0                                         c5 d5 e5
 03e0  f5 7e ef e7 e3 3e af ef e7 e3 69 60 3e bc ef e7
 03f0  eb 3e de ef e7 f1 e1 d1 c1 c9 ff ff ff ff ff ff
