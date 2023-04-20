@@ -40,20 +40,10 @@ def main():
     emulator = Emulator(machine)
     emulator.add_breakpoint(0x0018, disable_debug_logging)  # Suppress logging for RST3 (wait 1s)
     emulator.add_breakpoint(0x0018, lambda: print("RST 3: Wait 1s"))
-    emulator.add_breakpoint(0x0018, lambda: print(f"cycles={emulator._cpu._cycles}"))
-    emulator.add_breakpoint(0x005e, lambda: print(f"cycles={emulator._cpu._cycles}"))
     emulator.add_breakpoint(0x005e, enable_debug_logging)
     emulator.add_breakpoint(0x0021, disable_debug_logging)  # Suppress logging for RST4 (wait for a button)
     emulator.add_breakpoint(0x0021, lambda: print("RST 4: Wait a button"))
     emulator.add_breakpoint(0x006d, enable_debug_logging)
-    emulator.add_breakpoint(0x0008, disable_debug_logging)  # Suppress logging for RST1 (output a byte)
-    emulator.add_breakpoint(0x0008, lambda: print("RST 1: Output a byte"))
-    emulator.add_breakpoint(0x0120, enable_debug_logging)
-    emulator.add_breakpoint(0x01bf, lambda: recorder.dump("test.bin"))
-    emulator.add_breakpoint(0x0128, lambda: print("Read a byte from tape"))
-    emulator.add_breakpoint(0x016e, disable_debug_logging)  # Suppress bit reading delay function
-    emulator.add_breakpoint(0x0174, enable_debug_logging)
-    emulator.add_breakpoint(0x016d, lambda: print(f"Received byte - {emulator._cpu._a:02x}"))
     
     while True:
         screen.fill(pygame.Color('black'))
