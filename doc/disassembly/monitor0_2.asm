@@ -1,6 +1,7 @@
 ; This part of the Monitor0 firmware contains a few handy programs:
 ; - 0x0200  - Memory copying program
 ; - 0x025f  - Address correction program (correct addresses after copying to other memory region)
+; - 0x02e5  - "Super" Address correction program (correct addresses before copying to other memory region)
 ; - 0x03b2  - Memory compare program
 
 
@@ -123,7 +124,7 @@ CMD_DE_HL:
     025e  c9         RET
 
 
-; Memory correction program. Used to correct addresses after copying a code to another
+; Memory address correction program. Used to correct addresses after copying a code to another
 ; memory region. The program detects 3-byte instructions, and corrects their arguments
 ; if they are in the source address region.
 ; 
@@ -252,11 +253,47 @@ MATCH_LOOP:
     02e1 c7 c6                              ; Match for ADI, ACI, SUI, SBI, ANI, XRI, ORI and CPI instructions
     02e3 f7 d3                              ; Match for IN and OUT instructions
 
-   
-     
-02e0                 f7 eb 22 f0 c3 22 f4 c3 e5 f7 eb
-02f0  22 f2 c3 22 f6 c3 f7 eb 22 fa c3 d1 7d 93 6f 7c
-0300  9a 67 22 f8 c3 cd 66 02 c7 f7 d5 f7 eb 22 f2 c3
+
+; Super address corrector
+;
+; This program is intended for correcting addresses before copying the program elsewhere.
+; The difference with the previous program in the use case
+; - Previous program is supposed to be run after the memory copying program, to correct addresses
+;   in the memory copy
+; - This program is supposed to be run before memory copying (or moving code in other way, e.g. tape)
+;   So this program is preparing addresses to be executed at other memory region later.
+;
+; Technically this is the same algorithm, just different addresses passed as a parameter for the
+; address correction routine.
+SUPER_CORR:
+    02e5  f7         RST 6                  ; Enter start addr, and store it to 0xc3f0 and 0xc3f4
+    02e6  eb         XCHG
+    02e7  22 f0 c3   SHLD c3f0
+    02ea  22 f4 c3   SHLD c3f4
+    02ed  e5         PUSH HL
+
+    02ee  f7         RST 6                  ; Enter end addr, and store it to 0xc3f2 and 0xc3f6
+    02ef  eb         XCHG
+    02f0  22 f2 c3   SHLD c3f2
+    02f3  22 f6 c3   SHLD c3f6
+
+    02f6  f7         RST 6                  ; Enter target address, and store it to 0xc3fa
+    02f7  eb         XCHG
+    02f8  22 fa c3   SHLD c3fa
+
+    02fb  d1         POP DE                 ; Restore start address
+    02fc  7d         MOV A, L               ; Calculate difference between original address
+    02fd  93         SUB E                  ; and target address
+    02fe  6f         MOV L, A
+    02ff  7c         MOV A, H
+    0300  9a         SBB D
+    0301  67         MOV H, A               ; Store the difference to 0xc3f8
+    0302  22 f8 c3   SHLD c3f8
+
+    0305  cd 66 02   CALL DO_MEM_CORR (0266); Perform the actual correction
+
+
+0300                          c7 f7 d5 f7 eb 22 f2 c3
 0310  f7 eb 22 fa c3 f7 eb 22 ee c3 e1 22 f0 c3 56 e5
 0320  cd b9 02 60 e3 78 fe 03 c2 4a 03 23 5e 23 56 2b
 0330  e5 2a fa c3 cd 59 02 c2 48 03 2a ee c3 eb e1 73
