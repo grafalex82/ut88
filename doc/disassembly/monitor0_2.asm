@@ -417,11 +417,45 @@ REPLACE_NEXT:
     0387  c7         RST 0                  ; The end (reset)
     
 
+; Byte deletion program
+;
+; The program does selected memory range shift (memcopy) 1 byte down, and then calls
+; address correction routine to correct 3-byte instructions arguments
+;
+; Parameters:
+; - Address to delete byte at
+; - End of program address
+    0388  f7         RST 6                  ; Enter start address, and store it to 0xc3f0 and 0xc3f4
+    0389  eb         XCHG
+    038a  22 f0 c3   SHLD c3f0
+    038d  22 f4 c3   SHLD c3f4
+    0390  4d         MOV C, L               ; ... And BC
+    0391  44         MOV B, H
+    0392  e5         PUSH HL
 
-0380                          f7 eb 22 f0 c3 22 f4 c3
-0390  4d 44 e5 f7 6b 62 22 f2 c3 e1 c5 03 cd 19 02 af
-03a0  77 2b 22 f6 c3 21 ff ff 22 f8 c3 cd 66 02 e1 c3
-03b0  7d 00 
+    0393  f7         RST 6                  ; Enter end address, and store it to 0xc3f2
+    0394  6b         MOV L, E
+    0395  62         MOV H, D
+    0396  22 f2 c3   SHLD c3f2
+    0399  e1         POP HL
+
+    039a  c5         PUSH BC
+    039b  03         INX BC                 ; Start address will be 1 byte higher than entered address
+    039c  cd 19 02   CALL MEM_COPY_UP (0219)    ; Do the mem copy
+
+    039f  af         XRA A                  ; Clear the byte after the mem range end
+    03a0  77         MOV M, A
+
+    03a1  2b         DCX HL                 ; Store the target mem end address at 0xc3f6
+    03a2  22 f6 c3   SHLD c3f6
+
+    03a5  21 ff ff   LXI HL, ffff           ; Set the difference as -1 byte and store it to 0xc3f8
+    03a8  22 f8 c3   SHLD c3f8
+    03ab  cd 66 02   CALL DO_MEM_CORR (0266); Do the address corrections within the moved range
+
+    03ae  e1         POP HL                 ; Go to RAM read routine
+    03af  c3 7d 00   JMP RAM_READ (007d)
+
 
 ;============================================================================
 ; Memory compare program
@@ -483,9 +517,37 @@ MEM_CMP_ERR:
     03da  c3 ba 03   JMP MEM_CMP_LOOP
 
 
+; Display registers
+;
+; A debugging helper function to display registers and memory at HL
+    03dd  c5         PUSH BC
+    03de  d5         PUSH DE
+    03df  e5         PUSH HL
+    03e0  f5         PUSH PSW
 
+    03e1  7e         MOV A, M               ; Display HL and value at [HL]
+    03e2  ef         RST 5
+    03e3  e7         RST 4
 
+    03e4  e3         XTHL                   ; Display PSW and 'AF' mark
+    03e5  3e af      MVI A, af
+    03e7  ef         RST 5
+    03e8  e7         RST 4
 
-03d0                                         c5 d5 e5
-03e0  f5 7e ef e7 e3 3e af ef e7 e3 69 60 3e bc ef e7
-03f0  eb 3e de ef e7 f1 e1 d1 c1 c9 ff ff ff ff ff ff
+    03e9  e3         XTHL                   ; Display BC and 'BC' mark
+    03ea  69         MOV L, C
+    03eb  60         MOV H, B
+    03ec  3e bc      MVI A, bc
+    03ee  ef         RST 5
+    03ef  e7         RST 4
+
+    03f0  eb         XCHG                   ; Display DE and 'DE' mark
+    03f1  3e de      MVI A, de
+    03f3  ef         RST 5
+    03f4  e7         RST 4
+    
+    03f5  f1         POP PSW
+    03f6  e1         POP HL
+    03f7  d1         POP DE
+    03f8  c1         POP BC
+    03f9  c9         RET
