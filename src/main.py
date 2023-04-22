@@ -1,3 +1,4 @@
+import os
 import logging
 import pygame
 
@@ -9,6 +10,8 @@ from lcd import LCD
 from hexkbd import HexKeyboard
 from timer import Timer
 from tape import TapeRecorder
+
+resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 
 def enable_debug_logging():
     logging.disable(logging.NOTSET)
@@ -27,7 +30,7 @@ def main():
     # Create a UT-88 machine in basic configuration
     machine = Machine()
     machine.add_memory(RAM(0xC000, 0xC3ff))
-    machine.add_memory(ROM("../resources/Monitor0.bin", 0x0000))
+    machine.add_memory(ROM(f"{resources_dir}/Monitor0.bin", 0x0000))
     lcd = LCD()
     machine.add_memory(lcd)
     kbd = HexKeyboard()

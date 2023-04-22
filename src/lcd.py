@@ -1,8 +1,10 @@
+import os
 import pygame
 
 from utils import *
 from interfaces import *
 
+resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 
 class LCD(MemoryDevice):
     """
@@ -18,7 +20,7 @@ class LCD(MemoryDevice):
         MemoryDevice.__init__(self, 0x9000, 0x9002)
         self._ram = [0] * 3
 
-        self._images = [pygame.image.load(f"..\\resources\\digit_{d:1X}.png") for d in range(0x10)]
+        self._images = [pygame.image.load(f"{resources_dir}/digit_{d:1X}.png") for d in range(0x10)]
 
 
     def _draw_byte(self, screen, byte, x):
