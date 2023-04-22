@@ -35,11 +35,11 @@ Basic UT-88 configuration includes:
 - Clock timer for generating interrputs every 1 second. Since there is no interrput controller, CPU will read data line pulled up (0xff), which is RST7 command. The special handler in the firmware advances hours/minutes/seconds values in a software mode.
 
 The minimal firmware called "Monitor 0" (since located starting 0x0000) provides common routines, as well as a minimal operating system for the computer. The Monitor 0 is split into 2 parts:
-- 0x0000-0x01ff - essential part ([see disasssembly](blob/main/doc/disassembly/monitor0.asm)) of the ROM that includes
+- 0x0000-0x01ff - essential part ([see disasssembly](doc/disassembly/monitor0.asm)) of the ROM that includes
     - Handy routines to input data from the keyboard, output to LCD, input and output data to the tape.
     - Basic operating system that allows the User to read and write memory and ROM, calculate CRC, and execute programs
     - Current time clock
-- 0x0200-0x03ff - optional part ([see disasssembly](blob/main/doc/disassembly/monitor0_2.asm)) with a few useful programs:
+- 0x0200-0x03ff - optional part ([see disasssembly](doc/disassembly/monitor0_2.asm)) with a few useful programs:
     - memory copying programs (including special cases to insert or remove a byte from the program)
     - memory compare programs
     - address correction programs after the program was moved to another memory region
