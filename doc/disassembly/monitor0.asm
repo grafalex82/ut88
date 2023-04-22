@@ -7,8 +7,9 @@
 ;     - Basic operating system to read/write memory and ROM, execute programs
 ;     - Current time clock
 ; - 0x0200-0x03ff - optional part with a few useful programs:
-;     - memory copying programs
-;     - TBD 
+;     - memory copying programs (including special cases to insert or remove a byte)
+;     - memory compare programs
+;     - address correction programs after the program was moved to other memory region
 ;
 ; This disassembly listing includes only the first part of the Monitor. See the second part
 ; disassembly in a separate listing.
