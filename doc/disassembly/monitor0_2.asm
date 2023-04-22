@@ -6,7 +6,8 @@
 
 
 ; Memory copying program
-; Enters 3 parameters:
+; 
+; Program expects 3 parameters:
 ; - Source start address
 ; - Source end address
 ; - Destination start address
@@ -128,7 +129,7 @@ CMD_DE_HL:
 ; memory region. The program detects 3-byte instructions, and corrects their arguments
 ; if they are in the source address region.
 ; 
-; Enters 3 parameters:
+; Program expects 3 parameters:
 ; - Source start address
 ; - Source end address
 ; - Destination start address
@@ -265,6 +266,11 @@ MATCH_LOOP:
 ;
 ; Technically this is the same algorithm, just different addresses passed as a parameter for the
 ; address correction routine.
+; 
+; Program expects 3 parameters:
+; - Start address of the corrected code
+; - End address of the corrected code
+; - Destination start address, where the code is supposed to run
 SUPER_CORR:
     02e5  f7         RST 6                  ; Enter start addr, and store it to 0xc3f0 and 0xc3f4
     02e6  eb         XCHG
@@ -291,17 +297,128 @@ SUPER_CORR:
     0302  22 f8 c3   SHLD c3f8
 
     0305  cd 66 02   CALL DO_MEM_CORR (0266); Perform the actual correction
+    0308  c7         RST 0                  ; The end (Reset)
+
+; Program to correct specific address in the specified memory range
+; The program searches for 3-byte instruction, and if the argument matches
+; the certain address, it changes it to another 
+; 
+; Program expects 4 parameters:
+; - Start address of the memory range
+; - End address of the memory range
+; - Address to search
+; - Address to replace with
+CORR_ADDR:
+    0309  f7         RST 6                  ; Enter start address
+    030a  d5         PUSH DE
+    030b  f7         RST 6                  ; Enter end address and store to 0xc3f2      
+    030c  eb         XCHG
+    030d  22 f2 c3   SHLD c3f2
+
+    0310  f7         RST 6                  ; Enter address to match and store to 0xc3fa
+    0311  eb         XCHG
+    0312  22 fa c3   SHLD c3fa             
+    0315  f7         RST 6                  ; Enter replacement address and store to 0xc3ee
+    0316  eb         XCHG
+    0317  22 ee c3   SHLD c3ee
+
+    031a  e1         POP HL                 ; Start address in HL (store it to 0xc3f0)
+    031b  22 f0 c3   SHLD c3f0
+
+REPLACE_LOOP:
+    031e  56         MOV D, M               ; Load the next byte
+    031f  e5         PUSH HL
+    0320  cd b9 02   CALL MATCH_OPCODE (02b9)   ; Match the instruction code
+
+    0323  60         MOV H, B               ; Restore current address in HL, but store B (instruction
+    0324  e3         XTHL                   ; size) on the stack instead
+
+    0325  78         MOV A, B               ; Check if 3-byte instruction was matched
+    0326  fe 03      CPI 03
+    0328  c2 4a 03   JNZ REPLACE_2 (034a)
+
+    032b  23         INX HL                 ; Load the instruction argument to DE
+    032c  5e         MOV E, M
+    032d  23         INX HL
+    032e  56         MOV D, M
+
+    032f  2b         DCX HL
+    0330  e5         PUSH HL
+    0331  2a fa c3   LHLD c3fa              ; Check the argument equals to the address to replace
+    0334  cd 59 02   CALL CMD_DE_HL (0259)
+    0337  c2 48 03   JNZ REPLACE_1 (0348)
+
+    033a  2a ee c3   LHLD c3ee              ; Replace argument with the replacement address
+    033d  eb         XCHG
+    033e  e1         POP HL
+    033f  73         MOV M, E
+    0340  23         INX HL
+    0341  72         MOV M, D
+    0342  23         INX HL
+
+    0343  33         INX SP                 ; Prepare for the next instruction
+    0344  33         INX SP
+    0345  c3 50 03   JMP REPLACE_NEXT (0350)
+
+REPLACE_1:
+    0348  e1         POP HL
+    0349  2b         DCX HL
+
+REPLACE_2:
+    034a  c1         POP BC                 ; Restore instruction size
+
+REPLACE_L:
+    034b  23         INX HL                 ; Advance address by the instruction size
+    034c  05         DCR B
+    034d  c2 4b 03   JNZ REPLACE_L (034b)
+
+REPLACE_NEXT:
+    0350  5d         MOV E, L               ; Repeat until end address reached
+    0351  54         MOV D, H
+    0352  2a f2 c3   LHLD c3f2
+    0355  23         INX HL                 ; Advance to the next instruction
+    0356  cd 59 02   CALL CMD_DE_HL (0259)
+    0359  eb         XCHG
+    035a  c2 1e 03   JNZ REPLACE_LOOP (031e)
+
+    035d  c7         RST 0                  ; The end (reset)
 
 
-0300                          c7 f7 d5 f7 eb 22 f2 c3
-0310  f7 eb 22 fa c3 f7 eb 22 ee c3 e1 22 f0 c3 56 e5
-0320  cd b9 02 60 e3 78 fe 03 c2 4a 03 23 5e 23 56 2b
-0330  e5 2a fa c3 cd 59 02 c2 48 03 2a ee c3 eb e1 73
-0340  23 72 23 33 33 c3 50 03 e1 2b c1 23 05 c2 4b 03
-0350  5d 54 2a f2 c3 23 cd 59 02 eb c2 1e 03 c7 f7 eb
-0360  22 f0 c3 4d 44 f7 6b 62 22 f2 c3 23 22 f6 c3 cd
-0370  0e 02 af 77 e5 23 22 f4 c3 21 01 00 22 f8 c3 cd
-0380  66 02 e1 7e ef d7 77 c7 f7 eb 22 f0 c3 22 f4 c3
+; Insert byte program
+;
+; The program moves the memory block at the specified address range 1 byte further
+; and enters a new byte at the insert location
+;
+; Parameters:
+; - Insert location
+; - End of program
+    035e  f7         RST 6                  ; Enter insert location and store in 0xc3f0
+    035f  eb         XCHG
+    0360  22 f0 c3   SHLD c3f0
+    0363  4d         MOV C, L               ; And BC
+    0364  44         MOV B, H
+
+    0365  f7         RST 6                  ; Enter end address and store it to 0xc3f2
+    0366  6b         MOV L, E
+    0367  62         MOV H, D
+    0368  22 f2 c3   SHLD c3f2
+
+    036b  23         INX HL                 ; Prepare destination end address in 0xc3f6
+    036c  22 f6 c3   SHLD c3f6              ; (1 byte higher than source start address)
+
+    036f  cd 0e 02   CALL MEM_COPY_DOWN (020e)  ; Execute the memory copying
+
+    0382  e1         POP HL                 ; Display the insert address
+    0383  7e         MOV A, M
+    0384  ef         RST 5
+
+    0385  d7         RST 2                  ; Wait for a new byte at inserted location
+    0386  77         MOV M, A               ; Store the entered byte
+    0387  c7         RST 0                  ; The end (reset)
+    
+
+
+0380                          f7 eb 22 f0 c3 22 f4 c3
 0390  4d 44 e5 f7 6b 62 22 f2 c3 e1 c5 03 cd 19 02 af
 03a0  77 2b 22 f6 c3 21 ff ff 22 f8 c3 cd 66 02 e1 c3
 03b0  7d 00 
