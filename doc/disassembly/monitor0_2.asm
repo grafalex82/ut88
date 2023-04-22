@@ -2,7 +2,11 @@
 ; - 0x0200  - Memory copying program
 ; - 0x025f  - Address correction program (correct addresses after copying to other memory region)
 ; - 0x02e5  - "Super" Address correction program (correct addresses before copying to other memory region)
+; - 0x0309  - Replace address (replace all occurrances of the address in the range with another address)
+; - 0x035e  - Insert byte program (shifts the range 1 byte further)
+; - 0x0388  - Delete byte program (shifts the range 1 byte backward, and correct addresses within the range)
 ; - 0x03b2  - Memory compare program
+; - 0x03dd  - Display registers helper function
 
 
 ; Memory copying program
@@ -308,7 +312,7 @@ SUPER_CORR:
 ; - End address of the memory range
 ; - Address to search
 ; - Address to replace with
-CORR_ADDR:
+REPLACE_ADDR:
     0309  f7         RST 6                  ; Enter start address
     030a  d5         PUSH DE
     030b  f7         RST 6                  ; Enter end address and store to 0xc3f2      
@@ -392,6 +396,7 @@ REPLACE_NEXT:
 ; Parameters:
 ; - Insert location
 ; - End of program
+INSERT_BYTE:
     035e  f7         RST 6                  ; Enter insert location and store in 0xc3f0
     035f  eb         XCHG
     0360  22 f0 c3   SHLD c3f0
@@ -425,6 +430,7 @@ REPLACE_NEXT:
 ; Parameters:
 ; - Address to delete byte at
 ; - End of program address
+DELETE_BYTE:
     0388  f7         RST 6                  ; Enter start address, and store it to 0xc3f0 and 0xc3f4
     0389  eb         XCHG
     038a  22 f0 c3   SHLD c3f0
@@ -520,6 +526,7 @@ MEM_CMP_ERR:
 ; Display registers
 ;
 ; A debugging helper function to display registers and memory at HL
+SHOW_REGISTERS:
     03dd  c5         PUSH BC
     03de  d5         PUSH DE
     03df  e5         PUSH HL
