@@ -111,6 +111,11 @@ The second part of the Monitor 0 includes the following programs (called with co
 - 0x03b2  - Memory compare program. Accept start and end address of a source range, and start address of the range to compare with.
 - 0x03dd  - Display registers helper function (Displays AF, BC, DE, HL, and the memory byte underneath HL pointer)
 
+The UT-88 computer is quite poor in terms of software variety. The Basic CPU module instructions come with a few test programs. Unfortunately quality of those programs is much worse than the main firmware (perhaps it was written by UT-88 author's students). Programs are:
+- [Tic Tac Toe game](doc/disassembly/tictactoe.asm) - a classic game. Computer always goes first, and there is no way for the player to win.
+- [Labyrinth game](doc/disassembly/labyrinth.asm) - player searches a way in a 16x16 labyrinth.
+- [Reaction game](doc/disassembly/reaction.asm) - program starts counter, goal to stop the counter as early as possible.
+- [Gamma](doc/disassembly/gamma.asm) - generates gamma notes to the tape recorder.
 
 
 # UT-88 Emulator
