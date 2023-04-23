@@ -65,8 +65,8 @@
 ; Tape recording format:
 ; - 256 x 0xff  - pilot tone, to sync with the sequence
 ; - 0xe6        - synchronization byte, marks polarity and start of data bytes
-; - 2 bytes     - start address
-; - 2 bytes     - end address
+; - 2 bytes     - start address (high byte first)
+; - 2 bytes     - end address (high byte first)
 ; - <bytes>     - data bytes
 ;
 ; No CRC bytes are stored on the tape. The CRC value is displayed on the screen after store

@@ -43,8 +43,8 @@ def main():
         if args.tape:
             outfile.write(b'\x00' * 256)    # Pilot tone
             outfile.write(b'\xe6')          # Sync byte
-            outfile.write(struct.pack("<H", start_addr))
-            outfile.write(struct.pack("<H", end_addr - 1))
+            outfile.write(struct.pack(">H", start_addr))
+            outfile.write(struct.pack(">H", end_addr - 1))
 
         outfile.write(output_data)
 
