@@ -11,7 +11,7 @@ def main():
                     description='Hexadecimal textual view to binary converter')
     parser.add_argument('textfile')
     parser.add_argument('binfile')
-    parser.add_argument("-t", "--tape", action="store_false", help="Add tape header")
+    parser.add_argument("-t", "--tape", action="store_true", help="Add tape header")
     args = parser.parse_args()
 
     output_data = bytearray()
