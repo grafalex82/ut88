@@ -50,7 +50,7 @@ class TapeRecorder(IODevice):
     def load_from_file(self, fname):
         self._reset_buffer()
         with open(fname, "rb") as f:
-            self._buffer = f.read()
+            self._buffer = bytearray(f.read())
 
 
     def read_io(self, addr):
