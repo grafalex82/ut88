@@ -31,6 +31,7 @@ def main():
     machine = Machine()
     machine.add_memory(RAM(0xC000, 0xC3ff))
     machine.add_memory(ROM(f"{resources_dir}/Monitor0.bin", 0x0000))
+    machine.add_memory(ROM(f"{resources_dir}/calculator.bin", 0x0800))
     lcd = LCD()
     machine.add_memory(lcd)
     kbd = HexKeyboard()
