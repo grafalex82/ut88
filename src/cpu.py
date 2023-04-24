@@ -788,7 +788,7 @@ class CPU:
         self._carry = not self._carry
         self._cycles += 4
 
-        self._log_1b_instruction(f"STC")
+        self._log_1b_instruction(f"CMC")
         
 
     def _cma(self):
