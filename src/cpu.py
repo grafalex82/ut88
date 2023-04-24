@@ -575,7 +575,6 @@ class CPU:
             self._half_carry = ((self._a & 0x0f) + (value & 0x0f)) > 0x0f
         if op == 1: # ADC
             carry = 1 if self._carry else 0
-            print(f"carry={carry}")
             res = self._a + value + carry
             self._carry = res > 0xff
             self._half_carry = ((self._a & 0x0f) + (value & 0x0f) + carry) > 0x0f
