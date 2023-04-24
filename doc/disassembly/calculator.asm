@@ -5,15 +5,28 @@
 ; and 3-byte floating point numbers.
 ;
 ; Data formats used:
-; - 1-byte integer in Sign-Magnitude representation. 7 lower bits represent the value, 8th bit
-;   is a sign. Example: -5 decimal would be 10000101 (0x85), the MSB is a sign (value is negative),
+; - 1-byte integer in Sign-Magnitude representation
+;   - 7 lower bits represent the value
+;   - 8th bit is a sign. 
+;   Example: -5 decimal would be 10000101 (0x85), the MSB is a sign (value is negative),
 ;   the rest of the bits represent value of 5 (absolute value)
-; - 2-byte integer in Sign-Magnitude representation. 14 lower bits represent the value, 14th bit
-;   is an overflow, 15th bit is a sign. Value stored high byte first, low byte next.
+; - 2-byte integer in Sign-Magnitude representation
+;   - 14 lower bits represent the value
+;   - 14th bit is an overflow
+;   - 15th bit is a sign. 
+;   - Value stored high byte first, low byte next.
+; - 3-byte floating point number. 
+;   - First byte is an exponent
+;   - 2nd and 3rd bytes are mantissa (high byte first, bit 7 of the high byte is a sign)
 ; 
 ; See more on data formats at https://en.wikipedia.org/wiki/Signed_number_representations
 ;
-;
+; Routine addresses (see parameters description in the respective function disassembly):
+; - 0849 - add two 1-byte integers in Sign-Magnitude representation
+; - 0877 - Normalize two 3-byte floats before adding
+; - 08ff - Add two 2-byte integers in Sign-Magnitude representation.
+; - 092d - Normalize exponent
+
 
 ; Add two 1-byte integers in Sign-Magnitude representation.
 ; Arguments are located at 0xc371 and 0xc374, the result is stored at 0xc374
@@ -63,15 +76,109 @@ CONV_SM_1_BYTE:
     0872  f6 80      ORI 80
     0874  c3 61 08   JMP ADD_1_BYTE_EXIT (0861)
 
-;----------------------------------------------------
+; Normalize two 3-byte floats before adding
+;
+; The function prepares two floats for adding, by aligning their exponents. Bigger exponent value
+; will replace smaller exponent, the mantissa of the argument with smaller exponent will be shifted
+; right for number of bits that equal exponents difference. Shifting mantissa right happens without
+; rounding
 
-0870                       21 74 C3 7E A7 FA 83 08 47
-0880  C3 8B 08 E6 7F 2F C6 01 C3 7F 08 21 71 C3 7E A7
-0890  FA 9D 08 90 CA CC 08 FA CD 08 C3 A5 08 E6 7F 2F
-08A0  C6 01 C3 93 08 4F 21 71 C3 7E 21 74 C3 77 23 7E
-08B0  E6 7F 57 23 5E 97 7A 1F 57 7B 1F 37 3F 5F 0D CA
-08C0  C5 08 C3 B6 08 73 2B 7E E6 80 B2 77 C9 2F C6 01
-08D0  4F 21 74 C3 7E 21 71 C3 77 23 C3 AF 08 
+NORM_VALUES:
+    0877  21 74 c3   LXI HL, c374               ; Load second argument exponent
+    087a  7e         MOV A, M
+
+    087b  a7         ANA A                      ; Check if the exponent is signed
+    087c  fa 83 08   JN CONV_EXP_TC_1 (0883)
+
+NORM_VALUES_1:
+    087f  47         MOV B, A                   ; Store the second argument exponent to B
+    0880  c3 8b 08   JMP NORM_VALUES_2 (088b)
+
+CONV_EXP_TC_1:
+    0883  e6 7f      ANI 7f                     ; Convert exponent to Two's Complement
+    0885  2f         CMA
+    0886  c6 01      ADI 01
+    0888  c3 7f 08   JMP NORM_VALUES_1 (087f)
+
+NORM_VALUES_2:
+    088b  21 71 c3   LXI HL, c371               ; Load first argument exponent
+    088e  7e         MOV A, M
+
+    088f  a7         ANA A                      ; Check if the exponent is signed
+    0890  fa 9d 08   JN CONV_EXP_TC_1 (089d)
+
+NORM_VALUES_3:
+    0893  90         SUB B                      ; Calculate exponents difference
+    0894  ca cc 08   JZ NORM_VALUES_EXIT (08cc) ; Nothing to do if exponents are equal
+    0897  fa cd 08   JN NORM_VALUES_EXP_LT (08cd) ; Check if first exponent is less than second
+    089a  c3 a5 08   JMP NORM_VALUES_EXP_GT (08a5)
+
+CONV_EXP_TC_2:
+    089d  e6 7f      ANI 7f                     ; Convert exponent to Two's Complement
+    089f  2f         CMA
+    08a0  c6 01      ADI 01
+    08a2  c3 93 08   JMP NORM_VALUES_3 (0893)
+
+NORM_VALUES_EXP_GT:
+    08a5  4f         MOV C, A                   ; Store exponent difference in C
+
+    08a6  21 71 c3   LXI HL, c371               ; Replace smaller exponent (2nd argument) with 
+    08a9  7e         MOV A, M                   ; the greater one (1st argument)
+    08aa  21 74 c3   LXI HL, c374
+    08ad  77         MOV M, A
+
+    08ae  23         INX HL                     ; Now shift the 2nd argument mantissa
+
+NORM_VALUES_MANT_1:    
+    08af  7e         MOV A, M                   ; Load mantissa into DE
+    08b0  e6 7f      ANI 7f                     ; Clear the sign bit for mantissa manipulation
+    08b2  57         MOV D, A
+    08b3  23         INX HL
+    08b4  5e         MOV E, M
+
+    08b5  97         SUB A                      ; Clear A and carry bit
+
+NORM_VALUES_MANT_2:
+    08b6  7a         MOV A, D                   ; Shift DE one bit down
+    08b7  1f         RAR
+    08b8  57         MOV D, A
+    08b9  7b         MOV A, E
+    08ba  1f         RAR
+
+    08bb  37         STC                        ; Clear carry bit
+    08bc  3f         CMC
+
+    08bd  5f         MOV E, A
+
+    08be  0d         DCR C                      ; Repeat until exponents equal
+    08bf  ca c5 08   JZ NORM_VALUES_RESULT (08c5)
+    08c2  c3 b6 08   JMP NORM_VALUES_MANT_2 (08b6)
+
+NORM_VALUES_RESULT:
+    08c5  73         MOV M, E                   ; Store result, keeping the sign
+    08c6  2b         DCX HL
+    08c7  7e         MOV A, M
+    08c8  e6 80      ANI 80
+    08ca  b2         ORA D
+    08cb  77         MOV M, A
+
+NORM_VALUES_EXIT:
+    08cc  c9         RET
+
+NORM_VALUES_EXP_LT:
+    08cd  2f         CMA                        ; Convert exponent difference to Two's Complement
+    08ce  c6 01      ADI 01
+    08d0  4f         MOV C, A                   ; And store it to C
+
+    08d1  21 74 c3   LXI HL, c374               ; Replace smaller exponent (1st argument) with 
+    08d4  7e         MOV A, M                   ; the greater one (2nd)
+    08d5  21 71 c3   LXI HL, c371
+    08d8  77         MOV M, A
+
+    08d9  23         INX HL                     ; Now shift the 1st argument mantissa
+    08da  c3 af 08   JMP NORM_VALUES_MANT_1 (08af)
+
+
 
 ; Add two 2-byte integers in Sign-Magnitude representation.
 ; Arguments are located at 0xc372/0xc373 and 0xc375/0xc376 (high byte first), the result is
@@ -164,51 +271,122 @@ CONV_SM_2_BYTE:
     0929  57         MOV D, A
     092a  c3 fb 08   JMP ADD_2_BYTE_EXIT (08fb)
 
-;-----------------------------------------------------
 
-MANTISSA_NORM:          ???
-    092d  7e         MOV A, M                   ; 
+
+; Normalize exponent
+; 
+; The value is located at [HL], result is stored at the same location
+;
+; Mantissa is moved left until 14th bit is 0, and 13th bit is 1. Bit 15 maintains sign flag.
+; Exponent is corrected accordingly
+NORM_EXPONENT:
+    092d  7e         MOV A, M                   ; Load the exponent value
     092e  a7         ANA A
-    092f  fa 36 09   JN 0936
+    092f  fa 36 09   JN NORM_EXPONENT_1 (0936)  ; Convert to Two's Complement if necessary
 
-    0932  4f         MOV C, A
-    0933  c3 3e 09   JMP 093e
+NORM_EXPONENT_1:
+    0932  4f         MOV C, A                   ; Store the exponent in C
+    0933  c3 3e 09   JMP NORM_EXPONENT_3 (093e)
 
-    0936  e6 7f      ANI A, c6
+NORM_EXPONENT_2:
+    0936  e6 7f      ANI A, 7f                  ; Convert exponent to Two's complement
     0938  2f         CMA
     0939  c6 01      ADI A, 01
-    093a  c3 32 09   JMP 0932
+    093a  c3 32 09   JMP NORM_EXPONENT_1 (0932)
 
-    093e  23         INX HL
+NORM_EXPONENT_3:
+    093e  23         INX HL                     ; Load the mantissa
     093f  7e         MOV A, M
-    0940  e6 80      ANI 80
+
+    0940  e6 80      ANI 80                     ; Store the sign flag in B
     0942  47         MOV B, A
-    0943  7e         MOV A, M
+
+    0943  7e         MOV A, M                   ; Load the mantissa to DE
     0944  e6 7f      ANI 7f
     0946  57         MOV D, A
     0947  23         INX HL
     0948  7e         MOV A, M
-    0949  a7         ANA A
-    094a  ca 7e 09   JZ 097e
+    0949  a7         ANA A                      ; Check if mantissa is zero
+    094a  ca 7e 09   JZ NORM_EXPONENT_ZERO (097e)
+NORM_EXPONENT_4:
     094d  5f         MOV E, A
-    094e  0d         DCR C
+
+NORM_EXPONENT_L:
+    094e  0d         DCR C                      ; Shift mantissa 1 bit left, counting shifts in C (exponent)
     094f  7b         MOV A, E
     0950  17         RAL
     0951  5f         MOV E, A
     0952  7a         MOV A, D
     0953  17         RAL
     0954  a7         ANA A
-    0955  fa 5c 09   JN 095c
+    0955  fa 5c 09   JN NORM_EXPONENT_5 (095c)  ; Shift until the most significant bit reaches bit 15
     0958  57         MOV D, A
-    0959  c3 4e 09   JMP 094e
+    0959  c3 4e 09   JMP NORM_EXPONENT_L (094e)
 
-0920                                         7E A7 FA
-0930  36 09 4F C3 3E 09 E6 7F 2F C6 01 C3 32 09 23 7E
-0940  E6 80 47 7E E6 7F 57 23 7E A7 CA 7E 09 5F 0D 7B
-0950  17 5F 7A 17 A7 FA 5C 09 57 C3 4E 09 1F 57 73 1F
-0960  5F 0C 7A 1F 57 7B 1F 5F 0C 73 2B 7A B0 77 2B 79
-0970  A7 FA 76 09 77 C9 2F C6 01 F6 80 C3 74 09 7A A7
-0980  CA 75 09 97 C3 4D 09 CD 77 08 CD DD 08 21 74 C3
+NORM_EXPONENT_5:
+    095c  1f         RAR                        ; Shift the mantissa 1 bit back (right)
+    095d  57         MOV D, A                   ; to reserve place for the sign bit
+    095e  73         MOV M, E
+    095f  1f         RAR
+    0960  5f         MOV E, A
+
+    0961  0c         INR C                      ; Correct exponent
+
+    0962  7a         MOV A, D                   ; Shift the mantissa for 1 more bit back
+    0963  1f         RAR                        ; to reserve place for the most significant 0 bit
+    0964  57         MOV D, A
+    0965  7b         MOV A, E
+    0966  1f         RAR
+    0967  5f         MOV E, A
+
+    0968  0c         INR C                      ; Correct exponent as well
+
+    0969  73         MOV M, E                   ; Store the result
+    096a  2b         DCX HL
+    096b  7a         MOV A, D                   ; Do not forget to restore the sign bit
+    096c  b0         ORA B
+    096d  77         MOV M, A
+
+    096e  2b         DCX HL
+    096f  79         MOV A, C                   ; Save the exponent
+    0970  a7         ANA A
+    0971  fa 76 09   JN NORM_EXPONENT_SM (0976) ; Restore exponent's Sign-Magnitude form, if needed
+
+NORM_EXPONENT_EXIT:
+    0974  77         MOV M, A
+NORM_EXPONENT_EXIT_2:
+    0975  c9         RET
+
+
+NORM_EXPONENT_SM:
+    0976  2f         CMA                        ; Convert to Sign-Magnitude representation
+    0977  c6 01      ADI A, 01
+    0979  f6 80      ORI A, 80                  ; Restore sign bit
+    097b  c3 74 09   JMP NORM_EXPONENT_EXIT (0974)
+
+
+NORM_EXPONENT_ZERO:
+    097e  7a         MOV A, D                   ; If the mantissa is zero, nothing is needed
+    097f  a7         ANA A                      ; Just exit without any changes
+    0980  ca 75 09   JZ NORM_EXPONENT_EXIT_2 (0975)
+
+    0983  97         SUB A                      ; Clear A, carry bit, and continue
+    0984  c3 4d 09   JMP NORM_EXPONENT_4 (094d)
+
+
+
+; Add two 3-byte float values
+;
+; Adds two floats at the addresses 0xc371-0xc373, and 0xc374-0xc376. Result is stored
+; at 0xc374-0xc376
+ADD_FLOATS:
+    0987  cd 77 08   CALL NORM_VALUES (0877)    ; Normalize values, so that they have the same exponent
+    098a  cd dd 08   CALL ADD_2_BYTE (08dd)     ; Add mantissa values
+
+    098d  21 74 c3   LXI HL, c374               ; Normalize exponent
+    0990  cd 2d 09   CALL NORM_EXPONENT (092d)
+    0993  c9         RET
+
 0990  CD 2D 09 C9 21 72 C3 7E 21 75 C3 AE E6 80 F5 7E
 09A0  E6 7F 57 23 5E 97 67 6F 06 08 3A 73 C3 1F 4F DA
 09B0  C1 09 7C 1F 67 7D 1F 6F AF 05 CA C5 09 79 C3 AD
