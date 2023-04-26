@@ -63,3 +63,30 @@ class Float:
 
         float_bytes = struct.pack('i', int_value)
         return struct.unpack('f', float_bytes)[0]
+
+    def to_3_byte(self):
+        self.normalize()
+
+        if self._mantissa == 0:
+            return 0
+        
+        exponent = (self._exponent + 1) & 0xff
+        if exponent < 0:
+            exponent = (~exponent + 1) & 0xff
+        mantissa = self._mantissa >> 10
+        mantissa |= 0x8000 if self._negative else 0
+
+        return (exponent << 16) | (mantissa & 0xffff)
+
+
+    def from_3_byte(self, value):
+        if value == 0:
+            return self.from_float(0.)
+
+        self._exponent = (value >> 16) & 0xff
+        if self._exponent >= 0x80:
+            self._exponent = (~self._exponent + 1) & 0xff
+
+        self._negative = (value & 0x8000 != 0)
+        self._mantissa = (value & 0x3fff) << 10
+        self._exponent -= 1

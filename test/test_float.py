@@ -21,6 +21,14 @@ numbers = [
         (1.5, False, 0, 0xc00000)
     ]
 
+# Test numbers for conversion between float and 3-byte float numbers
+numbers_3b = [
+    (0., 0x000000),
+    (1., 0x012000),
+    (1.5, 0x013000),
+    (2., 0x022000)
+]
+
 def test_new():
     f = Float()
     assert f.is_negative() == False
@@ -40,7 +48,6 @@ def test_to_float(value, is_negative, exponent, mantissa):
     f.from_sem(is_negative, exponent, mantissa)
     assert f.to_float() == value
 
-
 def test_normalize_1():
     f = Float()
     f.from_sem(False, 0, 0x200000)
@@ -54,3 +61,17 @@ def test_normalize_2():
     assert f.is_negative() == False
     assert f.get_exponent() == 2
     assert f.get_mantissa() == 0x800000
+
+@pytest.mark.parametrize("value, float3b", numbers_3b)
+def test_to_3_byte(value, float3b):
+    f = Float()
+    f.from_float(value)
+    assert f.to_3_byte() == float3b
+
+
+@pytest.mark.parametrize("value, float3b", numbers_3b)
+def test_from_3_byte(value, float3b):
+    f = Float()
+    f.from_3_byte(float3b)
+    assert f.to_float() == value
+
