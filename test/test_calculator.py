@@ -62,9 +62,31 @@ class Calculator:
         print(f"Returning value {value}")
         return value
     
+    def set_word_argument(self, addr, value):
+        if value >= 0x8000 or value < 0:
+            value = (~value + 1) & 0xff
+            value |= 0x8000
+
+        print(f"Setting value {value:04x} to {addr:04x}")
+
+        self._machine.write_memory_byte(addr, (value >> 8) & 0xff) # High byte first
+        self._machine.write_memory_byte(addr + 1, value & 0xff)
+
+    def get_word_result(self, addr):
+        value = self._machine.read_memory_byte(addr) << 8   # High byte first
+        value |= self._machine.read_memory_byte(addr + 1)
+        print(f"Getting value {value:04x} from {addr:04x}")
+
+        if value >= 0x8000:
+            value = value & 0x7fff
+            value *= -1
+
+        print(f"Returning value {value}")
+        return value
+    
     def run_function(self, addr):
         # Put the breakpoint to the top of the stack
-        # When a calculator function will return, it will trigger a breakpoint
+        # When a calculator function will return, it will get to the 0xbeef address
         self._emulator._cpu._sp = 0xfffe
         self._emulator._machine.write_memory_word(0xfffe, 0xbeef) # breakpoint return address
 
@@ -86,7 +108,9 @@ def calculator():
     (42, 56, 98),
     (1, -1, 0),
     (10, -15, -5),
+    (10, -5, 5),
     (-10, 5, -5),
+    (-10, 20, 10),
     (-10, -10, -20)
 ])
 def test_add_byte(calculator, arg1, arg2, res):
@@ -98,3 +122,24 @@ def test_add_byte(calculator, arg1, arg2, res):
     calculator.run_function(0x0849)
 
     assert calculator.get_byte_result(0xc374) == res
+
+
+@pytest.mark.parametrize("arg1, arg2, res", [
+    (1, 2, 3),
+    (42, 56, 98),
+    (1, -1, 0),
+    (10, -15, -5),
+    (10, -5, 5),
+    (-10, 5, -5),
+    (-10, 20, 10),
+    (-10, -10, -20)
+])
+def test_add_2_byte(calculator, arg1, arg2, res):
+    logging.basicConfig(level=logging.DEBUG)
+
+    calculator.set_word_argument(0xc372, arg1)
+    calculator.set_word_argument(0xc375, arg2)
+    
+    calculator.run_function(0x08dd)
+
+    assert calculator.get_word_result(0xc375) == res
