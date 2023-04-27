@@ -26,6 +26,9 @@
 ; - 0877 - Normalize two 3-byte floats before adding
 ; - 08ff - Add two 2-byte integers in Sign-Magnitude representation.
 ; - 092d - Normalize exponent
+; - 0987 - Add two 3-byte floats
+; - 0994 - Multiply two 2-byte mantissa values
+; - 09ec - Multiply two 3-byte flot values
 
 
 ; Add two 1-byte integers in Sign-Magnitude representation.
@@ -326,7 +329,7 @@ NORM_EXPONENT_L:
 NORM_EXPONENT_5:
     095c  1f         RAR                        ; Shift the mantissa 1 bit back (right)
     095d  57         MOV D, A                   ; to reserve place for the sign bit
-    095e  73         MOV M, E
+    095e  7b         MOV A, E
     095f  1f         RAR
     0960  5f         MOV E, A
 
@@ -387,13 +390,132 @@ ADD_FLOATS:
     0990  cd 2d 09   CALL NORM_EXPONENT (092d)
     0993  c9         RET
 
-0990  CD 2D 09 C9 21 72 C3 7E 21 75 C3 AE E6 80 F5 7E
-09A0  E6 7F 57 23 5E 97 67 6F 06 08 3A 73 C3 1F 4F DA
-09B0  C1 09 7C 1F 67 7D 1F 6F AF 05 CA C5 09 79 C3 AD
-09C0  09 19 C3 B2 09 06 06 3A 72 C3 1F 4F DA DE 09 7C
-09D0  1F 67 7D 1F 6F AF 05 CA E2 09 79 C3 CA 09 19 C3
-09E0  CF 09 11 76 C3 7D 12 1B F1 B4 12 C9 CD 49 08 CD
-09F0  94 09 21 74 C3 CD 2D 09 C9 21 72 C3 7E 21 75 C3
+
+; Multiply two 2-byte signed mantissa values
+;
+; Arguments are located at 0xc372/0xc373 and 0xc375/0xc376 (high byte first), the result is
+; stored at 0xc375/0xc376
+;
+; Although the documentation states this is multiplication of two 2-byte integers, it worth
+; noting that this is very special implementation, and does not work for generic integers.
+; Instead it is supposed to multiply normalized mantissa values:
+; - Shifted to the left, so that 14th bit is 0, and 13th bit is 1
+; - Bit 14 represents integer part of the value, bits 0-13 represent fraction part. This
+;   means that the value represent a number between 0 and 1, and multiplication result will
+;   also be in this range. Moreover multiplication result will be less than arguments, and
+;   and therefore will require mantissa normalization.
+; - Bit 15 is a sign bit
+;
+; Implementation is a classic column multiplication. If argument has a particular bit set,
+; the result will be added with a second argument shifted by a respected number of bits. The
+; only important thing to note, that instead of shifting one of the arguments left, this 
+; implementation does shift the result right. That is why it does not work for generic integers,
+; but ok for mantissa multiplication.
+MULT_MANTISSA:
+    0994  21 72 c3   LXI HL, c372               ; Load high bytes and compare their signs
+    0997  7e         MOV A, M
+    0998  21 75 c3   LXI HL, c375
+    099b  ae         XRA M                      ; resulting sign is a XOR of arguments' signs
+    099c  e6 80      ANI 80
+    099e  f5         PUSH PSW                   ; Just store the sign on stack for now
+
+    099f  7e         MOV A, M                   ; Load the second argument to DE without the sign bit
+    09a0  e6 7f      ANI 7f
+    09a2  57         MOV D, A
+    09a3  23         INX HL
+    09a4  5e         MOV E, M
+
+    09a5  97         SUB A                      ; Zero HL (result accumulator) and carry bit
+    09a6  67         MOV H, A
+    09a7  6f         MOV L, A
+
+    09a8  06 08      MVI B, 08                  ; Set the number bits in the low byte
+
+    09aa  3a 73 c3   LDA c373                   ; Load first argument low byte
+
+MULT_MANTISSA_L1:
+    09ad  1f         RAR                        ; Argument 1 will be shifted right bit by bit
+    09ae  4f         MOV C, A                   ; If the bit is set - add the second argument 
+    09af  da c1 09   JC MULT_ARG2_ADD_1 (09c1)  ; to the result accumulator (HL)
+
+MULT_MANTISSA_CONT_1:
+    09b2  7c         MOV A, H                   ; Shift the result 1 bit right
+    09b3  1f         RAR                        ; 
+    09b4  67         MOV H, A
+    09b5  7d         MOV A, L
+    09b6  1f         RAR
+    09b7  6f         MOV L, A
+
+    09b8  af         XRA A                      ; Clear A and carry bit
+    09b9  05         DCR B                      ; Repeat for all bits in the low byte of the 1st arg
+    09ba  ca c5 09   JZ MULT_MANTISSA_CONT_2 (09c5)
+
+    09bd  79         MOV A, C                   ; Load the next part of the low byte
+    09be  c3 ad 09   JMP MULT_MANTISSA_L1 (09ad); and repeat
+
+MULT_ARG2_ADD_1:
+    09c1  19         DAD DE                     ; Add the second argument to the result
+    09c2  c3 b2 09   JMP MULT_MANTISSA_CONT_1 (09b2)
+
+MULT_MANTISSA_CONT_2:
+    09c5  06 06      MVI B, 06                  ; Number of iterations for the high byte
+    09c7  3a 72 c3   LDA c372                   ; Load the high byte of the first argument
+
+MULT_MANTISSA_L2:
+    09ca  1f         RAR                        ; Argument 1 will be shifted right bit by bit
+    09cb  4f         MOV C, A                   ; If the bit is set - add the second argument 
+    09cc  da de 09   JC MULT_ARG2_ADD_2 (09de)  ; to the result accumulator (HL)
+
+MULT_MANTISSA_CONT_3:
+    09cf  7c         MOV A, H                   ; Shift result right 1 bit
+    09d0  1f         RAR
+    09d1  67         MOV H, A
+    09d2  7d         MOV A, L
+    09d3  1f         RAR
+    09d4  6f         MOV L, A
+
+    09d5  af         XRA A                      ; 
+    09d6  05         DCR B                      ; Repeat for all 6 bits in the high byte
+    09d7  ca e2 09   JZ MULT_MANTISSA_CONT_4 (09e2)
+    09da  79         MOV A, C
+    09db  c3 ca 09   JMP MULT_MANTISSA_L2 (09ca)
+
+MULT_ARG2_ADD_2:
+    09de  19         DAD DE                     ; Add the second argument to the result
+    09df  c3 cf 09   JMP MULT_MANTISSA_CONT_3 (09cf)
+
+MULT_MANTISSA_CONT_4:
+    09e2  11 76 c3   LXI DE, c376               ; Store result
+    09e5  7d         MOV A, L
+    09e6  12         STAX DE
+    09e7  1b         DCX DE
+    09e8  f1         POP PSW
+
+    09e9  b4         ORA H                      ; Add the sign bit
+    09ea  12         STAX DE
+
+    09eb  c9         RET
+
+
+; Multiply two 3-byte floating point values
+;
+; Multplies two floats at the addresses 0xc371-0xc373, and 0xc374-0xc376. Result is stored
+; at 0xc374-0xc376
+;
+; Multiplication algorithm is quite simple:
+; - Exponents simply added
+; - Mantissas multiplicated
+; - Result is normalized, if necessary
+MULT_3_BYTE:
+    09ec  cd 49 08   CALL ADD_1_BYTE (0849)     ; Sum exponents
+    09ef  cd 94 09   CALL MULT_2_BYTE (0994)    ; Multiply mantissa values
+    09f2  21 74 c3   LXI HL, c374
+    09f5  cd 2d 09   CALL NORM_EXPONENT (092d)  ; Normalize the exponent
+    09f8  c9         RET    
+
+
+
+09F0                             21 72 C3 7E 21 75 C3
 0A00  AE E6 80 F5 7E E6 7F 57 23 5E 21 72 C3 7E E6 7F
 0A10  47 23 4E EB 16 02 1E 01 7D 91 6F 7C 98 67 FA 2D
 0A20  0A 17 3F 7A 17 57 DA 50 0A 29 C3 18 0A 17 3F 7A

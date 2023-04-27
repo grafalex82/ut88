@@ -161,12 +161,32 @@ def test_add_2_byte(calculator, arg1, arg2, res):
 
 @pytest.mark.parametrize("arg1, arg2, res", add_numbers)
 def test_add_float(calculator, arg1, arg2, res):
+    calculator.set_float_argument(0xc371, arg1)
+    calculator.set_float_argument(0xc374, arg2)
+    
+    calculator.run_function(0x0987)
+
+    assert calculator.get_float_result(0xc374) == res
+
+
+# Argument1, Argument2, Multiplication result
+mult_numbers = [
+    (1., 0., 0.),
+    (1., 2., 2.),
+    (2., 0.5, 1.),
+    (3., 4., 12.),
+    (-1., -5., 5.),
+    (-2., 5., -10.),
+]
+
+@pytest.mark.parametrize("arg1, arg2, res", mult_numbers)
+def test_mult_float(calculator, arg1, arg2, res):
     logging.basicConfig(level=logging.DEBUG)
     calculator._machine._cpu.enable_registers_logging(True)
 
     calculator.set_float_argument(0xc371, arg1)
     calculator.set_float_argument(0xc374, arg2)
     
-    calculator.run_function(0x0987)
+    calculator.run_function(0x09ec)
 
     assert calculator.get_float_result(0xc374) == res
