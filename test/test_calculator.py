@@ -84,11 +84,35 @@ class Calculator:
         print(f"Returning value {value}")
         return value
     
+    def set_float_argument(self, addr, value):
+        f = Float(float(value))
+        fbytes = f.to_3_byte()
+
+        print(f"Setting value {fbytes:06x} to {addr:04x}")
+
+        self._machine.write_memory_byte(addr, (fbytes >> 16) & 0xff) # High byte first
+        self._machine.write_memory_byte(addr + 1, (fbytes >> 8) & 0xff)
+        self._machine.write_memory_byte(addr + 2, fbytes & 0xff)
+
+    def get_float_result(self, addr):
+        fbytes = self._machine.read_memory_byte(addr) << 16   # High byte first
+        fbytes |= self._machine.read_memory_byte(addr + 1) << 8
+        fbytes |= self._machine.read_memory_byte(addr + 2)
+
+        print(f"Getting value {fbytes:06x} from {addr:04x}")
+
+        f = Float()
+        f.from_3_byte(fbytes)
+        value = f.to_float()
+
+        print(f"Returning value {value}")
+        return value
+    
     def run_function(self, addr):
         # Put the breakpoint to the top of the stack
         # When a calculator function will return, it will get to the 0xbeef address
-        self._emulator._cpu._sp = 0xfffe
-        self._emulator._machine.write_memory_word(0xfffe, 0xbeef) # breakpoint return address
+        self._emulator._cpu._sp = 0xc3ee
+        self._emulator._machine.write_memory_word(0xc3ee, 0xbeef) # breakpoint return address
 
         # Will execute function starting from the given address
         self._emulator._cpu._pc = addr
@@ -103,7 +127,8 @@ class Calculator:
 def calculator():
     return Calculator()
 
-@pytest.mark.parametrize("arg1, arg2, res", [
+# Argument1, Argument2, Addition result
+add_numbers = [
     (1, 2, 3),
     (42, 56, 98),
     (1, -1, 0),
@@ -112,10 +137,10 @@ def calculator():
     (-10, 5, -5),
     (-10, 20, 10),
     (-10, -10, -20)
-])
-def test_add_byte(calculator, arg1, arg2, res):
-    logging.basicConfig(level=logging.DEBUG)
+]
 
+@pytest.mark.parametrize("arg1, arg2, res", add_numbers)
+def test_add_byte(calculator, arg1, arg2, res):
     calculator.set_byte_argument(0xc371, arg1)
     calculator.set_byte_argument(0xc374, arg2)
     
@@ -124,22 +149,24 @@ def test_add_byte(calculator, arg1, arg2, res):
     assert calculator.get_byte_result(0xc374) == res
 
 
-@pytest.mark.parametrize("arg1, arg2, res", [
-    (1, 2, 3),
-    (42, 56, 98),
-    (1, -1, 0),
-    (10, -15, -5),
-    (10, -5, 5),
-    (-10, 5, -5),
-    (-10, 20, 10),
-    (-10, -10, -20)
-])
+@pytest.mark.parametrize("arg1, arg2, res", add_numbers)
 def test_add_2_byte(calculator, arg1, arg2, res):
-    logging.basicConfig(level=logging.DEBUG)
-
     calculator.set_word_argument(0xc372, arg1)
     calculator.set_word_argument(0xc375, arg2)
     
     calculator.run_function(0x08dd)
 
     assert calculator.get_word_result(0xc375) == res
+
+
+@pytest.mark.parametrize("arg1, arg2, res", add_numbers)
+def test_add_float(calculator, arg1, arg2, res):
+    logging.basicConfig(level=logging.DEBUG)
+    calculator._machine._cpu.enable_registers_logging(True)
+
+    calculator.set_float_argument(0xc371, arg1)
+    calculator.set_float_argument(0xc374, arg2)
+    
+    calculator.run_function(0x0987)
+
+    assert calculator.get_float_result(0xc374) == res
