@@ -15,6 +15,8 @@ class CPU:
         self._current_inst = 0  # current instruction
         self._instructions = [None] * 0x100
         self.init_instruction_table();
+    
+        self._registers_logging = False
 
     def reset(self):
         """
@@ -66,6 +68,10 @@ class CPU:
         adding passed instructions to the instruction fetch queue.
         """
         self._interrupt_instructions = instructions
+
+
+    def enable_registers_logging(self, value):
+        self._registers_logging = value
 
 
     def _fetch_next_byte(self):
@@ -224,22 +230,61 @@ class CPU:
             return "SP"
 
 
+    def _get_cpu_state_str(self):
+        res = f"A={self._a:02x} BC={self._get_bc():04x} DE={self._get_de():04x} "
+        res += f"HL={self._get_hl():04x} SP={self._sp:04x} "
+        res += f"{'Z' if self._zero else '-'}"
+        res += f"{'S' if self._sign else '-'}"
+        res += f"{'C' if self._carry else '-'}"
+        res += f"{'A' if self._half_carry else '-'}"
+        res += f"{'P' if self._parity else '-'}"
+        res += f"{'I' if self._enable_interrupts else '-'}"
+        return res
+
+
     def _log_1b_instruction(self, mnemonic):
+        if logger.level > logging.DEBUG:
+            return
+
         addr = self._pc - 1
-        logger.debug(f' {addr:04x}  {self._current_inst:02x}         {mnemonic}')
+        log_str = f' {addr:04x}  {self._current_inst:02x}         {mnemonic}'
+
+        if self._registers_logging:
+            log_str = f"{log_str:35} {self._get_cpu_state_str()}"
+            
+        logger.debug(log_str)
 
 
     def _log_2b_instruction(self, mnemonic):
+        if logger.level > logging.DEBUG:
+            return
+
         addr = self._pc - 2
         param = self._machine.read_memory_byte(self._pc - 1)
-        logger.debug(f' {addr:04x}  {self._current_inst:02x} {param:02x}      {mnemonic}')
+        log_str = f' {addr:04x}  {self._current_inst:02x} {param:02x}      {mnemonic}'
+
+        if self._registers_logging:
+            log_str = f"{log_str:35} {self._get_cpu_state_str()}"
+            
+        logger.debug(log_str)
 
 
     def _log_3b_instruction(self, mnemonic):
+        if logger.level > logging.DEBUG:
+            return
+
         addr = self._pc - 3
         param1 = self._machine.read_memory_byte(self._pc - 2)
         param2 = self._machine.read_memory_byte(self._pc - 1)
-        logger.debug(f' {addr:04x}  {self._current_inst:02x} {param1:02x} {param2:02x}   {mnemonic}')
+
+        log_str = f' {addr:04x}  {self._current_inst:02x} {param1:02x} {param2:02x}   {mnemonic}'
+
+        if self._registers_logging:
+            log_str = f"{log_str:35} {self._get_cpu_state_str()}"
+            
+        logger.debug(log_str)
+
+
 
     # Data transfer instructions
 
