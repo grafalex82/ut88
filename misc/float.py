@@ -21,7 +21,7 @@ class Float:
 
     def from_float(self, value: float):
         float_bytes = struct.pack('f', value)
-        int_value = struct.unpack('i', float_bytes)[0]
+        int_value = struct.unpack('I', float_bytes)[0]
 
         print(f"Value = {value} {int_value:08x}")
 
@@ -61,7 +61,7 @@ class Float:
         int_value |= ((self._exponent + 127) & 0xff) << 23
         int_value |= 0x80000000 if self._negative else 0
 
-        float_bytes = struct.pack('i', int_value)
+        float_bytes = struct.pack('I', int_value)
         return struct.unpack('f', float_bytes)[0]
 
     def to_3_byte(self):

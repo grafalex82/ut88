@@ -18,7 +18,8 @@ numbers = [
         (1., False, 0, 0x800000),
         (0.5, False, -1, 0x800000),
         (2., False, 1, 0x800000),
-        (1.5, False, 0, 0xc00000)
+        (1.5, False, 0, 0xc00000),
+        (-2., True, 1, 0x800000)
     ]
 
 # Test numbers for conversion between float and 3-byte float numbers
@@ -26,7 +27,8 @@ numbers_3b = [
     (0., 0x000000),
     (1., 0x012000),
     (1.5, 0x013000),
-    (2., 0x022000)
+    (2., 0x022000),
+    (-2., 0x02a000),
 ]
 
 def test_new():
