@@ -77,3 +77,7 @@ def test_from_3_byte(value, float3b):
     f.from_3_byte(float3b)
     assert f.to_float() == value
 
+def test_from_3_byte_2():
+    f = Float()
+    f.from_3_byte(0x810000)
+    assert f.to_float() == 0

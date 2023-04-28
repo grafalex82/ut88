@@ -89,4 +89,8 @@ class Float:
 
         self._negative = (value & 0x8000 != 0)
         self._mantissa = (value & 0x3fff) << 10
-        self._exponent -= 1
+
+        if self._mantissa == 0:
+            self._exponent = 0
+        else:
+            self._exponent -= 1

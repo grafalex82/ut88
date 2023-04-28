@@ -195,7 +195,7 @@ div_numbers = [
     (12345., 3., 4115.),
     (2., -4., -0.5),
     (-2., 2., -1.),
-#    (0., 1., 0.),
+    (0., 1., 0.),
 ]
 
 @pytest.mark.parametrize("arg1, arg2, res", div_numbers)
