@@ -667,21 +667,100 @@ DIV_3_BYTE:
 
     0a8b  c9         RET                        ; Done
 
-0A80                                      7E 23 46 23
-0A90  4E C9 77 23 70 23 71 C9 0E 01 16 20 1E 00 62 6B
+
+; Load 3 bytes at HL address to A, B, and C registers respectively
+LOAD_ABC:
+    0a8c  7e         MOV A, M
+    0a8d  23         INX HL
+    0a8e  46         MOV B, M
+    0a8f  23         INX HL
+    0a90  4e         MOV C, M
+    0a91  c9         RET
+
+; Store A, B, and C registers at HL address
+STORE_ABC:
+    0a92  77         MOV M, A    
+    0a93  23         INX HL      
+    0a94  70         MOV M, B    
+    0a95  23         INX HL      
+    0a96  71         MOV M, C    
+    0a97  c9         RET         
+
+
+0A90                          0E 01 16 20 1E 00 62 6B
 0AA0  FE 02 D2 A8 0A C3 E6 0A 06 08 07 DA B2 0A 05 C3
 0AB0  AA 0A 05 CA DB 0A F5 AF 7A 1F 57 7B 1F 5F 0C F1
 0AC0  07 D2 B2 0A 19 D2 B2 0A F5 7C 1F 67 7D 1F 6F AF
 0AD0  7A 1F 57 7B 1F 5F 0C F1 C3 B2 0A 3D FE 01 CA E6
 0AE0  0A 54 5D C3 A8 0A AF 84 FA F0 0A 29 0D C3 E6 0A
 0AF0  7C 1F 67 7D 1F 6F 0C AF 7C 1F 32 78 C3 7D 1F 32
-0B00  79 C3 0C 79 32 77 C3 C9 3A 64 C3 E6 7F CA 5E 0B
-0B10  F5 21 71 C3 CD 8C 0A 21 74 C3 CD 92 0A F1 3D CA
-0B20  29 0B F5 CD EC 09 C3 1D 0B 3A 64 C3 A7 F2 6A 0B
-0B30  21 71 C3 CD 8C 0A F5 C5 21 74 C3 CD 8C 0A 21 71
-0B40  C3 CD 92 0A 21 74 C3 3E 01 06 20 0E 00 CD 92 0A
-0B50  CD 6F 0A C1 F1 21 71 C3 CD 92 0A C3 6A 0B 21 74
-0B60  C3 3E 01 06 20 0E 00 CD 92 0A C9 3E 02 06 20 0E
+0B00  79 C3 0C 79 32 77 C3 C9 
+
+POWER:
+    0b08  3a 64 c3   LDA c364                   ; Load the power value to A
+
+    0b0b  e6 7f      ANI 7f                     ; Zero exponent => result is 1.0
+    0b0d  ca 5e 0b   JZ POWER_RESULT_ONE (0b5e)
+
+    0b10  f5         PUSH PSW                   ; Load base to A-B-C
+    0b11  21 71 c3   LXI HL, c371
+    0b14  cd 8c 0a   CALL LOAD_ABC (0a8c)
+
+    0b17  21 74 c3   LXI HL, c374               ; And store it as a result, for now
+    0b1a  cd 92 0a   CALL STORE_ABC (0a92)
+
+POWER_LOOP:
+    0b1d  f1         POP PSW
+    0b1e  3d         DCR A                      ; decrement exponent, do while exponent is not zero
+    0b1f  ca 29 0b   JZ POWER_CONT_1 (0b29)
+
+    0b22  f5         PUSH PSW
+    0b23  cd ec 09   CALL MULT_3_BYTE (09ec)    ; Multiply result accumulator with the base (again)
+
+    0b26  c3 1d 0b   JMP POWER_LOOP (0b1d)
+
+POWER_CONT_1:
+    0b29  3a 64 c3   LDA c364                   ; Load the power value to A again
+    0b2c  a7         ANA A
+    0b2d  f2 6a 0b   JP POWER_EXIT (0b6a)       ; If it was positive exponent - we are done
+
+    0b30  21 71 c3   LXI HL, c371               ; Load whatever is in c371 and save it on the stack
+    0b33  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0b36  f5         PUSH PSW
+    0b37  c5         PUSH BC
+
+    0b38  21 74 c3   LXI HL, c374               ; Load the power result
+    0b3b  cd 8c 0a   CALL LOAD_ABC (0a8c)
+
+    0b3e  21 71 c3   LXI HL, c371               ; And store it to 0xc371 (as a divider)
+    0b41  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0b44  21 74 c3   LXI HL, c374               ; Prepare 1.0 as a divident
+    0b47  3e 01      MVI A, 01
+    0b49  06 20      MVI B, 20
+    0b4b  0e 00      MVI C, 00
+    0b4d  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0b50  cd 6f 0a   CALL DIV_3_BYTE (0a6f)     ; Divide 1.0 by the power result obtained above
+
+    0b53  c1         POP BC                     ; Restore value at c371
+    0b54  f1         POP PSW
+    0b55  21 71 c3   LXI HL, c371
+    0b58  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0b5b  c3 6a 0b   JMP POWER_EXIT (0b6a)      ; Done
+
+POWER_RESULT_ONE:
+    0b5e  21 74 c3   LXI HL, c374               ; Store 1.0 as a result
+    0b61  3e 01      MVI A, 01   
+    0b63  06 20      MVI B, 20   
+    0b65  0e 00      MVI C, 00   
+    0b67  cd 92 0a   CALL STORE_ABC (0a92)
+
+POWER_EXIT:
+    0b6a  c9         RET         
+
+0B60                                   3E 02 06 20 0E
 0B70  00 21 7A C3 CD 92 0A 3E 01 21 77 C3 CD 92 0A 21
 0B80  6B C3 CD 92 0A 21 64 C3 77 06 A0 21 7D C3 CD 92
 0B90  0A 21 61 C3 CD 8C 0A 21 71 C3 CD 92 0A 21 77 C3

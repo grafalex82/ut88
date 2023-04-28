@@ -196,6 +196,7 @@ div_numbers = [
     (2., -4., -0.5),
     (-2., 2., -1.),
     (0., 1., 0.),
+    
     # The implementation allows division by zero, but the result is random (and looks
     # correct, while it is obviously not)
     #(2., 0., 0.), 
@@ -203,12 +204,31 @@ div_numbers = [
 
 @pytest.mark.parametrize("arg1, arg2, res", div_numbers)
 def test_div_float(calculator, arg1, arg2, res):
-    logging.basicConfig(level=logging.DEBUG)
-    calculator._machine._cpu.enable_registers_logging(True)
-
     calculator.set_float_argument(0xc374, arg1) # Divident
     calculator.set_float_argument(0xc371, arg2) # Divider
     
     calculator.run_function(0x0a6f)
+
+    assert calculator.get_float_result(0xc374) == res
+
+
+# base, power, exponent result
+exp_numbers = [
+    (10., 0, 1.),   # exponent=0 => result=1, regardless of the value
+    (20., 0, 1.),   # exponent=0 => result=1, regardless of the value
+    (3., 4, 81.),
+    (0.5, 3, .125),
+    (2., -1, .5),
+    (2., -2, .25),
+]
+@pytest.mark.parametrize("base, power, res", exp_numbers)
+def test_exp(calculator, base, power, res):
+    logging.basicConfig(level=logging.DEBUG)
+    calculator._machine._cpu.enable_registers_logging(True)
+
+    calculator.set_float_argument(0xc371, base)
+    calculator.set_byte_argument(0xc364, power)
+
+    calculator.run_function(0x0b08)
 
     assert calculator.get_float_result(0xc374) == res
