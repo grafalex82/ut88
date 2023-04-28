@@ -70,13 +70,19 @@ class Float:
         if self._mantissa == 0:
             return 0
         
-        exponent = (self._exponent + 1) & 0xff
+        exponent = self._exponent + 1
         if exponent < 0:
             exponent = (~exponent + 1) & 0xff
+            exponent |= 0x80
+        else:
+            exponent &= 0xff
+
         mantissa = self._mantissa >> 10
         mantissa |= 0x8000 if self._negative else 0
 
-        return (exponent << 16) | (mantissa & 0xffff)
+        res = (exponent << 16) | (mantissa & 0xffff)
+        print(f"to_3_byte: {res:06x}")
+        return res
 
 
     def from_3_byte(self, value):
@@ -85,7 +91,7 @@ class Float:
 
         self._exponent = (value >> 16) & 0xff
         if self._exponent >= 0x80:
-            self._exponent = (~self._exponent + 1) & 0xff
+            self._exponent = (~(self._exponent & 0x7f) + 1) & 0xff
 
         self._negative = (value & 0x8000 != 0)
         self._mantissa = (value & 0x3fff) << 10
