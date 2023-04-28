@@ -178,15 +178,34 @@ mult_numbers = [
     (-1., -5., 5.),
     (-2., 5., -10.),
 ]
-
 @pytest.mark.parametrize("arg1, arg2, res", mult_numbers)
 def test_mult_float(calculator, arg1, arg2, res):
-    logging.basicConfig(level=logging.DEBUG)
-    calculator._machine._cpu.enable_registers_logging(True)
-
     calculator.set_float_argument(0xc371, arg1)
     calculator.set_float_argument(0xc374, arg2)
     
     calculator.run_function(0x09ec)
+
+    assert calculator.get_float_result(0xc374) == res
+
+
+# Argument1, Argument2, division result
+div_numbers = [
+    (1., 1., 1.),
+    (2., 1., 2.),
+    (12345., 3., 4115.),
+    (2., -4., -0.5),
+    (-2., 2., -1.),
+#    (0., 1., 0.),
+]
+
+@pytest.mark.parametrize("arg1, arg2, res", div_numbers)
+def test_div_float(calculator, arg1, arg2, res):
+    logging.basicConfig(level=logging.DEBUG)
+    calculator._machine._cpu.enable_registers_logging(True)
+
+    calculator.set_float_argument(0xc374, arg1) # Divident
+    calculator.set_float_argument(0xc371, arg2) # Divider
+    
+    calculator.run_function(0x0a6f)
 
     assert calculator.get_float_result(0xc374) == res

@@ -514,17 +514,160 @@ MULT_3_BYTE:
     09f8  c9         RET    
 
 
+; Divide two 2-byte signed mantissa values
+;
+; Arguments are located at 0xc372/0xc373 (divider) and 0xc375/0xc376 (divident) high byte first,
+; the result is stored at 0xc375/0xc376
+;
+; The algorithm is a column division, but instead of shifting divider right, the algorithm
+; shifts the divident left. Division is done using subtraction - if subtraction is successful, then
+; corresponding output bit is 1, otherwise 0
+DIV_MANTISSA:
+    09f9  21 72 c3   LXI HL, c372               ; Resulting sign is a XOR of arguments' sings
+    09fc  7e         MOV A, M
+    09fd  21 75 c3   LXI HL, c375
+    0a00  ae         XRA M
+    0a01  e6 80      ANI 80
+    0a03  f5         PUSH PSW                   ; Just store the sign on stack for now
 
-09F0                             21 72 C3 7E 21 75 C3
-0A00  AE E6 80 F5 7E E6 7F 57 23 5E 21 72 C3 7E E6 7F
-0A10  47 23 4E EB 16 02 1E 01 7D 91 6F 7C 98 67 FA 2D
-0A20  0A 17 3F 7A 17 57 DA 50 0A 29 C3 18 0A 17 3F 7A
-0A30  17 57 DA 5C 0A 09 29 7C B7 FA 2D 0A C3 18 0A 7D
-0A40  91 6F 7C 98 67 FA 54 0A 17 3F 7B 17 5F DA 66 0A
-0A50  29 C3 3F 0A 17 3F 7B 17 5F DA 66 0A 09 29 7C B7
-0A60  FA 54 0A C3 3F 0A 21 75 C3 F1 B2 77 23 73 C9 21
-0A70  71 C3 7E 17 3F 1F 77 CD 49 08 CD F9 09 21 74 C3
-0A80  CD 2D 09 21 71 C3 7E 17 3F 1F 77 C9 7E 23 46 23
+    0a04  7e         MOV A, M                   ; Load divident into DE
+
+    0a05  e6 7f      ANI 7f
+    0a07  57         MOV D, A
+    0a08  23         INX HL 
+    0a09  5e         MOV E, M
+
+    0a0a  21 72 c3   LXI HL, c372               ; Load divider into BC
+    0a0d  7e         MOV A, M
+    0a0e  e6 7f      ANI 7f
+    0a10  47         MOV B, A
+    0a11  23         INX HL
+    0a12  4e         MOV C, M
+
+    0a13  eb         XCHG                       ; Move divident to HL, this will be minuend
+
+    0a14  16 02      MVI D, 02                  ; Load stop counters into DE (7 bits to process in D,
+    0a16  1e 01      MVI E, 01                  ; 8 bits to process in E). DE will be the result accumulator
+
+DIV_MANTISSA_L1:
+    0a18  7d         MOV A, L                   ; Subtract divider (BD) from the minuend (HL)
+    0a19  91         SUB C
+    0a1a  6f         MOV L, A
+    0a1b  7c         MOV A, H
+    0a1c  98         SBB B
+    0a1d  67         MOV H, A
+
+    0a1e  fa 2d 0a   JN DIV_MANTISSA_1 (0a2d)   ; If result is negative - store zero bit in the result
+
+    0a21  17         RAL                        ; Otherwise store set bit in the result
+    0a22  3f         CMC                        ; Shift D left, setting the rightmost bit
+    0a23  7a         MOV A, D                   
+    0a24  17         RAL
+    0a25  57         MOV D, A
+    0a26  da 50 0a   JC DIV_MANTISSA_2 (0a50)   ; Repeat until D stop mark is reached, then move to part 2
+
+    0a29  29         DAD HL                     ; Shift HL left 1 bit
+    0a2a  c3 18 0a   JMP DIV_MANTISSA_L1 (0a18)
+
+DIV_MANTISSA_1:
+    0a2d  17         RAL                        ; Shift D left, Clear the rightmost bit
+    0a2e  3f         CMC
+    0a2f  7a         MOV A, D                   
+    0a30  17         RAL
+    0a31  57         MOV D, A
+    0a32  da 5c 0a   JC DIV_MANTISSA_4 (0a5c)   ; Repeat until D stop mark is reached, then move to part 2
+
+    0a35  09         DAD BC                     ; Restore the original divident
+    0a36  29         DAD HL                     ; And shift it left
+    0a37  7c         MOV A, H
+    0a38  b7         ORA A
+    0a39  fa 2d 0a   JN DIV_MANTISSA_1 (0a2d)   ; ???
+
+    0a3c  c3 18 0a   JMP DIV_MANTISSA_L1 (0a18)
+
+DIV_MANTISSA_L2:
+    0a3f  7d         MOV A, L                   ; Part 2: Do the same, but use E as a counter
+    0a40  91         SUB C                      ; Subtract divider (BD) from the minuend (HL)
+    0a41  6f         MOV L, A
+    0a42  7c         MOV A, H
+    0a43  98         SBB B
+    0a44  67         MOV H, A
+    0a45  fa 54 0a   JN DIV_MANTISSA_3 (0a54)   ; If result is negative - store zero bit in the result
+
+    0a48  17         RAL                        ; Otherwise store set bit in the result
+    0a49  3f         CMC                        ; Shift D left, setting the rightmost bit
+    0a4a  7b         MOV A, E
+    0a4b  17         RAL
+    0a4c  5F         MOV E, A
+    0a4d  da 66 0a   JC DIV_MANTISSA_EXIT (0a66)    ; Repeat until stop mark in E reached
+
+DIV_MANTISSA_2:
+    0a50  29         DAD HL                     ; Shift HL left 1 bit
+    0a52  c3 3f 0a   JMP DIV_MANTISSA_L2 (0a3f)
+
+DIV_MANTISSA_3:
+    0a54  17         RAL                        ; Shift D left, and set 0 in the rightmost bit
+    0a55  3f         CMC
+    0a56  7b         MOV A, E
+    0a57  17         RAL
+    0a58  5f         MOV E, A
+    0a59  da 66 0a   JC DIV_MANTISSA_EXIT (0a66)
+
+DIV_MANTISSA_4:
+    0a5c  09         DAD BC                     ; Restore the original divident
+    0a5d  29         DAD HL                     ; And shift it left
+    0a5e  7c         MOV A, H
+    0a5f  b7         ORA A
+    0a60  fa 54 0a   JN DIV_MANTISSA_3 (0a54)
+    0a63  c3 3f 0a   JMP DIV_MANTISSA_L2 (0a3f)
+
+DIV_MANTISSA_EXIT:
+    0a66  21 75 c3   LXI HL, c375               ; Store accumulator at c375
+    0a69  f1         POP PSW
+    0a6a  b2         ORA D                      ; Do not forget to apply sign bit
+    0a6b  77         MOV M, A
+    0a6c  23         INX HL
+    0a6d  73         MOV M, E
+
+    0a6e  c9         RET                        ; Done
+
+
+
+; Divide two 3-byte floating point values
+;
+; Divide value at 0xc374-0xc376 (divident) by value at 0xc371-0xc373 (divider).
+; Result is stored at 0xc374-0xc376
+;
+; Division algorithm:
+; - Divider exponent is subtracted from divident's exponent
+; - Mantissas divided
+; - Result is normalized, if necessary
+DIV_3_BYTE:
+    0a6f  21 71 c3   LXI HL, c371               ; Load Divider's exponent
+    0a72  7e         MOV A, M
+
+    0a73  17         RAL                        ; Invert the exponent's sign bit
+    0a74  3f         CMC                        ; In order to subtract divider exponent from
+    0a75  1f         RAR                        ; divident's exponent
+    0a76  77         MOV M, A
+
+    0a77  cd 49 08   CALL ADD_1_BYTE (0849)     ; Perform the subtraction
+
+    0a7a  cd f9 09   CALL DIV_MANTISSA (09f9)
+
+    0a7d  21 74 c3   LXI HL, c374               ; Normalize the result
+    0a80  cd 2d 09   CALL NORM_EXPONENT (092d)
+
+    0a83  21 71 c3   LXI HL, c371               ; Invert divider's exponent sign back
+    0a86  7e         MOV A, M
+    0a87  17         RAL
+    0a88  3f         CMC
+    0a89  1f         RAR
+    0a8a  77         MOV M, A
+
+    0a8b  c9         RET                        ; Done
+
+0A80                                      7E 23 46 23
 0A90  4E C9 77 23 70 23 71 C9 0E 01 16 20 1E 00 62 6B
 0AA0  FE 02 D2 A8 0A C3 E6 0A 06 08 07 DA B2 0A 05 C3
 0AB0  AA 0A 05 CA DB 0A F5 AF 7A 1F 57 7B 1F 5F 0C F1
