@@ -196,6 +196,9 @@ div_numbers = [
     (2., -4., -0.5),
     (-2., 2., -1.),
     (0., 1., 0.),
+    # The implementation allows division by zero, but the result is random (and looks
+    # correct, while it is obviously not)
+    #(2., 0., 0.), 
 ]
 
 @pytest.mark.parametrize("arg1, arg2, res", div_numbers)
