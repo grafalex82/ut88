@@ -10,6 +10,7 @@ from lcd import LCD
 from hexkbd import HexKeyboard
 from timer import Timer
 from tape import TapeRecorder
+from utils import NestedLogger
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 
@@ -42,13 +43,29 @@ def main():
     machine.add_io(recorder)
 
     emulator = Emulator(machine)
-    emulator.add_breakpoint(0x0018, disable_debug_logging)  # Suppress logging for RST3 (wait 1s)
-    emulator.add_breakpoint(0x0018, lambda: print("RST 3: Wait 1s"))
-    emulator.add_breakpoint(0x005e, enable_debug_logging)
-    emulator.add_breakpoint(0x0021, disable_debug_logging)  # Suppress logging for RST4 (wait for a button)
-    emulator.add_breakpoint(0x0021, lambda: print("RST 4: Wait a button"))
-    emulator.add_breakpoint(0x006d, enable_debug_logging)
-    
+
+    nl = NestedLogger()
+
+    emulator.add_breakpoint(0x0000, lambda: nl.reset())
+
+    emulator.add_breakpoint(0x0018, lambda: nl.enter("RST 3: Wait 1s"))
+    emulator.add_breakpoint(0x005e, lambda: nl.exit())
+    emulator.add_breakpoint(0x0021, lambda: nl.enter("RST 4: Wait a button"))
+    emulator.add_breakpoint(0x006d, lambda: nl.exit())
+
+    emulator.add_breakpoint(0x0a92, lambda: nl.enter("STORE A-B-C to [HL]"))
+    emulator.add_breakpoint(0x0a97, lambda: nl.exit())
+    emulator.add_breakpoint(0x0a8c, lambda: nl.enter("LOAD [HL] to A-B-C"))
+    emulator.add_breakpoint(0x0a91, lambda: nl.exit())
+    emulator.add_breakpoint(0x0b08, lambda: nl.enter("POWER"))
+    emulator.add_breakpoint(0x0b6a, lambda: nl.exit())
+    emulator.add_breakpoint(0x0987, lambda: nl.enter("ADD"))
+    emulator.add_breakpoint(0x0993, lambda: nl.exit())
+    emulator.add_breakpoint(0x0a6f, lambda: nl.enter("DIV"))
+    emulator.add_breakpoint(0x0a8b, lambda: nl.exit())
+    emulator.add_breakpoint(0x09ec, lambda: nl.enter("MULT"))
+    emulator.add_breakpoint(0x09f8, lambda: nl.exit())
+
     while True:
         screen.fill(pygame.Color('black'))
         
