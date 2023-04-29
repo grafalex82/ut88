@@ -28,7 +28,10 @@
 ; - 092d - Normalize exponent
 ; - 0987 - Add two 3-byte floats
 ; - 0994 - Multiply two 2-byte mantissa values
-; - 09ec - Multiply two 3-byte flot values
+; - 09ec - Multiply two 3-byte float values
+; - 0a6f - Divide two 3-byte float values
+; - 0b08 - Power
+; - 0b6b - Logarithm
 
 
 ; Add two 1-byte integers in Sign-Magnitude representation.
@@ -760,24 +763,181 @@ POWER_RESULT_ONE:
 POWER_EXIT:
     0b6a  c9         RET         
 
-0B60                                   3E 02 06 20 0E
-0B70  00 21 7A C3 CD 92 0A 3E 01 21 77 C3 CD 92 0A 21
-0B80  6B C3 CD 92 0A 21 64 C3 77 06 A0 21 7D C3 CD 92
-0B90  0A 21 61 C3 CD 8C 0A 21 71 C3 CD 92 0A 21 77 C3
-0BA0  CD 8C 0A 21 74 C3 CD 92 0A CD 87 09 21 74 C3 CD
-0BB0  8C 0A 21 65 C3 CD 92 BA 21 7D C3 CD 8C 0A 21 74
-0BC0  C3 CD 92 0A CD 87 09 21 65 C3 CD 8C 0A 21 71 C3
-0BD0  CD 92 0A CD 6F 0A 21 74 C3 CD 8C BA 21 65 C3 CD
-0BE0  92 0A 21 68 C3 CD 92 0A 21 6B C3 CD 8C BA 21 71
-0BF0  C3 CD 92 0A 21 7A C3 CD 8C 0A 21 74 C3 CD 92 0A
-0C00  CD 87 09 21 74 C3 CD 8C 0A 21 6B C3 CD 92 0A 21
-0C10  64 C3 34 34 21 65 C3 CD 8C 0A 21 71 C3 CD 92 0A
-0C20  CD 08 0B 21 6B C3 CD 8C 0A 21 71 C3 CD 92 0A CD
-0C30  6F 0A 21 68 C3 CD 8C 0A 21 71 C3 CD 92 0A CD 87
-0C40  09 21 74 C3 CD 8C 0A 21 68 C3 CD 92 0A 21 72 C3
-0C50  7E 17 3F 1F 77 CD 77 08 CD DD 08 21 75 C3 7E E6
-0C60  7F CA 67 0C C3 E8 0B 23 7E FE 02 DA 71 0C C3 E8
-0C70  0B 21 68 C3 7E A7 FA 7D 0C 3C C3 85 0C 3D E6 7F
+
+; Calculate natual logarithm
+;
+; Argument is located at 0xc361-0xc363, result is 0xc368-0xc36a
+;
+; Calculation algorithm is based on the Taylor series:
+; Ln(x) = 2 * (A + A^3 / 3 + A^5 / 5 + ...) 
+; where A = (x - 1) / (x + 1)
+; Taylor series calculation continues until the next member does not change
+; the result for more than 1 LSB
+; 
+; The following helper variables used:
+; 0xc361 - function argument
+; 0xc364 - next series member power (1, 3, 5, ...)
+; 0xc365 - A = (x-1)/(x+1)
+; 0xc368 - result accumulator
+; 0xc36b - next series member divisor (1, 3, 5, ...)
+; 0xc377 - 1.
+; 0xc37a - 2.
+; 0xc37d - -1.
+LOGARITHM:
+    0b6b  3e 02      MVI A, 02                  ; Store value 2. at 0xc37a
+    0b6d  06 20      MVI B, 20
+    0b6f  0e 00      MVI C, 00
+    0b71  21 7a c3   LXI HL, c37a
+    0b74  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0b77  3e 01      MVI A, 01                  ; Stora value 1. at 0xc377
+    0b79  21 77 c3   LXI HL, c377
+    0b7c  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0b7f  21 6b c3   LXI HL, c36b               ; Initial member divisor (1.)
+    0b82  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0b85  21 64 c3   LXI HL, c364               ; Initial member power factor (1)
+    0b88  77         MOV M, A
+
+    0b89  06 a0      MVI B, a0                  ; Store value -1. at 0xc37d
+    0b8b  21 7d c3   LXI HL, c37d
+    0b8e  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0b91  21 61 c3   LXI HL, c361               ; Load 0xc361 (argument) to 0xc371
+    0b94  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0b97  21 71 c3   LXI HL, c371               
+    0b9a  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0b9d  21 77 c3   LXI HL, c377               ; Copy c377 (1.) to 0xc374
+    0ba0  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0ba3  21 74 c3   LXI HL, c374               
+    0ba6  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0ba9  cd 87 09   CALL ADD_FLOATS (0987)     ; Calculate x+1
+
+    0bac  21 74 c3   LXI HL, c374               ; Store the result at 0xc365
+    0baf  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0bb2  21 65 c3   LXI HL, c365
+    0bb5  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0bb8  21 7d c3   LXI HL, c37d               ; Copy 0xc37d (-1.) to 0xc374
+    0bbb  cd 8c 0a   CALL LOAD_ABC (0a8c) 
+    0bbe  21 74 c3   LXI HL, c374
+    0bc1  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0bc4  cd 87 09   CALL ADD_FLOATS (0987)     ; Calculate x-1 (x is still at 0xc371)
+
+    0bc7  21 65 c3   LXI HL, c365               ; Copy 0xc365 (x+1) to 0xc371
+    0bca  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0bcd  21 71 c3   LXI HL, c371
+    0bd0  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0bd3  cd 6f 0a   CALL DIV_3_BYTE (0a6f)     ; Calculate (x-1)/(x+1)
+
+    0bd6  21 74 c3   LXI HL, c374               ; Store and keep the result at 0xc365
+    0bd9  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0bdc  21 65 c3   LXI HL, c365
+    0bdf  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0be2  21 68 c3   LXI HL, c368               ; Initialize the result with the first calculated
+    0be5  cd 92 0a   CALL STORE_ABC (0a92)      ; member A = (x-1)/(x+1)
+
+LOGARITHM_LOOP:
+    0be8  21 6b c3   LXI HL, c36b               ; Copy 0xc36b (next member divisor) to 0xc371
+    0beb  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0bee  21 71 c3   LXI HL, c371
+    0bf1  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0bf4  21 7a c3   LXI HL, c37a               ; Copy 0xc37a (2.) to 0xc374
+    0bf7  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0bfa  21 74 c3   LXI HL, c374
+    0bfd  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0c00  cd 87 09   CALL ADD_FLOATS (0987)     ; 0xc374 = 0xc371 (divisor) + 0xc374 (2.)
+
+    0c03  21 74 c3   LXI HL, c374               ; Next member divisor (0xc36b) is now higher by 2
+    0c06  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0c09  21 6b c3   LXI HL, c36b
+    0c0c  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0c0f  21 64 c3   LXI HL, c364               ; Increase power factor by 2
+    0c12  34         INR M
+    0c13  34         INR M
+
+    0c14  21 65 c3   LXI HL, c365               ; Load A=(x-1)/(x+1) to 0xc371
+    0c17  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0c1a  21 71 c3   LXI HL, c371
+    0c1d  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0c20  cd 08 0b   CALL POWER (0b08)          ; Calculate A^q where q is the next member power, result at 0xc374
+
+    0c23  21 6b c3   LXI HL, c36b               ; Load next member divisor (0xc36b) to 0xc371
+    0c26  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0c29  21 71 c3   LXI HL, c371
+    0c2c  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0c2f  cd 6f 0a   CALL DIV_3_BYTE (0a6f)     ; Finish next member calculation (A^q / q)
+
+    0c32  21 68 c3   LXI HL, c368               ; Load the result accumulator (0xc368) to 0xc371
+    0c35  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0c38  21 71 c3   LXI HL, c371
+    0c3b  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0c3e  cd 87 09   CALL ADD_FLOATS (0987)     ; And add the next member
+
+    0c41  21 74 c3   LXI HL, c374               ; Store the sum back to the result accumulator (0xc368)
+    0c44  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0c47  21 68 c3   LXI HL, c368
+    0c4a  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0c4d  21 72 c3   LXI HL, c372               ; Toggle sign bit in 0xc371
+    0c50  7e         MOV A, M
+    0c51  17         RAL
+    0c52  3f         CMC
+    0c53  1f         RAR
+    0c54  77         MOV M, A
+
+    0c55  cd 77 08   CALL NORM_VALUES (0877)    ; Compare new accumulator value with the previous one
+    0c58  cd dd 08   CALL ADD_2_BYTE (08dd)     ; (do the subtraction, but without result normalization)
+
+    0c5b  21 75 c3   LXI HL, c375               ; If the difference is high - repeat the algorithm
+    0c5e  7e         MOV A, M                   ; by adding another series member
+    0c5f  e6 7f      ANI 7f
+    0c61  ca 67 0c   JZ LOGARITHM_1 (0c67)
+
+    0c64  c3 e8 0b   JMP LOGARITHM_LOOP (0be8)
+
+LOGARITHM_1:
+    0c67  23         INX HL                     ; If the high byte is equal, compare the low byte
+    0c68  7e         MOV A, M
+    0c69  fe 02      CPI 02                     ; If the low byte difference is more than 1 bit - 
+    0c6b  da 71 0c   JC LOGARITHM_2 (0c71)      ; repeat the algorithm again, add another member
+
+    0c6e  c3 e8 0b   JMP LOGARITHM_LOOP (0be8)
+
+LOGARITHM_2:
+    0c71  21 68 c3   LXI HL, c368               ; Get the result exponent
+    0c74  7e         MOV A, M                   ; The idea is to multiply result by 2, which in fact
+    0c75  a7         ANA A                      ; will be just increasing the exponent by 1
+    0c76  fa 7d 0c   JN LOGARITHM_3 (0c7d)
+
+    0c79  3c         INR A                      ; if exponent is positive - increase it
+    0c7a  e3 85 0c   JMP LOGARITHM_EXIT (0c85)
+
+LOGARITHM_3:
+    0c7d  3d         DCR A                      ; If the exponent is negative - decrease absolute
+    0c7e  e6 7f      ANI 7f                     ; value
+    0c80  ca 85 0c   JZ 0c85
+
+    0c83  f6 80      ORI 80                     ; keep the sign
+
+LOGARITHM_EXIT:
+    0c85  77         MOV M, A                   ; Store the result and exit
+    0c86  c9         RET
+
+
+
 0C80  CA 85 0C F6 80 77 C9 21 62 C3 21 64 C3 36 01 21
 0C90  61 C3 CD 8C BA 21 65 C3 CD 92 0A 21 6B C3 36 02
 0CA0  21 64 C3 34 34 7E CD 98 0A 21 61 C3 CD 8C 0A 21

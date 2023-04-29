@@ -119,8 +119,11 @@ class Calculator:
 
         # Run the requested function, until it returns to 0xbeef
         # Set the counter limit to avoid infinite loop
-        while self._emulator._cpu._pc != 0xbeef and self._emulator._cpu._cycles < 10000:
+        while self._emulator._cpu._pc != 0xbeef and self._emulator._cpu._cycles < 1000000:
             self._emulator.step()
+
+        # Validate that the code really reached the end, and not stopped by a cycles limit
+        assert self._emulator._cpu._pc == 0xbeef
 
 
 @pytest.fixture
@@ -223,12 +226,68 @@ exp_numbers = [
 ]
 @pytest.mark.parametrize("base, power, res", exp_numbers)
 def test_exp(calculator, base, power, res):
-    logging.basicConfig(level=logging.DEBUG)
-    calculator._machine._cpu.enable_registers_logging(True)
-
     calculator.set_float_argument(0xc371, base)
     calculator.set_byte_argument(0xc364, power)
 
     calculator.run_function(0x0b08)
 
     assert calculator.get_float_result(0xc374) == res
+
+
+# arg, logarythm result
+log_numbers = [
+    (1., 0.),
+    (2., 0.69314718055994),
+    (3., 1.09861228866811),
+    (10., 2.3025850929940),
+    (.5, -0.6931471805599),
+]
+@pytest.mark.parametrize("arg, res", log_numbers)
+def test_log(calculator, arg, res):
+    # logging.basicConfig(level=logging.DEBUG)
+    # calculator._machine._cpu.enable_registers_logging(True)
+
+    # nl = NestedLogger()
+
+    # calculator._emulator.add_breakpoint(0x0a92, lambda: nl.enter("STORE A-B-C to [HL]"))
+    # calculator._emulator.add_breakpoint(0x0a97, lambda: nl.exit())
+
+    # calculator._emulator.add_breakpoint(0x0a8c, lambda: nl.enter("LOAD [HL] to A-B-C"))
+    # calculator._emulator.add_breakpoint(0x0a91, lambda: nl.exit())
+
+    # calculator._emulator.add_breakpoint(0x0b08, lambda: nl.enter("POWER"))
+    # calculator._emulator.add_breakpoint(0x0b6a, lambda: nl.exit())
+
+    # calculator._emulator.add_breakpoint(0x0987, lambda: nl.enter("ADD"))
+    # calculator._emulator.add_breakpoint(0x0993, lambda: nl.exit())
+
+    # calculator._emulator.add_breakpoint(0x0a6f, lambda: nl.enter("DIV"))
+    # calculator._emulator.add_breakpoint(0x0a8b, lambda: nl.exit())
+
+    # calculator._emulator.add_breakpoint(0x09ec, lambda: nl.enter("MULT"))
+    # calculator._emulator.add_breakpoint(0x09f8, lambda: nl.exit())
+
+    calculator.set_float_argument(0xc361, arg)
+
+    calculator.run_function(0x0b6b)
+
+    assert pytest.approx(calculator.get_float_result(0xc368), 0.002) == res # Accuracy could be better :(
+
+
+@pytest.mark.parametrize("arg, res", log_numbers)
+def test_log_python(arg, res):
+    def my_log(arg):        # Python version of the firmware logarithm implementation
+        a = (arg - 1) / (arg + 1)
+        print(f"X = {arg}")
+        print(f"A = {a}")
+        res = a
+        num = 1
+        next = a
+        while abs(next) > 0.00000001:
+            num += 2.
+            next = pow(a, num) / num
+            res += next
+            print(f"Res = {res}")
+        return res * 2
+    
+    assert pytest.approx(my_log(arg), 0.0000001) == res
