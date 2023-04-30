@@ -244,34 +244,12 @@ log_numbers = [
 ]
 @pytest.mark.parametrize("arg, res", log_numbers)
 def test_log(calculator, arg, res):
-    # logging.basicConfig(level=logging.DEBUG)
-    # calculator._machine._cpu.enable_registers_logging(True)
-
-    # nl = NestedLogger()
-
-    # calculator._emulator.add_breakpoint(0x0a92, lambda: nl.enter("STORE A-B-C to [HL]"))
-    # calculator._emulator.add_breakpoint(0x0a97, lambda: nl.exit())
-
-    # calculator._emulator.add_breakpoint(0x0a8c, lambda: nl.enter("LOAD [HL] to A-B-C"))
-    # calculator._emulator.add_breakpoint(0x0a91, lambda: nl.exit())
-
-    # calculator._emulator.add_breakpoint(0x0b08, lambda: nl.enter("POWER"))
-    # calculator._emulator.add_breakpoint(0x0b6a, lambda: nl.exit())
-
-    # calculator._emulator.add_breakpoint(0x0987, lambda: nl.enter("ADD"))
-    # calculator._emulator.add_breakpoint(0x0993, lambda: nl.exit())
-
-    # calculator._emulator.add_breakpoint(0x0a6f, lambda: nl.enter("DIV"))
-    # calculator._emulator.add_breakpoint(0x0a8b, lambda: nl.exit())
-
-    # calculator._emulator.add_breakpoint(0x09ec, lambda: nl.enter("MULT"))
-    # calculator._emulator.add_breakpoint(0x09f8, lambda: nl.exit())
-
     calculator.set_float_argument(0xc361, arg)
 
     calculator.run_function(0x0b6b)
 
-    assert pytest.approx(calculator.get_float_result(0xc368), 0.002) == res # Accuracy could be better :(
+    result = calculator.get_float_result(0xc368)
+    assert pytest.approx(result, 0.002) == res # Accuracy could be better :(
 
 
 @pytest.mark.parametrize("arg, res", log_numbers)
@@ -291,3 +269,20 @@ def test_log_python(arg, res):
         return res * 2
     
     assert pytest.approx(my_log(arg), 0.0000001) == res
+
+# arg, factorial result
+fact_numbers = [
+    (0, 1.), 
+    (1, 1.),
+    (3, 6.),
+    (6, 720.),
+    (8, 40320.),
+]
+@pytest.mark.parametrize("arg, res", fact_numbers)
+def test_fact(calculator, arg, res):
+    calculator._emulator._cpu._a = arg & 0xff
+
+    calculator.run_function(0x0a98)
+
+    result = calculator.get_float_result(0xc377)
+    assert result == res

@@ -690,15 +690,127 @@ STORE_ABC:
     0a97  c9         RET         
 
 
-0A90                          0E 01 16 20 1E 00 62 6B
-0AA0  FE 02 D2 A8 0A C3 E6 0A 06 08 07 DA B2 0A 05 C3
-0AB0  AA 0A 05 CA DB 0A F5 AF 7A 1F 57 7B 1F 5F 0C F1
-0AC0  07 D2 B2 0A 19 D2 B2 0A F5 7C 1F 67 7D 1F 6F AF
-0AD0  7A 1F 57 7B 1F 5F 0C F1 C3 B2 0A 3D FE 01 CA E6
-0AE0  0A 54 5D C3 A8 0A AF 84 FA F0 0A 29 0D C3 E6 0A
-0AF0  7C 1F 67 7D 1F 6F 0C AF 7C 1F 32 78 C3 7D 1F 32
-0B00  79 C3 0C 79 32 77 C3 C9 
+; Calculate factorial
+;
+; Parameter in A, result in 0xc377
+;
+; Algorithm explanation TBD
+FACTORIAL:
+    0a98  0e 01      MVI C, 01                  ; Load 1.0 to C-D-E
+    0a9a  16 20      MVI D, 20
+    0a9c  1e 00      MVI E, 00
 
+    0a9e  62         MOV H, D                   ; HL will be the result accumulator
+    0a9f  6b         MOV L, E                   ; Place 1. there as well
+
+    0aa0  fe 02      CPI 02                     ; Cases when A>=2 require calculations
+    0aa2  d2 a8 0a   JNC FACTORIAL_LOOP_1 (0aa8)
+
+    0aa5  c3 e6 0a   JMP FACTORIAL_3 (0ae6)     ; Cases when A<2 are trivial (return 1.0)
+    
+FACTORIAL_LOOP_1:   
+    0aa8  06 08      MVI B, 08                  ; Bit counter
+
+FACTORIAL_LOOP_2:
+    0aaa  07         RLC                        ; Shift it left until the non-zero bit is reached
+    0aab  da b2 0a   JC FACTORIAL_1 (0ab2)
+
+    0aae  05         DCR B                      ; Count shifts with B
+    0aaf  c3 aa 0a   JMP FACTORIAL_LOOP_2 (0aaa)
+
+FACTORIAL_1:
+    0ab2  05         DCR B                      ; If we shifted all 8 bits and have not found any
+    0ab3  ca db 0a   JZ 0adb                    ; bits set - just exit (thoug this case should never happen)
+
+    0ab6  f5         PUSH PSW
+
+    0ab7  af         XRA A                      ; Shift current value right
+    0ab8  7a         MOV A, D                   ; Taking into account increasing the exponent
+    0ab9  1f         RAR                        ; a little below, this should not basically change
+    0aba  57         MOV D, A                   ; the C-D-E floating point value
+    0abb  7b         MOV A, E
+    0abc  1f         RAR     
+    0abd  5f         MOV E, A
+
+    0abe  0c         INR C                      ; Increase the exponent
+
+    0abf  f1         POP PSW
+
+    0ac0  07         RLC                        ; Restore the original value of A
+    0ac1  d2 b2 0a   JNC FACTORIAL_1 (0ab2)
+    0ac4  19         DAD DE                     ; 
+    0ac5  d2 b2 0a   JNC FACTORIAL_1 (0ab2)
+
+    0ac8  f5         PUSH PSW
+    0ac9  7c         MOV A, H
+    0aca  1f         RAR
+    0acb  67         MOV H, A
+    0acc  7d         MOV A, L
+    0acd  1f         RAR
+    0ace  6f         MOV L, A
+
+    0acf  af         XRA A
+
+    0ad0  7a         MOV A, D
+    0ad1  1f         RAR
+    0ad2  57         MOV D, A
+
+    0ad3  7b         MOV A, E
+    0ad4  1f         RAR
+    0ad5  5f         MOV E, A
+    0ad6  0c         INR C
+
+    0ad7  f1         POP PSW
+    0ad8  c3 b2 0a   JMP FACTORIAL_1 (0ab2)
+
+FACTORIAL_2:
+    0adb  3d         DCR A
+    0adc  fe 01      CPI 01
+    0ade  ca e6 0a   JZ FACTORIAL_3 (0ae6)
+
+    0ae1  54         MOV D, H
+    0ae2  5d         MOV E, L
+    0ae3  c3 a8 0a   JMP FACTORIAL_LOOP_1 (0aa8)
+
+FACTORIAL_3:
+    0ae6  af         XRA A                      ; Normalize mantissa, by shifting it left
+    0ae7  84         ADD H                      ; until the highest bit is set
+    0ae8  fa f0 0a   JN 0af0
+
+    0aeb  29         DAD HL
+    0aec  0d         DCR C                      ; Correct exponent accordingly
+    0aed  c3 e6 0a   JMP 0ae6
+
+FACTORIAL_4:
+    0af0  7c         MOV A, H                   ; Shift it back for 1 bit
+    0af1  1f         RAR
+    0af2  67         MOV H, A
+    0af3  7d         MOV A, L
+    0af4  1f         RAR
+    0af5  6f         MOV L, A
+    0af6  0c         INR C                      ; Correct exponent accordingly
+
+    0af7  af         XRA A                      ; Save result in 0xc377-0xc379
+    0af8  7c         MOV A, H                   ; But first shift it right for 1 more bit
+    0af9  1f         RAR                        ; so that bit 14 is 0, and bit 13 is 1, as required
+    0afa  32 78 c3   STA c378                   ; by the format
+    0afd  7d         MOV A, L
+    0afe  1f         RAR
+    0aff  32 79 c3   STA c379
+    0b02  0c         INR C
+    0b03  79         MOV A, C
+    0b04  32 77 c3   STA c377
+
+    0b07  c9         RET                        ; Done
+
+
+
+; Exponentiate a 3-byte float into a integer power
+;
+; Arguments: Base - 0xc371-0xc373 (3-byte float), power - 0xc374 (1 byte integer)
+; Result: 0xc374-0xc376
+;
+; The algorithm is pretty simple - just multiply the base for power-1 number of times
 POWER:
     0b08  3a 64 c3   LDA c364                   ; Load the power value to A
 
@@ -766,7 +878,7 @@ POWER_EXIT:
 
 ; Calculate natual logarithm
 ;
-; Argument is located at 0xc361-0xc363, result is 0xc368-0xc36a
+; Argument is located at 0xc361-0xc363, result is at 0xc368-0xc36a
 ;
 ; Calculation algorithm is based on the Taylor series:
 ; Ln(x) = 2 * (A + A^3 / 3 + A^5 / 5 + ...) 
