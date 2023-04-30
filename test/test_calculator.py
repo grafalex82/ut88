@@ -299,6 +299,26 @@ sin_numbers = [
 ]
 @pytest.mark.parametrize("arg, res", sin_numbers)
 def test_sin(calculator, arg, res):
+    calculator.set_float_argument(0xc361, arg)
+
+    calculator.run_function(0x0c87)
+
+    result = calculator.get_float_result(0xc365)
+    print(f"Difference = {result - res:3.10f}")
+    assert pytest.approx(result, abs=0.003) == res # Accuracy could be better :(
+
+
+# arg, cosinus result
+cosin_numbers = [
+    (0., 1.),
+    (1., 0.54030230586),
+    (1.57079632679, 0.),
+    (3.14159265359, -1.),
+    (3*1.57079632679, 0.),
+    (2*3.14159265359, 1.),
+]
+@pytest.mark.parametrize("arg, res", cosin_numbers)
+def test_cos(calculator, arg, res):
     logging.basicConfig(level=logging.DEBUG)
     calculator._machine._cpu.enable_registers_logging(True)
 
@@ -321,8 +341,8 @@ def test_sin(calculator, arg, res):
 
     calculator.set_float_argument(0xc361, arg)
 
-    calculator.run_function(0x0c87)
+    calculator.run_function(0x0d32)
 
     result = calculator.get_float_result(0xc365)
     print(f"Difference = {result - res:3.10f}")
-    assert pytest.approx(result, abs=0.003) == res # Accuracy could be better :(
+    assert pytest.approx(result, abs=0.008) == res # Accuracy could be better :(

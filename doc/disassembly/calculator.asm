@@ -1169,9 +1169,43 @@ SINUS_EXIT:
     0d31  c9         RET
 
 
+; Cosinus function
+;
+; Argument is located at 0xc361-0xc363, result is at 0xc365-0xc367
+;
+; The alcorithm is based on calculating the Taylor series:
+; cos(x) = 1 - x^2/2! + x^4/4! - x^6/6! + x^8/8! - ...
+;
+; Taylor series calculation continues until the next member does not change
+; the result for more than 1 LSB
+;
+; In fact the implementation is based on the sinus function, just first member (1.) and
+; initial power/factorial differs.
+; 
+; The following helper variables used:
+; 0xc361 - Argument
+; 0xc364 - Series member power/factorial number
+; 0xc365 - Result accumulator
+; 0xc368 - last calculated negative series member
+; 0xc371/0xc374/0xc377 - temporary variables
+COSINUS:
+    0d32  21 62 c3   LXI HL, c362               ; Useless?
 
-0D30        21 62 C3 21 64 C3 36 00 23 36 01 23 36 20
-0D40  23 36 00 CD 9B 0C C9 21 62 C3 7E E6 80 F5 7E E6
+    0d35  21 64 c3   LXI HL, c364               ; Initial member power/factorial at 0xc364
+    0d38  36 00      MVI M, 00
+
+    0d3a  23         INX HL                     ; Store 1. to the result accumulator (0xc365)
+    0d3b  36 01      MVI M, 01
+    0d3d  23         INX HL
+    0d3e  36 20      MVI M, 20
+    0d40  23         INX HL
+    0d41  36 00      MVI M, 00
+
+    0d43  cd 9b 0c   CALL SINUS_LOOP_1 (0c9b)   ; Everything else matches the sinus algorithm
+
+    0d46  c9         RET
+
+0D40                       21 62 C3 7E E6 80 F5 7E E6
 0D50  7F 77 21 64 C3 36 01 21 61 C3 CD 8C 0A 21 65 C3
 0D60  CD 92 0A 23 AF 36 01 23 36 20 23 77 23 36 02 23
 0D70  36 20 23 77 23 36 02 23 36 20 23 77 21 77 C3 36
