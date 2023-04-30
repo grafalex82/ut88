@@ -32,6 +32,7 @@
 ; - 0a6f - Divide two 3-byte float values
 ; - 0b08 - Power
 ; - 0b6b - Logarithm
+; - 0c87 - Sinus
 
 
 ; Add two 1-byte integers in Sign-Magnitude representation.
@@ -1049,19 +1050,127 @@ LOGARITHM_EXIT:
     0c86  c9         RET
 
 
+; Sinus function
+;
+; Argument is located at 0xc361-0xc363, result is at 0xc365-0xc367
+;
+; The alcorithm is based on calculating the Taylor series:
+; sin(x) = x - x^3/3! + x^5/5! - x^7/7! + x^9/9! - ...
+;
+; Taylor series calculation continues until the next member does not change
+; the result for more than 1 LSB
+; 
+; The following helper variables used:
+; 0xc361 - Argument
+; 0xc364 - Series member power/factorial number
+; 0xc365 - Result accumulator
+; 0xc368 - last calculated negative series member
+; 0xc371/0xc374/0xc377 - temporary variables
+SINUS:
+    0c87  21 62 c3   LXI HL, c362               ; Useless?
 
-0C80  CA 85 0C F6 80 77 C9 21 62 C3 21 64 C3 36 01 21
-0C90  61 C3 CD 8C BA 21 65 C3 CD 92 0A 21 6B C3 36 02
-0CA0  21 64 C3 34 34 7E CD 98 0A 21 61 C3 CD 8C 0A 21
-0CB0  71 C3 CD 92 0A CD 08 0B 21 77 C3 CD 8C 0A 21 71
-0CC0  C3 CD 92 0A CD 6F 0A 21 6B C3 35 CA E3 0C 21 75
-0CD0  C3 7E 17 3F 1F 77 2B CD 8C 0A 21 68 C3 CD 92 BA
-0CE0  C3 A0 0C 21 68 C3 CD 8C 0A 21 71 C3 CD 92 0A CD
-0CF0  87 09 21 65 C3 CD 8C 0A 21 71 C3 CD 92 0A CD 87
-0D00  09 21 74 C3 CD 8C 0A 21 65 C3 CD 92 0A 21 72 C3
-0D10  7E 17 3F 1F 77 CD 77 08 CD DD 08 21 75 C3 7E E6
-0D20  7F CA 27 0D C3 9B 0C 23 7E FE 02 DA 31 0D C3 9B
-0D30  0C C9 21 62 C3 21 64 C3 36 00 23 36 01 23 36 20
+    0c8a  21 64 c3   LXI HL, c364               ; Series member power/factorial number
+    0c8d  36 01      MVI M, 01                  ; Start with 1
+
+    0c8f  21 61 c3   LXI HL, c361               ; Copy argument to result accumulator 0xc365
+    0c92  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0c95  21 65 c3   LXI HL, c365
+    0c98  cd 92 0a   CALL STORE_ABC (0a92)
+
+SINUS_LOOP_1:
+    0c9b  21 6b c3   LXI HL, c36b               ; On each algorithm step we will be generating
+    0c9e  36 02      MVI M, 02                  ; 2 members - positive and negative
+
+SINUS_LOOP_2:
+    0ca0  21 64 c3   LXI HL, c364               ; Get to the next index of series member
+    0ca3  34         INR M
+    0ca4  34         INR M
+
+    0ca5  7e         MOV A, M                   ; Calculate factorial in the member divider
+    0ca6  cd 98 0a   CALL FACTORIAL (0a98)
+
+    0ca9  21 61 c3   LXI HL, c361               ; Copy argument to 0xc371 
+    0cac  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0caf  21 71 c3   LXI HL, c371
+    0cb2  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0cb5  cd 08 0b   CALL POWER (0b08)          ; And power it
+
+    0cb8  21 77 c3   LXI HL, c377               ; Copy factorial's result into a divider argument
+    0cbb  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0cbe  21 71 c3   LXI HL, c371
+    0cc1  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0cc4  cd 6f 0a   CALL DIV_3_BYTE (0a6f)     ; Calculate x^n / n!
+
+    0cc7  21 6b c3   LXI HL, c36b               ; Positive member will stay in 0xc374
+    0cca  35         DCR M
+    0ccb  ca e3 0c   JZ SINUS_CONT (0ce3)
+
+    0cce  21 75 c3   LXI HL, c375               ; Toggle sign of the series member
+    0cd1  7e         MOV A, M
+    0cd2  17         RAL
+    0cd3  3f         CMC
+    0cd4  1f         RAR
+    0cd5  77         MOV M, A
+
+    0cd6  2b         DCX HL                     ; Negative members will be copied to 0xc368
+    0cd7  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0cda  21 68 c3   LXI HL, c368
+    0cdd  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0ce0  c3 a0 0c   JMP SINUS_LOOP_2 (0ca0)
+
+SINUS_CONT:
+    0ce3  21 68 c3   LXI HL, c368               ; Now it is time to add calculated positive
+    0ce6  cd 8c 0a   CALL 0a8c                  ; and negative members of the series
+    0ce9  21 71 c3   LXI HL, c371
+    0cec  cd 92 0a   CALL 0a92
+
+    0cef  cd 87 09   CALL ADD_FLOATS (0987)
+
+    0cf2  21 65 c3   LXI HL, c365               ; Add both to the result accumulator
+    0cf5  cd 8c 0a   CALL 0a8c
+    0cf8  21 71 c3   LXI HL, c371
+    0cfb  cd 92 0a   CALL 09a2
+
+    0cfe  cd 87 09   CALL ADD_FLOATS (0987)
+
+    0d01  21 74 c3   LXI HL, c374               ; Store new value in the result accumulator
+    0d04  cd 8c 0a   CALL 0a8c
+    0d07  21 65 c3   LXI HL, c365
+    0d0a  cd 92 0a   CALL 0a92
+
+    0d0d  21 72 c3   LXI HL, c372               ; 0xc371 still has previous result accumulator value
+    0d10  7e         MOV A, M                   ; Toggle its sign
+    0d11  17         RAL
+    0d12  3f         CMC
+    0d13  1f         RAR
+    0d14  77         MOV M, A
+
+    0d15  cd 77 08   CALL NORM_VALUES (0877)    ; Subtract old result (0xc371) from new result (0xc374)
+    0d18  cd dd 08   CALL ADD_2_BYTE (08dd)     ; (same algorithm as ADD_FLOATS, but without normalization)
+
+    0d1b  21 75 c3   LXI HL, c375               ; Check high byte of the result
+    0d1e  7e         MOV A, M
+    0d1f  e6 7f      ANI 7f
+    0d21  ca 27 0d   JZ SINUS_CONT_2 (0d27)
+
+    0d24  c3 9b 0c   JMP SINUS_LOOP_1 (0c9b)    ; Repeat the algorithm, if the difference is not small enough
+
+SINUS_CONT_2:
+    0d27  23         INX HL                     ; Check low byte, if the difference is greater than
+    0d28  7e         MOV A, M                   ; the least significant bit
+    0d29  fe 02      CPI 02
+    0d2b  da 31 0d   JC SINUS_EXIT (0d31)
+
+    0dbe  c3 9b 0c   JMP SINUS_LOOP_1 (0c9b)    ; Repeat the algorithm, if the difference is not small enough
+SINUS_EXIT:
+    0d31  c9         RET
+
+
+
+0D30        21 62 C3 21 64 C3 36 00 23 36 01 23 36 20
 0D40  23 36 00 CD 9B 0C C9 21 62 C3 7E E6 80 F5 7E E6
 0D50  7F 77 21 64 C3 36 01 21 61 C3 CD 8C 0A 21 65 C3
 0D60  CD 92 0A 23 AF 36 01 23 36 20 23 77 23 36 02 23
