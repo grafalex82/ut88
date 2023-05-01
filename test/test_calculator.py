@@ -330,13 +330,31 @@ def test_cos(calculator, arg, res):
 # arg, arcsin result
 arcsin_numbers = [
     (0., 0.),
-    # (1., 1.57079632679),      # These are too slow to calculate, over 100 iterations
+    # (1., 1.57079632679),      # These are too slow to calculate, over 100 iterations, and >10 seconds
     # (-1., -1.57079632679),    # the the resulting accuracy is too bad, +-0.08
     (0.5, 0.523598776),
     (-0.5, -0.523598776),
 ]
 @pytest.mark.parametrize("arg, res", arcsin_numbers)
 def test_arcsin(calculator, arg, res):
+    calculator.set_float_argument(0xc361, arg)
+
+    calculator.run_function(0x0d47)
+
+    result = calculator.get_float_result(0xc365)
+    assert pytest.approx(result, abs=0.0008) == res # Accuracy could be better :(
+
+
+# arg, arccos result
+arccos_numbers = [
+    (0., 1.57079632679),
+    (0.5, 1.04719755),
+    (-0.5, 2.0943951),
+    # (1., 0.),                   # These are too slow to calculate, over 100 iterations and >10 seconds
+    # (-1., 3.14159265359),       # the the resulting accuracy is too bad, +-0.08
+]
+@pytest.mark.parametrize("arg, res", arccos_numbers)
+def test_arccos(calculator, arg, res):
     logging.basicConfig(level=logging.DEBUG)
     calculator._machine._cpu.enable_registers_logging(True)
 
@@ -356,13 +374,12 @@ def test_arcsin(calculator, arg, res):
     calculator._emulator.add_breakpoint(0x09f8, lambda: nl.exit())
     calculator._emulator.add_breakpoint(0x0a98, lambda: nl.enter("FACTORIAL"))
     calculator._emulator.add_breakpoint(0x0b07, lambda: nl.exit())
-
-    calculator._emulator.add_breakpoint(0x0d86, lambda: print(f"Current result: {calculator.get_float_result(0xc365)}"))
+    calculator._emulator.add_breakpoint(0x0d47, lambda: nl.enter("ARCSIN"))
+    calculator._emulator.add_breakpoint(0x0ded, lambda: nl.exit())
 
     calculator.set_float_argument(0xc361, arg)
 
-    calculator.run_function(0x0d47)
+    calculator.run_function(0x0e40)
 
     result = calculator.get_float_result(0xc365)
-    print(f"Difference = {result - res:3.10f}")
-    assert pytest.approx(result, abs=0.0008) == res # Accuracy could be better :(
+    assert pytest.approx(result, abs=0.0005) == res # Accuracy could be better :(

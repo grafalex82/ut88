@@ -1393,9 +1393,18 @@ ARCSIN_COEF:
 
     0e3f  c9         RET
 
+; Arccos function
+;
+; Argument is located at 0xc361-0xc363, result is at 0xc365-0xc367
+;
+; Algorithm:
+; arccos(x) = Pi/2 - arcsin(x)
+ARCCOS:
+    0e40  cd 47 0d   CALL ARCSIN (0d47)
+    0e43  cd 92 0f   CALL CALC_ARCCOS (0f92)
+    0e46  c9         RET
 
-
-0E40  CD 47 0D CD 92 0F C9 CD 32 0D 21 65 C3 CD 8C 0A
+0E40                       CD 32 0D 21 65 C3 CD 8C 0A
 0E50  21 7B C3 CD 92 0A CD 87 0C 21 65 C3 CD 8C 0A 21
 0E60  74 C3 CD 92 0A 21 7B C3 CD 8C 0A 21 71 C3 CD 92
 0E70  0A CD 6F 0A C9 21 62 C3 7E E6 80 F5 7E E6 7F 77
@@ -1462,9 +1471,44 @@ ARCSIN_ADVANCE:
 0F60     CD 87 0C 21 65 C3 CD 8C 0A 21 7B C3 CD 92 0A
 0F70  CD 32 0D 21 65 C3 CD 8C 0A 21 74 C3 CD 92 0A 21
 0F80  7B C3 CD 8C 0A 21 71 C3 CD 92 0A CD 6F 0A C9 CD
-0F90  75 0E 21 65 C3 CD 8C 0A 21 71 C3 CD 92 0A 2B 7E
-0FA0  17 3F 1F 77 23 23 36 01 23 36 32 23 36 42 CD 87
-0FB0  09 21 74 C3 CD 8C 0A 21 65 C3 CD 92 0A C9 C3 87
+0F90  75 0E 
+
+; Calculate arccosinus
+; res = Pi/2 - arg
+; 
+; Where
+; 0xc365 - input and output value
+CALC_ARCCOS:
+    0f92  21 65 c3   LXI HL, c365               ; Load arcsin result to 0xc371
+    0f95  cd 8c 0a   CALL 0a8c
+    0f98  21 71 c3   LXI HL, c371
+    0f9b  cd 92 0a   CALL 0a92
+
+    0f9e  2b         DCX HL                     ; Flip its sign
+    0f9f  7e         MOV A, M
+    0fa0  17         RAL
+    0fa1  3f         CMC
+    0fa2  1f         RAR
+    0fa3  77         MOV M, A
+
+    0fa4  23         INX HL                     ; Load Pi/2 (1.570556640625) tp 0xc374
+    0fa5  23         INX HL
+    0fa6  36 01      MVI M, 01
+    0fa8  23         INX HL
+    0fa9  36 32      MVI M, 32
+    0fab  23         INX HL
+    0fac  36 42      MVI M, 42
+
+    0fae  cd 87 09   CALL ADD_FLOATS (0987)     ; Move result to 0xc365
+
+    0fb1  21 74 c3   LXI HL, c374
+    0fb4  cd 8c 0a   CALL 0a8c
+    0fb7  21 65 c3   LXI HL, c365
+    0fba  cd 92 0a   CALL 0a92
+    0fbd  c9         RET
+
+
+0FB0                                            C3 87
 0FC0  09 C3 EC 09 C3 6F 0A C3 C7 0F C3 98 0A C3 08 0B
 0FD0  C3 D0 0F C3 6B 0B C3 87 0C C3 32 0D C3 47 0D C3
 0FE0  40 0E C3 75 0E C3 61 0F C3 47 0E C3 8F 0F C3 49
