@@ -288,7 +288,7 @@ def test_fact(calculator, arg, res):
     assert result == res
 
 
-# arg, sinus result
+# arg, sine result
 sin_numbers = [
     (0., 0.),
     (1., 0.8414709848),
@@ -308,7 +308,7 @@ def test_sin(calculator, arg, res):
     assert pytest.approx(result, abs=0.003) == res # Accuracy could be better :(
 
 
-# arg, cosinus result
+# arg, cosine result
 cosin_numbers = [
     (0., 1.),
     (1., 0.54030230586),
@@ -409,9 +409,9 @@ def test_ctg(calculator, arg, res):
     calculator._emulator.add_breakpoint(0x0b07, lambda: nl.exit())
     calculator._emulator.add_breakpoint(0x0d47, lambda: nl.enter("ARCSIN"))
     calculator._emulator.add_breakpoint(0x0ded, lambda: nl.exit())
-    calculator._emulator.add_breakpoint(0x0c87, lambda: nl.enter("SINUS"))
+    calculator._emulator.add_breakpoint(0x0c87, lambda: nl.enter("SINE"))
     calculator._emulator.add_breakpoint(0x0d31, lambda: nl.exit())
-    calculator._emulator.add_breakpoint(0x0d32, lambda: nl.enter("COSINUS"))
+    calculator._emulator.add_breakpoint(0x0d32, lambda: nl.enter("COSINE"))
     calculator._emulator.add_breakpoint(0x0d46, lambda: nl.exit())
 
     calculator.set_float_argument(0xc361, arg)

@@ -32,7 +32,7 @@
 ; - 0a6f - Divide two 3-byte float values
 ; - 0b08 - Power
 ; - 0b6b - Logarithm
-; - 0c87 - Sinus
+; - 0c87 - Sine
 
 
 ; Add two 1-byte integers in Sign-Magnitude representation.
@@ -1050,7 +1050,7 @@ LOGARITHM_EXIT:
     0c86  c9         RET
 
 
-; Sinus function
+; Sine function
 ;
 ; Argument is located at 0xc361-0xc363, result is at 0xc365-0xc367
 ;
@@ -1066,7 +1066,7 @@ LOGARITHM_EXIT:
 ; 0xc365 - Result accumulator
 ; 0xc368 - last calculated negative series member
 ; 0xc371/0xc374/0xc377 - temporary variables
-SINUS:
+SINE:
     0c87  21 62 c3   LXI HL, c362               ; Useless?
 
     0c8a  21 64 c3   LXI HL, c364               ; Series member power/factorial number
@@ -1077,11 +1077,11 @@ SINUS:
     0c95  21 65 c3   LXI HL, c365
     0c98  cd 92 0a   CALL STORE_ABC (0a92)
 
-SINUS_LOOP_1:
+SINE_LOOP_1:
     0c9b  21 6b c3   LXI HL, c36b               ; On each algorithm step we will be generating
     0c9e  36 02      MVI M, 02                  ; 2 members - positive and negative
 
-SINUS_LOOP_2:
+SINE_LOOP_2:
     0ca0  21 64 c3   LXI HL, c364               ; Get to the next index of series member
     0ca3  34         INR M
     0ca4  34         INR M
@@ -1105,7 +1105,7 @@ SINUS_LOOP_2:
 
     0cc7  21 6b c3   LXI HL, c36b               ; Positive member will stay in 0xc374
     0cca  35         DCR M
-    0ccb  ca e3 0c   JZ SINUS_CONT (0ce3)
+    0ccb  ca e3 0c   JZ SINE_CONT (0ce3)
 
     0cce  21 75 c3   LXI HL, c375               ; Toggle sign of the series member
     0cd1  7e         MOV A, M
@@ -1119,9 +1119,9 @@ SINUS_LOOP_2:
     0cda  21 68 c3   LXI HL, c368
     0cdd  cd 92 0a   CALL STORE_ABC (0a92)
 
-    0ce0  c3 a0 0c   JMP SINUS_LOOP_2 (0ca0)
+    0ce0  c3 a0 0c   JMP SINE_LOOP_2 (0ca0)
 
-SINUS_CONT:
+SINE_CONT:
     0ce3  21 68 c3   LXI HL, c368               ; Now it is time to add calculated positive
     0ce6  cd 8c 0a   CALL LOAD_ABC (0a8c)       ; and negative members of the series
     0ce9  21 71 c3   LXI HL, c371
@@ -1154,22 +1154,22 @@ SINUS_CONT:
     0d1b  21 75 c3   LXI HL, c375               ; Check high byte of the result
     0d1e  7e         MOV A, M
     0d1f  e6 7f      ANI 7f
-    0d21  ca 27 0d   JZ SINUS_CONT_2 (0d27)
+    0d21  ca 27 0d   JZ SINE_CONT_2 (0d27)
 
-    0d24  c3 9b 0c   JMP SINUS_LOOP_1 (0c9b)    ; Repeat the algorithm, if the difference is not small enough
+    0d24  c3 9b 0c   JMP SINE_LOOP_1 (0c9b)    ; Repeat the algorithm, if the difference is not small enough
 
-SINUS_CONT_2:
+SINE_CONT_2:
     0d27  23         INX HL                     ; Check low byte, if the difference is greater than
     0d28  7e         MOV A, M                   ; the least significant bit
     0d29  fe 02      CPI 02
-    0d2b  da 31 0d   JC SINUS_EXIT (0d31)
+    0d2b  da 31 0d   JC SINE_EXIT (0d31)
 
-    0dbe  c3 9b 0c   JMP SINUS_LOOP_1 (0c9b)    ; Repeat the algorithm, if the difference is not small enough
-SINUS_EXIT:
+    0dbe  c3 9b 0c   JMP SINE_LOOP_1 (0c9b)    ; Repeat the algorithm, if the difference is not small enough
+SINE_EXIT:
     0d31  c9         RET
 
 
-; Cosinus function
+; Cosine function
 ;
 ; Argument is located at 0xc361-0xc363, result is at 0xc365-0xc367
 ;
@@ -1179,7 +1179,7 @@ SINUS_EXIT:
 ; Taylor series calculation continues until the next member does not change
 ; the result for more than 1 LSB
 ;
-; In fact the implementation is based on the sinus function, just first member (1.) and
+; In fact the implementation is based on the sine function, just first member (1.) and
 ; initial power/factorial differs.
 ; 
 ; The following helper variables used:
@@ -1188,7 +1188,7 @@ SINUS_EXIT:
 ; 0xc365 - Result accumulator
 ; 0xc368 - last calculated negative series member
 ; 0xc371/0xc374/0xc377 - temporary variables
-COSINUS:
+COSINE:
     0d32  21 62 c3   LXI HL, c362               ; Useless?
 
     0d35  21 64 c3   LXI HL, c364               ; Initial member power/factorial at 0xc364
@@ -1201,13 +1201,13 @@ COSINUS:
     0d40  23         INX HL
     0d41  36 00      MVI M, 00
 
-    0d43  cd 9b 0c   CALL SINUS_LOOP_1 (0c9b)   ; Everything else matches the sinus algorithm
+    0d43  cd 9b 0c   CALL SINE_LOOP_1 (0c9b)   ; Everything else matches the sine algorithm
 
     0d46  c9         RET
 
 
 
-; Arcsinus function
+; Arcsine function
 ;
 ; Argument is located at 0xc361-0xc363, result is at 0xc365-0xc367
 ;
@@ -1412,26 +1412,26 @@ ARCCOS:
 ; Algorithm is simply 
 ; tg(x) = sin(x)/cos(x) 
 TANGENS:
-    0e47  cd 32 0d   CALL COSINUS (0d32)        ; Calculate cosinus and store result at 0xc37b
+    0e47  cd 32 0d   CALL COSINE (0d32)        ; Calculate cosine and store result at 0xc37b
 
     0e4a  21 65 c3   LXI HL, c365
     0e4d  cd 8c 0a   CALL 0a8c
     0e50  21 7b c3   LXI HL, c37b
     0e53  cd 92 0a   CALL 0a92
 
-    0e56  cd 87 0c   CALL 0c87                  ; Calculate sinus and store result at 0xc374
+    0e56  cd 87 0c   CALL 0c87                  ; Calculate sine and store result at 0xc374
 
     0e59  21 65 c3   LXI HL, c365
     0e5c  cd 8c 0a   CALL 0a8c
     0e5f  21 74 c3   LXI HL, c374
     0e62  cd 92 0a   CALL 0a92
 
-    0e65  21 7b c3   LXI HL, c37b               ; Restore cosinus value to 0xc371
+    0e65  21 7b c3   LXI HL, c37b               ; Restore cosine value to 0xc371
     0e68  cd 8c 0a   CALL 0a8c
     0e6b  21 71 c3   LXI HL, c371
     0e6e  cd 92 0a   CALL 0a92
 
-    0e71  cd 6f 0a   CALL 0a6f                  ; Divide sinus by cosinus
+    0e71  cd 6f 0a   CALL 0a6f                  ; Divide sine by cosine
 
     0e74  c9         RET
 
@@ -1447,7 +1447,7 @@ TANGENS:
 0F00  23 7E FE 02 DA 0D 0F CD 34 0F C3 9C 0E 21 66 C3
 0F10  46 F1 B0 77 C9 
 
-; Calculate the next arcsinus member (without coefficient)
+; Calculate the next arcsine member (without coefficient)
 ; res = x^n/n
 ; 
 ; Implementation:
@@ -1503,14 +1503,14 @@ ARCSIN_ADVANCE:
 ; Algorithm is simply 
 ; ctg(x) = cos(x)/sin(x) 
 COTANGENS:
-    0f61  cd 87 0c   CALL SINUS (0c87)          ; Calculate Sine and store result at 0xc37b
+    0f61  cd 87 0c   CALL SINE (0c87)          ; Calculate Sine and store result at 0xc37b
 
     0f64  21 65 c3   LXI HL, c365
     0f67  cd 8c 0a   CALL 0a8c
     0f6a  21 7b c3   LXI HL, c37b
     0f6d  cd 92 0a   CALL 0a92
 
-    0f70  cd 32 0d   CALL COSINUS (0d32)        ; Calculate cosine and store result at 0xc374
+    0f70  cd 32 0d   CALL COSINE (0d32)        ; Calculate cosine and store result at 0xc374
 
     0f73  21 65 c3   LXI HL, c365
     0f76  cd 8c 0a   CALL 0a8c
@@ -1534,7 +1534,7 @@ COTANGENS:
     0f8f  cd 75 0e   CALL 0e75
 
 
-; Calculate arccosinus
+; Calculate arccosine
 ; res = Pi/2 - arg
 ; 
 ; Where
