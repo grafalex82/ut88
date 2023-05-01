@@ -1401,7 +1401,7 @@ ARCSIN_COEF:
 ; arccos(x) = Pi/2 - arcsin(x)
 ARCCOS:
     0e40  cd 47 0d   CALL ARCSIN (0d47)
-    0e43  cd 92 0f   CALL CALC_ARCCOS (0f92)
+    0e43  cd 92 0f   CALL PI2_MINUS_ARG (0f92)
     0e46  c9         RET
 
 
@@ -1644,19 +1644,22 @@ COTANGENS:
     0f8e  c9         RET
     
 
+; Arcctg function
+; 
+; Argument: 0xc361, result: 0xc365
+;
+; The algorithm is based on arctg function:
+; arcctg(x) = Pi/2 - arctg(x)
+ARCCTG:
+    0f8f  cd 75 0e   CALL ARCTAN (0e75)
 
-
-
-?????:
-    0f8f  cd 75 0e   CALL 0e75
-
-
-; Calculate arccosine
-; res = Pi/2 - arg
+; Calculate Pi/2 - arg
+;
+; This is a helper function for arccos and arcctg functions
 ; 
 ; Where
 ; 0xc365 - input and output value
-CALC_ARCCOS:
+PI2_MINUS_ARG:
     0f92  21 65 c3   LXI HL, c365               ; Load arcsin result to 0xc371
     0f95  cd 8c 0a   CALL 0a8c
     0f98  21 71 c3   LXI HL, c371

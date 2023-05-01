@@ -405,6 +405,24 @@ arctg_numbers = [
 ]
 @pytest.mark.parametrize("arg, res", arctg_numbers)
 def test_arctg(calculator, arg, res):
+    calculator.set_float_argument(0xc361, arg)
+
+    calculator.run_function(0x0e75)
+
+    result = calculator.get_float_result(0xc365)
+    assert pytest.approx(result, abs=0.0005) == res # Accuracy could be better :(
+
+
+# arg, arcctg result
+arcctg_numbers = [
+    (0., 1.5707963268),
+    (0.5, 1.1071487178),
+    (-0.5, 2.0344439358),
+    # (0.9, 0.8379812250),    # These are too slow to calculate, over >5 seconds
+    # (-0.9, 2.3036114286),
+]
+@pytest.mark.parametrize("arg, res", arcctg_numbers)
+def test_arcctg(calculator, arg, res):
     logging.basicConfig(level=logging.DEBUG)
     calculator._machine._cpu.enable_registers_logging(True)
 
@@ -433,7 +451,7 @@ def test_arctg(calculator, arg, res):
 
     calculator.set_float_argument(0xc361, arg)
 
-    calculator.run_function(0x0e75)
+    calculator.run_function(0x0f8f)
 
     result = calculator.get_float_result(0xc365)
     assert pytest.approx(result, abs=0.0005) == res # Accuracy could be better :(
