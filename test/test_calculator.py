@@ -119,7 +119,7 @@ class Calculator:
 
         # Run the requested function, until it returns to 0xbeef
         # Set the counter limit to avoid infinite loop
-        while self._emulator._cpu._pc != 0xbeef and self._emulator._cpu._cycles < 1000000:
+        while self._emulator._cpu._pc != 0xbeef and self._emulator._cpu._cycles < 100000000:
             self._emulator.step()
 
         # Validate that the code really reached the end, and not stopped by a cycles limit
@@ -319,6 +319,24 @@ cosin_numbers = [
 ]
 @pytest.mark.parametrize("arg, res", cosin_numbers)
 def test_cos(calculator, arg, res):
+    calculator.set_float_argument(0xc361, arg)
+
+    calculator.run_function(0x0d32)
+
+    result = calculator.get_float_result(0xc365)
+    assert pytest.approx(result, abs=0.008) == res # Accuracy could be better :(
+
+
+# arg, arcsin result
+arcsin_numbers = [
+    (0., 0.),
+    # (1., 1.57079632679),      # These are too slow to calculate, over 100 iterations
+    # (-1., -1.57079632679),    # the the resulting accuracy is too bad, +-0.08
+    (0.5, 0.523598776),
+    (-0.5, -0.523598776),
+]
+@pytest.mark.parametrize("arg, res", arcsin_numbers)
+def test_arcsin(calculator, arg, res):
     logging.basicConfig(level=logging.DEBUG)
     calculator._machine._cpu.enable_registers_logging(True)
 
@@ -339,10 +357,12 @@ def test_cos(calculator, arg, res):
     calculator._emulator.add_breakpoint(0x0a98, lambda: nl.enter("FACTORIAL"))
     calculator._emulator.add_breakpoint(0x0b07, lambda: nl.exit())
 
+    calculator._emulator.add_breakpoint(0x0d86, lambda: print(f"Current result: {calculator.get_float_result(0xc365)}"))
+
     calculator.set_float_argument(0xc361, arg)
 
-    calculator.run_function(0x0d32)
+    calculator.run_function(0x0d47)
 
     result = calculator.get_float_result(0xc365)
     print(f"Difference = {result - res:3.10f}")
-    assert pytest.approx(result, abs=0.008) == res # Accuracy could be better :(
+    assert pytest.approx(result, abs=0.0008) == res # Accuracy could be better :(

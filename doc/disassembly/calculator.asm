@@ -1123,23 +1123,23 @@ SINUS_LOOP_2:
 
 SINUS_CONT:
     0ce3  21 68 c3   LXI HL, c368               ; Now it is time to add calculated positive
-    0ce6  cd 8c 0a   CALL 0a8c                  ; and negative members of the series
+    0ce6  cd 8c 0a   CALL LOAD_ABC (0a8c)       ; and negative members of the series
     0ce9  21 71 c3   LXI HL, c371
-    0cec  cd 92 0a   CALL 0a92
+    0cec  cd 92 0a   CALL STORE_ABC (0a92)
 
     0cef  cd 87 09   CALL ADD_FLOATS (0987)
 
     0cf2  21 65 c3   LXI HL, c365               ; Add both to the result accumulator
-    0cf5  cd 8c 0a   CALL 0a8c
+    0cf5  cd 8c 0a   CALL LOAD_ABC (0a8c)
     0cf8  21 71 c3   LXI HL, c371
-    0cfb  cd 92 0a   CALL 09a2
+    0cfb  cd 92 0a   CALL STORE_ABC (0a92)
 
     0cfe  cd 87 09   CALL ADD_FLOATS (0987)
 
     0d01  21 74 c3   LXI HL, c374               ; Store new value in the result accumulator
-    0d04  cd 8c 0a   CALL 0a8c
+    0d04  cd 8c 0a   CALL LOAD_ABC (0a8c)
     0d07  21 65 c3   LXI HL, c365
-    0d0a  cd 92 0a   CALL 0a92
+    0d0a  cd 92 0a   CALL STORE_ABC (0a92)
 
     0d0d  21 72 c3   LXI HL, c372               ; 0xc371 still has previous result accumulator value
     0d10  7e         MOV A, M                   ; Toggle its sign
@@ -1205,22 +1205,196 @@ COSINUS:
 
     0d46  c9         RET
 
-0D40                       21 62 C3 7E E6 80 F5 7E E6
-0D50  7F 77 21 64 C3 36 01 21 61 C3 CD 8C 0A 21 65 C3
-0D60  CD 92 0A 23 AF 36 01 23 36 20 23 77 23 36 02 23
-0D70  36 20 23 77 23 36 02 23 36 20 23 77 21 77 C3 36
-0D80  01 23 36 20 23 77 CD EE 0D CD 34 0F CD 15 0F 21
-0D90  77 C3 CD 8C 0A 21 71 C3 CD 92 0A CD EC 09 21 65
-0DA0  C3 CD 8C BA 21 71 C3 CD 92 0A CD 87 09 21 74 C3
-0DB0  CD 8C 0A 21 7A C3 CD 92 0A 21 72 C3 7E 17 3F 1F
-0DC0  77 CD 77 08 CD DD 08 21 75 C3 7E E6 7F CA DF 0D
-0DD0  21 7A C3 CD 8C 0A 21 65 C3 CD 92 0A C3 86 0D 23
-0DE0  7E FE 02 D2 D0 0D 21 66 C3 46 F1 B0 77 C9 21 6E
-0DF0  C3 CD 8C 0A 21 71 C3 CD 92 0A 21 6B C3 CD 8C 0A
-0E00  21 74 C3 CD 92 0A CD 87 09 21 74 C3 CD 8C 0A 21
-0E10  6E C3 CD 92 0A 21 68 C3 CD 8C 0A 21 74 C3 CD 92
-0E20  0A CD 6F 0A 21 77 C3 CD 8C 0A 21 71 C3 CD 92 0A
-0E30  CD EC 09 21 74 C3 CD 8C 0A 21 77 C3 CD 92 0A C9
+
+
+; Arcsinus function
+;
+; Argument is located at 0xc361-0xc363, result is at 0xc365-0xc367
+;
+; The alcorithm is based on calculating the Taylor series:
+; arcsin(x) = x + x^3/(2*3) + 1*3*x^5/(2*4*5) + 1*3*5*x^7/(2*4*6*7) + ..
+; The implementation is calculating this like follows (different coefficient grouping):
+; arcsin(x) = x + 1/2 * x^3/3 + 1*3/(2*4) * x^5/5 + 1*3*5/(2*4*6) * x^7/7 + ..
+;
+; Taylor series calculation continues until the next member does not change
+; the result for more than 1 LSB
+;
+; Function variables:
+; 0xc361 - argument (x)
+; 0xc364 - power (1 byte integer, odd numbers - 1, 3, 5...)
+; 0xc365 - result accumulator
+; 0xc368 - next member x divisor (same value as power, but float, odd numbers - 1, 3, 5...)
+; 0xc36b - 2.
+; 0xc36e - next member even coefficient in the divisor (2, 4, 6, ...)
+; 0xc371 - temporary value
+; 0xc374 - temporary value
+; 0xc377 - next member coefficient (1, 1*3/2*4, 1*3*5/2*4*6, ...)
+;
+; Issues: due to big number of multiplications and divisions, precision of this function is
+; very low. Series convergence is very slow (it may take over 10 seconds to calculate arcsin(1)),
+; and result is quite inaccurate (+-0.08)
+ARCSIN:
+    0d47  21 62 c3   LXI HL, c362               ; Get the argument's sign and store it on stack
+    0d4a  7e         MOV A, M
+    0d4b  e6 80      ANI 80
+    0d4d  f5         PUSH PSW
+
+    0d4e  7e         MOV A, M                   ; For calculation let's remove the sign for now
+    0d4f  e6 7f      ANI 7f
+    0d51  77         MOV M, A
+
+    0d52  21 64 c3   LXI HL, c364               ; next series member power
+    0d55  36 01      MVI M, 01
+
+    0d57  21 61 c3   LXI HL, c361               ; Put the argument to the result accumulator
+    0d5a  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0d5d  21 65 c3   LXI HL, c365
+    0d60  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0d63  23         INX HL                     ; Store 1. to 0xc368 (next member divisor)
+    0d64  af         XRA A
+    0d65  36 01      MVI M, 01
+    0d67  23         INX HL
+    0d68  36 20      MVI M, 20
+    0d6a  23         INX HL
+    0d6b  77         MOV M, A
+
+    0d6c  23         INX HL                     ; Store 2. to 0xc36b (just a constant)
+    0d6d  36 02      MVI M, 02
+    0d6f  23         INX HL
+    0d70  36 20      MVI M, 20
+    0d72  23         INX HL
+    0d73  77         MOV M, A
+
+    0d74  23         INX HL                     ; Store 2. to 0xc36e (next member even coefficient)
+    0d75  36 02      MVI M, 02
+    0d77  23         INX HL
+    0d78  36 20      MVI M, 20
+    0d7a  23         INX HL
+    0d7b  77         MOV M, A
+
+    0d7c  21 77 c3   LXI HL, c377               ; Store 1. to 0xc377 (next member coefficient)
+    0d7f  36 01      MVI M, 01
+    0d81  23         INX HL
+    0d82  36 20      MVI M, 20
+    0d84  23         INX HL
+    0d85  77         MOV M, A
+
+ARCSIN_LOOP:
+    0d86  cd ee 0d   CALL ARCSIN_COEF (0dee)    ; c371 = c36e
+                                                ; c36e = c36e + 2.
+                                                ; c377 = c368 / c371 * c377
+
+    0d89  cd 34 0f   CALL ARCSIN_ADVANCE (0f34) ; c368 += 2., c364 += 2
+    0d8c  cd 15 0f   CALL ARCSIN_MEMBER (0f15)  ; c374 = c361 ^ c364 / c368
+
+    0d8f  21 77 c3   LXI HL, c377               ; Multiply next member (x^n/n) and 
+    0d92  cd 8c 0a   CALL LOAD_ABC (0a8c)       ; coefficient (1*3*5*..*n / 2*4*6*..*(n+1))
+    0d95  21 71 c3   LXI HL, c371
+    0d98  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0d9b  cd ec 09   CALL MULT_3_BYTE (09ec)
+
+    0d9e  21 65 c3   LXI HL, c365               ; Add result accumulator and the next member
+    0da1  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0da4  21 71 c3   LXI HL, c371
+    0da7  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0daa  cd 87 09   CALL ADD_FLOATS (0987)
+
+    0dad  21 74 c3   LXI HL, c374               ; Compare sum and previous result accumulator value
+    0db0  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0db3  21 7a c3   LXI HL, c37a
+    0db6  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0db9  21 72 c3   LXI HL, c372               ; Flip sign of one of the values to do subtraction
+    0dbc  7e         MOV A, M
+    0dbd  17         RAL
+    0dbe  3f         CMC
+    0dbf  1f         RAR
+    0dc0  77         MOV M, A
+
+    0dc1  cd 77 08   CALL NORM_VALUES (0877)    ; Calculate difference between previous and new
+    0dc4  cd dd 08   CALL ADD_2_BYTE (08dd)     ; result
+
+    0dc7  21 75 c3   LXI HL, c375               ; Check the difference high byte
+    0dca  7e         MOV A, M
+    0dcb  e6 7f      ANI 7f
+    0dcd  ca df 0d   JZ ARCSIN_2 (0ddf)
+
+ARCSIN_1:
+    0dd0  21 7a c3   LXI HL, c37a               ; Save the new result in the result accumulator
+    0dd3  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0dd6  21 65 c3   LXI HL, c365
+    0dd9  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0ddc  c3 86 0d   JMP ARCSIN_LOOP (0d86)
+
+ARCSIN_2:
+    0ddf  23         INX HL                     ; Compare the difference low byte
+    0de0  7e         MOV A, M                   ; If the difference is greater than LSB
+    0de1  fe 02      CPI 02                     ; then repeat for one more iteration
+    0de3  d2 d0 0d   JNC ARCSIN_1 (0dd0)
+
+    0de6  21 66 c3   LXI HL, c366               ; Apply the sign bit
+    0de9  46         MOV B, M
+    0dea  F1         POP PSW
+    0deb  B0         ORA B
+    0dec  77         MOV M, A
+
+    0ded  C9         RET                        ; Done
+
+; Calculate next arcsin series member coefficient
+;
+;  c371 = c36e
+;  c36e = c36e + 2.
+;  c377 = c368 / c371 * c377
+;
+; Where:
+; 0xc368 - next member x divisor (same value as power, but float, odd numbers - 1, 3, 5...)
+; 0xc36e - next member even coefficient in the divisor (2, 4, 6, ...)
+; 0xc377 - next member coefficient (1, 1*3/2*4, 1*3*5/2*4*6, ...)
+ARCSIN_COEF:
+    0dee  21 6e c3   LXI HL, c36e               ; Store 0xc36e old value at 0xc371
+    0df1  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0df4  21 71 c3   LXI HL, c371
+    0df7  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0dfa  21 6b c3   LXI HL, c36b               ; Load 2. to 0xc374
+    0dfd  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0e00  21 74 c3   LXI HL, c374
+    0e03  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0e06  cd 87 09   CALL ADD_FLOATS (0987)     ; c36e = c36e + 2.
+
+    0e09  21 74 c3   LXI HL, c374               
+    0e0c  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0e0f  21 6e c3   LXI HL, c36e
+    0e12  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0e15  21 68 c3   LXI HL, c368               ; Load 0xc368 to the divident slot
+    0e18  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0e1b  21 74 c3   LXI HL, c374
+    0e1e  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0e21  cd 6f 0a   CALL DIV_3_BYTE (0a6f)     ; calculate c368 / c371
+
+    0e24  21 77 c3   LXI HL, c377               ; Load 0xc377 to 0xc371
+    0e27  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0e2a  21 71 c3   LXI HL, c371
+    0e2d  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0e30  cd ec 09   CALL MULT_3_BYTE (09ec)    ; c377 = c368 / c371 * c377
+
+    0e33  21 74 c3   LXI HL, c374
+    0e36  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0e39  21 77 c3   LXI HL, c377
+    0e3c  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0e3f  c9         RET
+
+
+
 0E40  CD 47 0D CD 92 0F C9 CD 32 0D 21 65 C3 CD 8C 0A
 0E50  21 7B C3 CD 92 0A CD 87 0C 21 65 C3 CD 8C 0A 21
 0E60  74 C3 CD 92 0A 21 7B C3 CD 8C 0A 21 71 C3 CD 92
@@ -1234,12 +1408,58 @@ COSINUS:
 0EE0  CD 92 0A 21 72 C3 7E 17 3F 1F 77 CD 77 08 CD DD
 0EF0  08 21 75 C3 7E E6 7F CA 00 0F CD 34 0F C3 9C 0A
 0F00  23 7E FE 02 DA 0D 0F CD 34 0F C3 9C 0E 21 66 C3
-0F10  46 F1 B0 77 C9 21 61 C3 CD 8C 0A 21 71 C3 CD 92
-0F20  0A CD 08 0B 21 68 C3 CD 8C 0A 21 71 C3 CD 92 0A
-0F30  CD 6F 0A C9 21 64 C3 34 34 21 68 C3 CD 8C 0A 21
-0F40  71 C3 CD 92 0A 21 6B C3 CD 8C 0A 21 74 C3 CD 92
-0F50  0A CD 87 09 21 74 C3 CD 8C 0A 21 68 C3 CD 92 0A
-0F60  C9 CD 87 0C 21 65 C3 CD 8C 0A 21 7B C3 CD 92 0A
+0F10  46 F1 B0 77 C9 
+
+; Calculate the next arcsinus member (without coefficient)
+; res = x^n/n
+; 
+; Implementation:
+; 0xc374 = 0xc361 ^ 0xc364 / 0xc368
+ARCSIN_MEMBER:
+    0f15  21 61 c3   LXI HL, c361               ; Power 0xc361 into 0xc364 exp
+    0f18  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0f1b  21 71 c3   LXI HL, c371
+    0f1e  cd 92 0a   CALL STORE_ABC (0a92)
+    
+    0f21  cd 08 0b   CALL POWER (0b08)
+
+    0f24  21 68 c3   LXI HL, c368               ; And divide by 0xc368
+    0f27  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0f2a  21 71 c3   LXI HL, c371
+    0f2d  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0f30  cd 6f 0a   CALL DIV_3_BYTE (0a6f)
+
+    0f33  c9         RET
+
+; Advance to the next member coefficients
+; c368 += 2., c364 += 2
+ARCSIN_ADVANCE:
+    0f34  21 64 c3   LXI HL, c364               ; Advance next member index by 2
+    0f37  34         INR M
+    0f38  34         INR M
+
+    0f39  21 68 c3   LXI HL, c368               ; Add 0xc368 and 2.
+    0f3c  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0f3f  21 71 c3   LXI HL, c371
+    0f42  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0f45  21 6b c3   LXI HL, c36b
+    0f48  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0f4b  21 74 c3   LXI HL, c374
+    0f4e  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0f51  cd 87 09   CALL ADD_FLOATS (0987)
+
+    0f54  21 74 c3   LXI HL, c374               ; Store result at 0xc368
+    0f57  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0f5a  21 68 c3   LXI HL, c368
+    0f5d  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0f60  c9         RET
+
+
+0F60     CD 87 0C 21 65 C3 CD 8C 0A 21 7B C3 CD 92 0A
 0F70  CD 32 0D 21 65 C3 CD 8C 0A 21 74 C3 CD 92 0A 21
 0F80  7B C3 CD 8C 0A 21 71 C3 CD 92 0A CD 6F 0A C9 CD
 0F90  75 0E 21 65 C3 CD 8C 0A 21 71 C3 CD 92 0A 2B 7E
