@@ -1285,8 +1285,8 @@ ARCSIN_LOOP:
                                                 ; c36e = c36e + 2.
                                                 ; c377 = c368 / c371 * c377
 
-    0d89  cd 34 0f   CALL ARCSIN_ADVANCE (0f34) ; c368 += 2., c364 += 2
-    0d8c  cd 15 0f   CALL ARCSIN_MEMBER (0f15)  ; c374 = c361 ^ c364 / c368
+    0d89  cd 34 0f   CALL SERIES_ADVANCE (0f34) ; c368 += 2., c364 += 2
+    0d8c  cd 15 0f   CALL SERIES_MEMBER (0f15)  ; c374 = c361 ^ c364 / c368
 
     0d8f  21 77 c3   LXI HL, c377               ; Multiply next member (x^n/n) and 
     0d92  cd 8c 0a   CALL LOAD_ABC (0a8c)       ; coefficient (1*3*5*..*n / 2*4*6*..*(n+1))
@@ -1412,47 +1412,164 @@ ARCCOS:
 ; Algorithm is simply 
 ; tg(x) = sin(x)/cos(x) 
 TANGENS:
-    0e47  cd 32 0d   CALL COSINE (0d32)        ; Calculate cosine and store result at 0xc37b
+    0e47  cd 32 0d   CALL COSINE (0d32)         ; Calculate cosine and store result at 0xc37b
 
     0e4a  21 65 c3   LXI HL, c365
-    0e4d  cd 8c 0a   CALL 0a8c
+    0e4d  cd 8c 0a   CALL LOAD_ABC (0a8c)
     0e50  21 7b c3   LXI HL, c37b
-    0e53  cd 92 0a   CALL 0a92
+    0e53  cd 92 0a   CALL STORE_ABC (0a92)
 
-    0e56  cd 87 0c   CALL 0c87                  ; Calculate sine and store result at 0xc374
+    0e56  cd 87 0c   CALL SINE (0c87)           ; Calculate sine and store result at 0xc374
 
     0e59  21 65 c3   LXI HL, c365
-    0e5c  cd 8c 0a   CALL 0a8c
+    0e5c  cd 8c 0a   CALL LOAD_ABC (0a8c)
     0e5f  21 74 c3   LXI HL, c374
-    0e62  cd 92 0a   CALL 0a92
+    0e62  cd 92 0a   CALL STORE_ABC (0a92)
 
     0e65  21 7b c3   LXI HL, c37b               ; Restore cosine value to 0xc371
-    0e68  cd 8c 0a   CALL 0a8c
+    0e68  cd 8c 0a   CALL LOAD_ABC (0a8c)
     0e6b  21 71 c3   LXI HL, c371
-    0e6e  cd 92 0a   CALL 0a92
+    0e6e  cd 92 0a   CALL STORE_ABC (0a92)
 
-    0e71  cd 6f 0a   CALL 0a6f                  ; Divide sine by cosine
+    0e71  cd 6f 0a   CALL DIV_3_BYTE (0a6f)     ; Divide sine by cosine
 
     0e74  c9         RET
 
-0E70                 21 62 C3 7E E6 80 F5 7E E6 7F 77
-0E80  21 64 C3 36 01 23 AF 77 23 77 23 77 23 36 01 23
-0E90  36 20 23 77 23 36 02 23 36 20 23 77 CD 15 0F 21
-0EA0  74 C3 CD 8C 0A 21 6E C3 CD 92 0A CD 34 0F CD 15
-0EB0  0F 21 75 C3 7E 17 3F 1F 77 21 6E C3 CD 8C 0A 21
-0EC0  71 C3 CD 92 0A CD 87 09 21 65 C3 CD 8C 0A 21 71
-0ED0  C3 CD 92 0A CD 87 09 21 74 C3 CD 8C 0A 21 65 C3
-0EE0  CD 92 0A 21 72 C3 7E 17 3F 1F 77 CD 77 08 CD DD
-0EF0  08 21 75 C3 7E E6 7F CA 00 0F CD 34 0F C3 9C 0A
-0F00  23 7E FE 02 DA 0D 0F CD 34 0F C3 9C 0E 21 66 C3
-0F10  46 F1 B0 77 C9 
 
-; Calculate the next arcsine member (without coefficient)
-; res = x^n/n
+; Arctan function
+; 
+; Argument: 0xc361, result: 0xc365
+;
+; The alcorithm is based on calculating the Taylor series:
+; arctg(x) = x - x^3/3 + x^5/5 - x^7/7 + x^9/9 - ..
+;
+; Taylor series calculation continues until the next member does not change
+; the result for more than 1 LSB
+;
+; Function variables:
+; 0xc361 - argument (x)
+; 0xc364 - power (1 byte integer, odd numbers - 1, 3, 5...)
+; 0xc365 - result accumulator
+; 0xc368 - next member x divisor (same value as power, but float, odd numbers - 1, 3, 5...)
+; 0xc36b - 2.
+; 0xc36e - next positive member (temporary value)
+; 0xc371 - temporary value
+; 0xc374 - temporary value
+ARCTAN:
+    0e75  21 62 c3   LXI HL, c362               ; Get and save argument's sign bit
+    0e78  7e         MOV A, M
+    0e79  e6 80      ANI 80
+    0e7b  f5         PUSH PSW
+
+    0e7c  7e         MOV A, M                   ; Clear the sign bit for calculations
+    0e7d  e6 7f      ANI 7f
+    0e7f  77         MOV M, A
+
+    0e80  21 64 c3   LXI HL, c364               ; Set next member power to 1
+    0e83  36 01      MVI M, 01
+
+    0e85  23         INX HL                     ; Set 0. as result accumulator (0xc365)
+    0e86  af         XRA A
+    0e87  77         MOV M, A
+    0e88  23         INX HL
+    0e89  77         MOV M, A
+    0e8a  23         INX HL
+    0e8b  77         MOV M, A
+
+    0e8c  23         INX HL                     ; Set 1. to next member coefficient (0xc368)
+    0e8d  36 01      MVI M, 01
+    0e8f  23         INX HL
+    0e90  36 20      MVI M, 20
+    0e92  23         INX HL
+    0e93  77         MOV M, A
+
+    0e94  23         INX HL                     ; Store 2.0 to 0xc36b
+    0e95  36 02      MVI M, 02
+    0e97  23         INX HL
+    0e98  36 20      MVI M, 20
+    0e9a  23         INX HL
+    0e9b  77         MOV M, A
+
+ARCTAN_LOOP:
+    0e9c  cd 15 0f   CALL SERIES_MEMBER (0f15)  ; 0xc374 = 0xc361 ^ 0xc364 / 0xc368
+
+    0e9f  21 74 c3   LXI HL, c374               ; Save the result at 0xc36e (positive member)
+    0ea2  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0ea5  21 6e c3   LXI HL, c36e
+    0ea8  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0eab  cd 34 0f   CALL SERIES_ADVANCE (0f34) ; c368 += 2., c364 += 2
+    0eae  cd 15 0f   CALL SERIES_MEMBER (0f15)  ; Calculate another member (0xc374 = 0xc361 ^ 0xc364 / 0xc368)
+
+    0eb1  21 75 c3   LXI HL, c375               ; Flip member sign
+    0eb4  7e         MOV A, M                   ; This will be a negative member
+    0eb5  17         RAL
+    0eb6  3f         CMC
+    0eb7  1f         RAR
+    0eb8  77         MOV M, A
+
+    0eb9  21 6e c3   LXI HL, c36e               ; Add positive and negative members
+    0ebc  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0ebf  21 71 c3   LXI HL, c371
+    0ec2  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0ec5  cd 87 09   CALL ADD_FLOATS (0987)
+
+    0ec8  21 65 c3   LXI HL, c365               ; Add both to the result accumulator
+    0ecb  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0ece  21 71 c3   LXI HL, c371
+    0ed1  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0ed4  cd 87 09   CALL ADD_FLOATS (0987)
+
+    0ed7  21 74 c3   LXI HL, c374               ; Store the sum to the result accumulator
+    0eda  cd 8c 0a   CALL LOAD_ABC (0a8c)
+    0edd  21 65 c3   LXI HL, c365
+    0ee0  cd 92 0a   CALL STORE_ABC (0a92)
+
+    0ee3  21 72 c3   LXI HL, c372               ; Calculate difference between old and new
+    0ee6  7e         MOV A, M                   ; result accumulator values
+    0ee7  17         RAL
+    0ee8  3f         CMC
+    0ee9  1f         RAR
+    0eea  77         MOV M, A
+
+    0eeb  cd 77 08   CALL NORM_VALUES (0877)
+    0eee  cd dd 08   CALL ADD_2_BYTE (08dd)
+
+    0ef1  21 75 c3   LXI HL, c375               ; Compare high bytes
+    0ef4  7e         MOV A, M                   ; If the difference is too big - continue for
+    0ef5  e6 7f      ANI 7f                     ; another algorithm iteration
+    0ef7  ca 00 0f   JZ ARCTAN_1 (0f00)
+
+    0efa  cd 34 0F   CALL SERIES_ADVANCE (0f34)
+    0efd  c3 9c 0e   JMP ARCTAN_LOOP (0e9c)
+
+ARCTAN_1:
+    0f00  23         INX HL                     ; If difference is greater than least
+    0f01  7e         MOV A, M                   ; significant bit - repeat for one more
+    0f02  fe 02      CPI 02                     ; iteration
+    0f04  da 0d 0f   JC 0f0d
+
+    0f07  cd 34 0f   CALL SERIES_ADVANCE (0f34)
+    0f0a  c3 9c 0e   JMP ARCTAN_LOOP (0e9c)
+
+ARCTAN_2:
+    0f0d  21 66 c3   LXI HL, c366               ; Apply previously saved bit sign
+    0f10  46         MOV B, M
+    0f11  f1         POP PSW
+    0f12  b0         ORA B
+    0f13  77         MOV M, A
+    
+    0f14  c9         RET                        ; Done
+
+
+
+; Calculate the next x^n/n series member 
 ; 
 ; Implementation:
 ; 0xc374 = 0xc361 ^ 0xc364 / 0xc368
-ARCSIN_MEMBER:
+SERIES_MEMBER:
     0f15  21 61 c3   LXI HL, c361               ; Power 0xc361 into 0xc364 exp
     0f18  cd 8c 0a   CALL LOAD_ABC (0a8c)
     0f1b  21 71 c3   LXI HL, c371
@@ -1471,7 +1588,7 @@ ARCSIN_MEMBER:
 
 ; Advance to the next member coefficients
 ; c368 += 2., c364 += 2
-ARCSIN_ADVANCE:
+SERIES_ADVANCE:
     0f34  21 64 c3   LXI HL, c364               ; Advance next member index by 2
     0f37  34         INR M
     0f38  34         INR M
