@@ -1410,7 +1410,7 @@ ARCCOS:
 ; Argument: 0xc361, result: 0xc374
 ;
 ; Algorithm is simply 
-; tg(x) = sin(x)/cos(x)
+; tg(x) = sin(x)/cos(x) 
 TANGENS:
     0e47  cd 32 0d   CALL COSINUS (0d32)        ; Calculate cosinus and store result at 0xc37b
 
@@ -1496,10 +1496,43 @@ ARCSIN_ADVANCE:
     0f60  c9         RET
 
 
-0F60     CD 87 0C 21 65 C3 CD 8C 0A 21 7B C3 CD 92 0A
-0F70  CD 32 0D 21 65 C3 CD 8C 0A 21 74 C3 CD 92 0A 21
-0F80  7B C3 CD 8C 0A 21 71 C3 CD 92 0A CD 6F 0A C9 CD
-0F90  75 0E 
+; Cotangens function
+;
+; Argument: 0xc361, result: 0xc374
+;
+; Algorithm is simply 
+; ctg(x) = cos(x)/sin(x) 
+COTANGENS:
+    0f61  cd 87 0c   CALL SINUS (0c87)          ; Calculate Sine and store result at 0xc37b
+
+    0f64  21 65 c3   LXI HL, c365
+    0f67  cd 8c 0a   CALL 0a8c
+    0f6a  21 7b c3   LXI HL, c37b
+    0f6d  cd 92 0a   CALL 0a92
+
+    0f70  cd 32 0d   CALL COSINUS (0d32)        ; Calculate cosine and store result at 0xc374
+
+    0f73  21 65 c3   LXI HL, c365
+    0f76  cd 8c 0a   CALL 0a8c
+    0f79  21 74 c3   LXI HL, c374
+    0f7c  cd 92 0a   CALL 0a92
+    
+    0f7f  21 7b c3   LXI HL, c37b               ; Restore sine value
+    0f82  cd 8c 0a   CALL 0a8c
+    0f85  21 71 c3   LXI HL, c371
+    0f88  cd 92 0a   CALL 0a92
+    
+    0f8b  cd 6f 0a   CALL DIV_3_BYTE (0a6f)     ; Calculate cos(x)/sin(x)
+    
+    0f8e  c9         RET
+    
+
+
+
+
+?????:
+    0f8f  cd 75 0e   CALL 0e75
+
 
 ; Calculate arccosinus
 ; res = Pi/2 - arg

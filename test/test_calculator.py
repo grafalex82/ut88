@@ -371,6 +371,23 @@ tg_numbers = [
 ]
 @pytest.mark.parametrize("arg, res", tg_numbers)
 def test_tg(calculator, arg, res):
+    calculator.set_float_argument(0xc361, arg)
+
+    calculator.run_function(0x0e47)
+
+    result = calculator.get_float_result(0xc374)
+    assert pytest.approx(result, abs=0.0005) == res # Accuracy could be better :(
+
+
+
+# arg, ctg result
+ctg_numbers = [
+    (1., 0.6420926159),
+    (-1., -0.6420926159),
+    (2., -0.4576575544),
+]
+@pytest.mark.parametrize("arg, res", ctg_numbers)
+def test_ctg(calculator, arg, res):
     logging.basicConfig(level=logging.DEBUG)
     calculator._machine._cpu.enable_registers_logging(True)
 
@@ -392,10 +409,14 @@ def test_tg(calculator, arg, res):
     calculator._emulator.add_breakpoint(0x0b07, lambda: nl.exit())
     calculator._emulator.add_breakpoint(0x0d47, lambda: nl.enter("ARCSIN"))
     calculator._emulator.add_breakpoint(0x0ded, lambda: nl.exit())
+    calculator._emulator.add_breakpoint(0x0c87, lambda: nl.enter("SINUS"))
+    calculator._emulator.add_breakpoint(0x0d31, lambda: nl.exit())
+    calculator._emulator.add_breakpoint(0x0d32, lambda: nl.enter("COSINUS"))
+    calculator._emulator.add_breakpoint(0x0d46, lambda: nl.exit())
 
     calculator.set_float_argument(0xc361, arg)
 
-    calculator.run_function(0x0e47)
+    calculator.run_function(0x0f61)
 
     result = calculator.get_float_result(0xc374)
     assert pytest.approx(result, abs=0.0005) == res # Accuracy could be better :(
