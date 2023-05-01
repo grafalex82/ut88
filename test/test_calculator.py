@@ -355,6 +355,22 @@ arccos_numbers = [
 ]
 @pytest.mark.parametrize("arg, res", arccos_numbers)
 def test_arccos(calculator, arg, res):
+    calculator.set_float_argument(0xc361, arg)
+
+    calculator.run_function(0x0e40)
+
+    result = calculator.get_float_result(0xc365)
+    assert pytest.approx(result, abs=0.0005) == res # Accuracy could be better :(
+
+
+# arg, tg result
+tg_numbers = [
+    (0., 0),
+    (1., 1.55740772465),
+    (-1., -1.55740772465),
+]
+@pytest.mark.parametrize("arg, res", tg_numbers)
+def test_tg(calculator, arg, res):
     logging.basicConfig(level=logging.DEBUG)
     calculator._machine._cpu.enable_registers_logging(True)
 
@@ -379,7 +395,7 @@ def test_arccos(calculator, arg, res):
 
     calculator.set_float_argument(0xc361, arg)
 
-    calculator.run_function(0x0e40)
+    calculator.run_function(0x0e47)
 
-    result = calculator.get_float_result(0xc365)
+    result = calculator.get_float_result(0xc374)
     assert pytest.approx(result, abs=0.0005) == res # Accuracy could be better :(

@@ -1404,10 +1404,38 @@ ARCCOS:
     0e43  cd 92 0f   CALL CALC_ARCCOS (0f92)
     0e46  c9         RET
 
-0E40                       CD 32 0D 21 65 C3 CD 8C 0A
-0E50  21 7B C3 CD 92 0A CD 87 0C 21 65 C3 CD 8C 0A 21
-0E60  74 C3 CD 92 0A 21 7B C3 CD 8C 0A 21 71 C3 CD 92
-0E70  0A CD 6F 0A C9 21 62 C3 7E E6 80 F5 7E E6 7F 77
+
+; Tangens function
+;
+; Argument: 0xc361, result: 0xc374
+;
+; Algorithm is simply 
+; tg(x) = sin(x)/cos(x)
+TANGENS:
+    0e47  cd 32 0d   CALL COSINUS (0d32)        ; Calculate cosinus and store result at 0xc37b
+
+    0e4a  21 65 c3   LXI HL, c365
+    0e4d  cd 8c 0a   CALL 0a8c
+    0e50  21 7b c3   LXI HL, c37b
+    0e53  cd 92 0a   CALL 0a92
+
+    0e56  cd 87 0c   CALL 0c87                  ; Calculate sinus and store result at 0xc374
+
+    0e59  21 65 c3   LXI HL, c365
+    0e5c  cd 8c 0a   CALL 0a8c
+    0e5f  21 74 c3   LXI HL, c374
+    0e62  cd 92 0a   CALL 0a92
+
+    0e65  21 7b c3   LXI HL, c37b               ; Restore cosinus value to 0xc371
+    0e68  cd 8c 0a   CALL 0a8c
+    0e6b  21 71 c3   LXI HL, c371
+    0e6e  cd 92 0a   CALL 0a92
+
+    0e71  cd 6f 0a   CALL 0a6f                  ; Divide sinus by cosinus
+
+    0e74  c9         RET
+
+0E70                 21 62 C3 7E E6 80 F5 7E E6 7F 77
 0E80  21 64 C3 36 01 23 AF 77 23 77 23 77 23 36 01 23
 0E90  36 20 23 77 23 36 02 23 36 20 23 77 CD 15 0F 21
 0EA0  74 C3 CD 8C 0A 21 6E C3 CD 92 0A CD 34 0F CD 15
