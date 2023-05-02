@@ -15,17 +15,40 @@ from utils import NestedLogger
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 
+class Legend:
+    def __init__(self):
+        text = """
+Keys:
+  0-9, A-F  - hexadecimal buttons
+  Backspace - step back button
+  Esc       - CPU Reset
+  L         - Load a tape file
+  S         - Save a tape file
+        """
+        green = (0, 255, 0)
+        #font = pygame.font.Font(pygame.font.get_default_font(), 16)
+        font = pygame.font.SysFont('Courier New', 24)
+        self._text = font.render(text, True, green)
+        self._rect = self._text.get_rect().move(0, 80])
+
+    def update(self, screen):
+        screen.blit(self._text, self._rect)
+
+
 def enable_debug_logging():
     logging.disable(logging.NOTSET)
 
 def disable_debug_logging():
     logging.disable(logging.DEBUG)
 
+
 def main():
     pygame.init()
-    screen = pygame.display.set_mode((450, 94))
+    screen = pygame.display.set_mode((450, 294))
     pygame.display.set_caption("UT-88 Emulator")
     clock = pygame.time.Clock()
+
+    legend = Legend()
 
     logging.basicConfig(level=logging.DEBUG)
 
@@ -90,6 +113,7 @@ def main():
 
         machine.update()
         lcd.update_screen(screen)
+        legend.update(screen)
         kbd.update()
         pygame.display.flip()
         clock.tick(60)
