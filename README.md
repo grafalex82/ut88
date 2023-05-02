@@ -22,7 +22,7 @@ From the software point of view each phase provided additional capabilities:
 - Full configuration allowed running so called UT-88 operating system, which provided a text editor, assembler, and better compatibility with other i8080-based computers.
 - The magazine offerred a special port of the CP/M operating system, that allows working with files on the quasi disk.
 
-# UT-88 Basic Configuration
+## UT-88 Basic Configuration
 
 Basic UT-88 configuration includes:
 - КР580ВМ80/KR580VM80 CPU (Intel 8080A functional clone) and supplemental chips: КР580ГФ24/KR580GF24 clock generator (Intel 8224 clone), address buffers, КР580ВК38/KR580VK38 system controller (Intel 8238 clone).
@@ -117,7 +117,7 @@ The UT-88 computer is quite poor in terms of software variety. The Basic CPU mod
 - [Reaction game](doc/disassembly/reaction.asm) - program starts counter, goal to stop the counter as early as possible.
 - [Gamma](doc/disassembly/gamma.asm) - generates gamma notes to the tape recorder.
 
-# UT-88 Calculator Add-On
+## UT-88 Calculator Add-On
 
 One of the suggested modifications to the computer is the calculator add-on. It adds a 2k ROM at `0x0800`-`0x0fff` address range. This ROM contains some functions to work with floating point values, and include arithmetic operations (+, -, *, /), and also trigonometric functions (sin, cos, tg, ctg, arcsin, arccos, arctg, arcctg), based on Taylor series calculations.
 
@@ -152,24 +152,56 @@ Functions in the library are:
 
 In order to better understand how 3-byte floating numbers work, a special [Float](misc/float.py) python component was created. It provides conversion from/to a regular 4-byte floating point numbers.
 
-In order to simplify calling library functions for disassembly and testing purposes, a special set of automated tests were created, along with the helper python code to run the library functions and load parameters.
+In order to simplify calling library functions for disassembly and testing purposes, a special [set of automated tests](test/test_calculator.py) were created, along with the helper python code to run the library functions and load parameters. These tests are not supposed to _test_ the library functions, but rather run different branches of the code, and check the result accuracy.
 
 
 # UT-88 Emulator
 
 This project is an emulator of the UT-88 hardware, including CPU, memory, and I/O peripherals. The architecture of the emulator pretty much reflects the modular computer design. 
 
-To be continued...
+## Emulated hardware components
 
-# Running the emulator
+This section describe main parts of the emulator, and outlines important implementation notes. Each component and their relationships are emulated as close as possible to the real hardware.
 
-To run tests:
-```
-cd tests
-py.test -rfeEsxXwa --verbose --showlocals
-```
+- [CPU](src/cpu.py) - implements the i8080 CPU, including its registers, instruction implementation, interrupt handling, and instruction fetching pipeline. This class also provides optional rich instruction logging capabilities for code disassembly purposes. The implementation is inspired by [py8080 project](https://github.com/matthewmpalen/py8080).
+- [Machine](src/machine.py) - implements the machine as a whole, sets up relationships with the CPU, registered (installed) memories, attached I/O devices, and interrupt controller (if it would exist for this machine). The concept of the Machine class allow emulating UT-88 design closer to how it works in the hardware. Thus it implements some important concepts:
+    - CPU does not read the memory directly. Instead, the CPU is a part of the particular Machine configuration, and can access only to a memory which is installed in this configuration. Same for I/O devices, which may vary for different computer configurations.
+    - Reset button resets only the CPU, but leaves the RAM intact. This makes possible some workflows implemented in the Monitor 0, where exiting from some modes (e.g. Memory read or write) is performed using the Reset button.
+    - Some types of memory is triggerred with stack read/write operations. Thus the Quasi Disc module is connected in this way. This allows RAM and Quasi Disk operate in the same address space, but use different accessing mechanisms.
+    - The UT-88 Computer does not have an interrupt controller. Instead if an interrupts occurr, the data bus will have 0xff value on the line due to pull-up resistors. This coincide with the RST7 instruction, that runs an interrupt handler.
+- [RAM](src/ram.py), [ROM](src/rom.py), stack memories (e.g. Quasi Disc), and I/O devices are connected to the machine according to a few [generic interfaces](src/interfaces.py). This allows extending functionality of the computer with new devices very easily - just implement the interface, and register the device/memory in the Machine object. Note that some devices (such as [LCD display](src/lcd.py)) in fact connected to a memory bus rather than I/O devices space.
+- Finally, the [Emulator](src/emulator.py) class provides handy routines for emulating the machine and its CPU. Particularly, this class adds routines to run a single or multiple machine steps, and handle breakpoints. The breakpoint concept is a handy way to do emulator side actions, based on the machine condition or CPU state. Particularly it is possible to add some extra logging when a CPU enters a specific stage or executes a certain code.
+
+The following peripherals is emulated:
+- [17-button hexadecimal keyboard](src/hexkbd.py) (16 digits, and a step back button) is connected to I/O port `0xa0` (read only). Reading the port will return the button scan code, or 0x00 if no button is pressed. The implementation checks host computer button presses (using pygame) and converts it to UT-88 Hex keyboard scan codes. 
+- [6-digit 7-segment display](src/lcd.py), mapped to memory range 0x9000-0x9002 (Write only). The implementation displays images of the 7-segment indicators (using pygame) according to values in the memory cells. 
+- [Tape port](src/tape.py), mapped to I/O port `0xa1` LSB. The implementation of the class emulates 2-phase coding of the data (with some hacks), native for the Monitor 0. The tape emulator can load a binary file and convert it to a series of bit values, so that Monitor 0 can correctly read it with IN instruction, and treat it as a correct tape data. And vice versa, the emulator can collect data bits, that Monitor 0 sends using OUT instructions, and convert them into a file on disk. The implementation is a little bit hacky, as it is not really time based, but just counts In and Out calls.
+- [Seconds Timer](src/timer.py) is not connected to any data buses in the computer, but generates an interrupt every second. As said previously, Machine will set `0xff` on the data line, so that CPU will treat it as RST7 instruction.
+
+The Emulator class, as well as CPU, memories, and some of the peripherals are UI agnostic. This means it can work as a non-UI component, executed in a script, or be checked in automated tests.
+
+Other components, such as LCD and keyboards interact with the User. This is done using [pygame](https://www.pygame.org/) framework. In order to properly handle the keyboard input, and prepare output graphics, components have an `update()` method. The update signal is propagated via Machine object to all memories and devices registered in the Machine. The `update()` method is called approx 15-60 times a second, providing a way to emulate these devices.
+
+
+## Running the emulator
 
 To run the emulator in basic UT-88 configuration
 ```
 python src/main.py
+```
+
+## Tests
+
+In order to verify correctness of the implemented features (especially CPU instructions), a comprehensive [set of automated tests](test) was developed. These tests also help to control massive changes across the codebase, and verify that nothing is broken with the change.
+
+Most of the tests cover a component functionality in isolation. Some tests require a few components work together (e.g. Machine + RAM + CPU). In order not to use hard-to-set-up or User facing components, [Mocks](test/mock.py) are used where it is convenient.
+
+Some tests, such as [Calculator tests](test/test_calculator.py) are not really tests in classic meaning - it does not suppose to _test_ the firmware (though it found a few issues). These tests is a simple and handy way to execute some functions in the firmware.
+
+Tests are implemented with pytest framework.
+
+To run tests:
+```
+cd test
+py.test -rfeEsxXwa --verbose --showlocals
 ```

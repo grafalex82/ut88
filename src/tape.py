@@ -18,6 +18,13 @@ class TapeRecorder(IODevice):
     
     Bytes are written MSB first. Typical recording speed is 1500 bits per second.
 
+                       Example of 0xA5 byte transfer
+      D7=1 |  D6=0 |  D5=1 |  D4=0 |  D3=0 |  D2=1 |  D1=0 |  D0=1 |
+       +---|---+   |   +---|---+   |---+   |   +---|---+   |   +---|
+       |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
+    ---+   |   +---|---+   |   +---|   +---|---+   |   +---|---+   |
+           |<--T-->|       |       |       |       |       |       |
+
     The Tape Recorder component allows to store written data into a file, as well as
     load a binary file and emulate tape reading. 
 
@@ -70,7 +77,7 @@ class TapeRecorder(IODevice):
 
         # HACK: Monitor0 does an extra read at the end of each full byte.
         # To compensate this the TapeRecorder emulator adds an extra bit
-        # at the beginning of each byte (_bits 0 and 1). According to the
+        # at the beginning of each byte (bits 0 and 1). According to the
         # 2 phase coding algorithm it actually does not matter how many
         # bits will go in the beginning, until the phase change. So the real
         # data bit will come at read #3

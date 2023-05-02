@@ -18,11 +18,10 @@ class CPU:
     
         self._registers_logging = False
 
+
     def reset(self):
         """
         Resets registers and flags
-
-        :return:
         """
         self._pc = 0
         self._sp = 0
@@ -63,7 +62,7 @@ class CPU:
         """
         Trigger the interrupt execution.
         
-        Typically an interrupt controller will catch the data bus, and feed the
+        Typically an interrupt controller will aquire the data bus, and feed the
         CPU up to 3 instructions. This function allows emulating this behavior by
         adding passed instructions to the instruction fetch queue.
         """
