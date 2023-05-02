@@ -1,5 +1,10 @@
 import struct
 
+""" 
+This is a helper class to convert normal IEEE754 floating point
+number to/from 3-byte floating point value used in UT-88 calculator
+firmware.
+"""
 class Float:
     def __init__(self, value:float = 0):
         self.from_float(value)
