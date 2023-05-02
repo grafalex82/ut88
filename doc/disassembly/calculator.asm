@@ -21,19 +21,30 @@
 ; 
 ; See more on data formats at https://en.wikipedia.org/wiki/Signed_number_representations
 ;
+; Triginometric functions use Taylor series to calculate the result. Since these series widely
+; use multiplication, divisions, and factorials for big numbers, function accuracy is not super
+; good when using 3-byte floating point values. 
+;
 ; Routine addresses (see parameters description in the respective function disassembly):
 ; - 0849 - add two 1-byte integers in Sign-Magnitude representation
 ; - 0877 - Normalize two 3-byte floats before adding
-; - 08ff - Add two 2-byte integers in Sign-Magnitude representation.
+; - 08dd - Add two 2-byte integers in Sign-Magnitude representation.
 ; - 092d - Normalize exponent
 ; - 0987 - Add two 3-byte floats
 ; - 0994 - Multiply two 2-byte mantissa values
 ; - 09ec - Multiply two 3-byte float values
 ; - 0a6f - Divide two 3-byte float values
-; - 0b08 - Power
+; - 0a98 - Calculate factorial
+; - 0b08 - Raise a floating point value to a integer power
 ; - 0b6b - Logarithm
 ; - 0c87 - Sine
-
+; - 0d32 - Cosine
+; - 0d47 - Arcsine
+; - 0e40 - Arccosine
+; - 0e47 - Tangent
+; - 0e75 - Arctangent
+; - 0f61 - Cotangent
+; - 0f8f - Arccotangent
 
 ; Add two 1-byte integers in Sign-Magnitude representation.
 ; Arguments are located at 0xc371 and 0xc374, the result is stored at 0xc374
@@ -1405,13 +1416,13 @@ ARCCOS:
     0e46  c9         RET
 
 
-; Tangens function
+; Tangent function
 ;
 ; Argument: 0xc361, result: 0xc374
 ;
 ; Algorithm is simply 
 ; tg(x) = sin(x)/cos(x) 
-TANGENS:
+TANGENT:
     0e47  cd 32 0d   CALL COSINE (0d32)         ; Calculate cosine and store result at 0xc37b
 
     0e4a  21 65 c3   LXI HL, c365
@@ -1613,13 +1624,13 @@ SERIES_ADVANCE:
     0f60  c9         RET
 
 
-; Cotangens function
+; Cotangent function
 ;
 ; Argument: 0xc361, result: 0xc374
 ;
 ; Algorithm is simply 
 ; ctg(x) = cos(x)/sin(x) 
-COTANGENS:
+COTANGENT:
     0f61  cd 87 0c   CALL SINE (0c87)          ; Calculate Sine and store result at 0xc37b
 
     0f64  21 65 c3   LXI HL, c365
@@ -1688,9 +1699,26 @@ PI2_MINUS_ARG:
     0fba  cd 92 0a   CALL 0a92
     0fbd  c9         RET
 
-
-0FB0                                            C3 87
-0FC0  09 C3 EC 09 C3 6F 0A C3 C7 0F C3 98 0A C3 08 0B
-0FD0  C3 D0 0F C3 6B 0B C3 87 0C C3 32 0D C3 47 0D C3
-0FE0  40 0E C3 75 0E C3 61 0F C3 47 0E C3 8F 0F C3 49
-0FF0  08 C3 DD 08 C3 94 09 C3 F9 09 C3 8C 0A C3 92 0A
+VECTORS:
+    0fbe  c3 87 09   JMP ADD_FLOATS (0987)      ; Add two 3-byte floats
+    0fc1  c3 ec 09   JMP MULT_3_BYTE (09ec)     ; Multiply two 3-byte float values
+    0fc4  c3 6f 0a   JMP DIV_3_BYTE (0a6f)      ; Divide two 3-byte float values
+    0fc7  c3 c7 0f   JMP 0fc7                   ; Wrong vector? Infinite loop?
+    0fca  c3 98 0a   JMP FACTORIAL (0a98)       ; Calculate factorial
+    0fcd  c3 08 0b   JMP POWER (0b08)           ; Raise a floating point value to a integer power
+    0fd0  c3 d0 0f   JMP 0fd0                   ; Wrong vector? Infinite loop?
+    0fd3  c3 6b 0b   JMP LOGARITHM (0b6b)       ; Logarithm
+    0fd6  c3 87 0c   JMP SINE (0c87)            ; Sine
+    0fd9  c3 32 0d   JMP COSINE (0d32)          ; Cosine
+    0fdc  c3 47 0d   JMP ARCSIN (0d47)          ; Arcsine
+    0fdf  c3 40 0e   JMP ARCCOS (0e40)          ; Arccosine
+    0fe2  c3 75 0e   JMP ARCTAN (0e75)          ; Arctangent
+    0fe5  c3 61 0f   JMP COTANGENT (0f61)       ; Cotangent
+    0fe8  c3 47 0e   JMP TANGENT (0e47)         ; Tangent
+    0feb  c3 8f 0f   JMP ARCCTG (0f8f)          ; Arccotangent
+    0fee  c3 49 08   JMP ADD_1_BYTE (0849)      ; Add two 1-byte integers in Sign-Magnitude form
+    0ff1  c3 dd 08   JMP ADD_2_BYTE (08dd)      ; Add two 2-byte integers in Sign-Magnitude form
+    0ff4  c3 94 09   JMP MULT_MANTISSA (0994)   ; Multiply two 2-byte integer mantissa values
+    0ff7  c3 f9 09   JMP DIV_MANTISSA (09f9)    ; Divide two 2-byte integer mantissa values
+    0ffa  c3 8c 0a   JMP LOAD_ABC (0a8c)        ; Load 3 bytes at HL address to A, B, and C registers respectively
+    0ffd  c3 92 0a   JMP STORE_ABC (0a92)       ; Store A, B, and C registers at HL address
