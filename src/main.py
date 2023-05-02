@@ -1,6 +1,7 @@
 import os
 import logging
 import pygame
+from tkinter import filedialog
 
 from emulator import Emulator
 from machine import Machine
@@ -48,6 +49,8 @@ def main():
 
     emulator.add_breakpoint(0x0000, lambda: nl.reset())
 
+    emulator.add_breakpoint(0x0008, lambda: nl.enter("RST 1: Out byte"))
+    emulator.add_breakpoint(0x0120, lambda: nl.exit())
     emulator.add_breakpoint(0x0018, lambda: nl.enter("RST 3: Wait 1s"))
     emulator.add_breakpoint(0x005e, lambda: nl.exit())
     emulator.add_breakpoint(0x0021, lambda: nl.enter("RST 4: Wait a button"))
@@ -77,6 +80,13 @@ def main():
 
         if pygame.key.get_pressed()[pygame.K_ESCAPE]:
             emulator.reset()
+        if pygame.key.get_pressed()[pygame.K_l]:
+            filename = filedialog.askopenfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")))
+            recorder.load_from_file(filename)
+        if pygame.key.get_pressed()[pygame.K_s]:
+            filename = filedialog.asksaveasfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")),
+                                                    defaultextension="tape")
+            recorder.dump_to_file(filename)
 
         machine.update()
         lcd.update_screen(screen)
@@ -85,7 +95,6 @@ def main():
         clock.tick(60)
         pygame.display.set_caption(f"UT-88 Emulator (FPS={clock.get_fps()})")
 
-    #emulator.run()
 
 if __name__ == '__main__':
     main()
