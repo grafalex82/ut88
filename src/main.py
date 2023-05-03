@@ -33,6 +33,7 @@ class Configuration:
         self._emulator = Emulator(self._machine)
 
         self._logger = NestedLogger()
+        self._emulator.add_breakpoint(0x0000, lambda: self._logger.reset())
 
 
     def run(self):
@@ -55,6 +56,10 @@ class Configuration:
             pygame.display.flip()
             self._clock.tick(60)
             pygame.display.set_caption(f"UT-88 Emulator (FPS={self._clock.get_fps()})")
+
+    def suppress_logging(self, startaddr, endaddr, msg):
+        self._emulator.add_breakpoint(startaddr, lambda: self._logger.enter(msg))
+        self._emulator.add_breakpoint(endaddr, lambda: self._logger.exit())
 
 
 class BasicConfiguration(Configuration):
@@ -83,27 +88,15 @@ class BasicConfiguration(Configuration):
         self._machine.add_io(self._recorder)
 
         # Suppress logging for some functions in this configuration
-        self._emulator.add_breakpoint(0x0000, lambda: self._logger.reset())
-
-        self._emulator.add_breakpoint(0x0008, lambda: self._logger.enter("RST 1: Out byte"))
-        self._emulator.add_breakpoint(0x0120, lambda: self._logger.exit())
-        self._emulator.add_breakpoint(0x0018, lambda: self._logger.enter("RST 3: Wait 1s"))
-        self._emulator.add_breakpoint(0x005e, lambda: self._logger.exit())
-        self._emulator.add_breakpoint(0x0021, lambda: self._logger.enter("RST 4: Wait a button"))
-        self._emulator.add_breakpoint(0x006d, lambda: self._logger.exit())
-
-        self._emulator.add_breakpoint(0x0a92, lambda: self._logger.enter("STORE A-B-C to [HL]"))
-        self._emulator.add_breakpoint(0x0a97, lambda: self._logger.exit())
-        self._emulator.add_breakpoint(0x0a8c, lambda: self._logger.enter("LOAD [HL] to A-B-C"))
-        self._emulator.add_breakpoint(0x0a91, lambda: self._logger.exit())
-        self._emulator.add_breakpoint(0x0b08, lambda: self._logger.enter("POWER"))
-        self._emulator.add_breakpoint(0x0b6a, lambda: self._logger.exit())
-        self._emulator.add_breakpoint(0x0987, lambda: self._logger.enter("ADD"))
-        self._emulator.add_breakpoint(0x0993, lambda: self._logger.exit())
-        self._emulator.add_breakpoint(0x0a6f, lambda: self._logger.enter("DIV"))
-        self._emulator.add_breakpoint(0x0a8b, lambda: self._logger.exit())
-        self._emulator.add_breakpoint(0x09ec, lambda: self._logger.enter("MULT"))
-        self._emulator.add_breakpoint(0x09f8, lambda: self._logger.exit())
+        self.suppress_logging(0x0008, 0x0120, "RST 1: Out byte")
+        self.suppress_logging(0x0018, 0x005e, "RST 3: Wait 1s")
+        self.suppress_logging(0x0021, 0x006d, "RST 4: Wait a button")
+        self.suppress_logging(0x0a92, 0x0a97, "STORE A-B-C to [HL]")
+        self.suppress_logging(0x0a8c, 0x0a91, "LOAD [HL] to A-B-C")
+        self.suppress_logging(0x0b08, 0x0b6a, "POWER")
+        self.suppress_logging(0x0987, 0x0993, "ADD")
+        self.suppress_logging(0x0a6f, 0x0a8b, "DIV")
+        self.suppress_logging(0x09ec, 0x09f8, "MULT")
 
 
     def get_screen_size(self):
