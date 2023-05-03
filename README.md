@@ -22,6 +22,8 @@ From the software point of view each phase provided additional capabilities:
 - Full configuration allowed running so called UT-88 operating system, which provided a text editor, assembler, and better compatibility with other i8080-based computers.
 - The magazine offerred a special port of the CP/M operating system, that allows working with files on the quasi disk.
 
+Scans of the original magazine (unfortunately only basic CPU configuration, calculator add on, and video module) can be found [here](doc/scans).
+
 ## UT-88 Basic Configuration
 
 Basic UT-88 configuration includes:
@@ -117,6 +119,8 @@ The UT-88 computer is quite poor in terms of software variety. The Basic CPU mod
 - [Reaction game](doc/disassembly/reaction.asm) - program starts counter, goal to stop the counter as early as possible.
 - [Gamma](doc/disassembly/gamma.asm) - generates gamma notes to the tape recorder.
 
+Basic CPU module schematics can be found here: [part 1](doc/scans/UT08.djvu), [part 2](doc/scans/UT09.djvu).
+
 ## UT-88 Calculator Add-On
 
 One of the suggested modifications to the computer is the calculator add-on. It adds a 2k ROM at `0x0800`-`0x0fff` address range. This ROM contains some functions to work with floating point values, and include arithmetic operations (+, -, *, /), and also trigonometric functions (sin, cos, tg, ctg, arcsin, arccos, arctg, arcctg), based on Taylor series calculations.
@@ -154,6 +158,7 @@ In order to better understand how 3-byte floating numbers work, a special [Float
 
 In order to simplify calling library functions for disassembly and testing purposes, a special [set of automated tests](test/test_calculator.py) were created, along with the helper python code to run the library functions and load parameters. These tests are not supposed to _test_ the library functions, but rather run different branches of the code, and check the result accuracy.
 
+Add-on schematics can be found [here](doc/scans/UT18.djvu).
 
 # UT-88 Emulator
 
@@ -165,7 +170,7 @@ This section describe main parts of the emulator, and outlines important impleme
 
 - [CPU](src/cpu.py) - implements the i8080 CPU, including its registers, instruction implementation, interrupt handling, and instruction fetching pipeline. This class also provides optional rich instruction logging capabilities for code disassembly purposes. The implementation is inspired by [py8080 project](https://github.com/matthewmpalen/py8080).
 - [Machine](src/machine.py) - implements the machine as a whole, sets up relationships with the CPU, registered (installed) memories, attached I/O devices, and interrupt controller (if it would exist for this machine). The concept of the Machine class allow emulating UT-88 design closer to how it works in the hardware. Thus it implements some important concepts:
-    - CPU does not read the memory directly. Instead, the CPU is a part of the particular Machine configuration, and can access only to a memory which is installed in this configuration. Same for I/O devices, which may vary for different computer configurations.
+    - Real CPU does not read the memory directly. Instead, the CPU sets the desired address on its address lines, and reads the data that a memory device (if connected and selected) sets on the data bus. This is emulated in the same way: the CPU is a part of the particular Machine configuration, and can access only a memory which is installed in this configuration. Same for I/O devices, which may vary for different computer configurations.
     - Reset button resets only the CPU, but leaves the RAM intact. This makes possible some workflows implemented in the Monitor 0, where exiting from some modes (e.g. Memory read or write) is performed using the Reset button.
     - Some types of memory is triggerred with stack read/write operations. Thus the Quasi Disc module is connected in this way. This allows RAM and Quasi Disk operate in the same address space, but use different accessing mechanisms.
     - The UT-88 Computer does not have an interrupt controller. Instead if an interrupts occurr, the data bus will have 0xff value on the line due to pull-up resistors. This coincide with the RST7 instruction, that runs an interrupt handler.
