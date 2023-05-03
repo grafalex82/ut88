@@ -1,6 +1,7 @@
 import os
 import logging
 import pygame
+import argparse
 from tkinter import filedialog
 
 from emulator import Emulator
@@ -98,11 +99,9 @@ class BasicConfiguration(Configuration):
         self.suppress_logging(0x0a6f, 0x0a8b, "DIV")
         self.suppress_logging(0x09ec, 0x09f8, "MULT")
 
-
     def get_screen_size(self):
         return (450, 294)
     
-
     def update(self, screen):
         if pygame.key.get_pressed()[pygame.K_l]:
             filename = filedialog.askopenfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")))
@@ -119,11 +118,22 @@ class BasicConfiguration(Configuration):
 
 
 def main():
+    parser = argparse.ArgumentParser(
+                    prog='UT-88 Emulator',
+                    description='UT-88 DIY i8080-based computer emulator')
+    
+    parser.add_argument('configuration', choices=["basic", "video"])
+    args = parser.parse_args()
+
     pygame.init()
 
     logging.basicConfig(level=logging.DEBUG)
     
-    configuration = BasicConfiguration()
+    if args.configuration == "basic":
+        configuration = BasicConfiguration()
+    if args.configuration == "video":
+        configuration = BasicConfiguration()
+    
     configuration.run()
 
 
