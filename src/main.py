@@ -13,7 +13,9 @@ from hexkbd import HexKeyboard
 from timer import Timer
 from tape import TapeRecorder
 from keyboard import Keyboard
+from display import Display
 from utils import NestedLogger
+
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 
@@ -26,6 +28,9 @@ Keys:
   S         - Save a tape file
 """
 
+def breakpoint():
+    a = 5
+
 class Configuration:
     def __init__(self):
         self._screen = pygame.display.set_mode(self.get_screen_size())
@@ -33,6 +38,8 @@ class Configuration:
 
         self._machine = Machine()
         self._emulator = Emulator(self._machine)
+
+        self._emulator._cpu.enable_registers_logging(True)
 
         self._logger = NestedLogger()
         self._emulator.add_breakpoint(0x0000, lambda: self._logger.reset())
@@ -77,7 +84,7 @@ class BasicConfiguration(Configuration):
         self._legendrect = self._legendtext.get_rect().move(0, 80)
 
         # Create main RAM and ROMs
-        self._machine.add_memory(RAM(0xC000, 0xC3ff))
+        self._machine.add_memory(RAM(0xc000, 0xc3ff))
         self._machine.add_memory(ROM(f"{resources_dir}/Monitor0.bin", 0x0000))
         self._machine.add_memory(ROM(f"{resources_dir}/calculator.bin", 0x0800))
 
@@ -138,16 +145,24 @@ class VideoConfiguration(Configuration):
         self._machine.add_io(self._recorder)
         self._keyboard = Keyboard()
         self._machine.add_io(self._keyboard)
+        self._display = Display()
+        self._machine.add_memory(self._display)
+
 
 
         # Suppress logging for some functions in this configuration
-        # self.suppress_logging(0x0008, 0x0120, "RST 1: Out byte")
+        self.suppress_logging(0xfcce, 0xfcd4, "Clear Screen")
+        self.suppress_logging(0xf849, 0xf84c, "Initial memset")
+
+        self._emulator.add_breakpoint(0xf852, lambda: self._emulator._machine.write_memory_word(0xf7b2, 0xc000))
+        self._emulator.add_breakpoint(0xfc7c, breakpoint)
+
 
     def get_screen_size(self):
-        return (450, 294) #FIXME
+        return (64*16, 32*16)
     
     def update(self, screen):
-        pass
+        self._display.update_screen(screen)
         # if pygame.key.get_pressed()[pygame.K_l]:
         #     filename = filedialog.askopenfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")))
         #     self._recorder.load_from_file(filename)
