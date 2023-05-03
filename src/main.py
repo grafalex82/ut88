@@ -38,6 +38,8 @@ class Configuration:
 
 
     def run(self):
+        self._emulator.reset()
+
         while True:
             self._screen.fill(pygame.Color('black'))
             
@@ -117,6 +119,43 @@ class BasicConfiguration(Configuration):
         screen.blit(self._legendtext, self._legendrect)
 
 
+class VideoConfiguration(Configuration):
+    def __init__(self):
+        Configuration.__init__(self)
+
+        # This configuration will start right from MonitorF, skipping the Monitor0 for convenience
+        self._emulator.set_start_addr(0xf800)
+
+        # Create main RAM and ROMs
+        self._machine.add_memory(RAM(0xc000, 0xc3ff))
+        self._machine.add_memory(RAM(0xf400, 0xf7ff))
+        self._machine.add_memory(ROM(f"{resources_dir}/Monitor0.bin", 0x0000))
+        self._machine.add_memory(ROM(f"{resources_dir}/MonitorF.bin", 0xf800))
+
+        # Add peripherals
+        self._recorder = TapeRecorder()
+        self._machine.add_io(self._recorder)
+
+        # Suppress logging for some functions in this configuration
+        # self.suppress_logging(0x0008, 0x0120, "RST 1: Out byte")
+
+    def get_screen_size(self):
+        return (450, 294) #FIXME
+    
+    def update(self, screen):
+        pass
+        # if pygame.key.get_pressed()[pygame.K_l]:
+        #     filename = filedialog.askopenfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")))
+        #     self._recorder.load_from_file(filename)
+        # if pygame.key.get_pressed()[pygame.K_s]:
+        #     filename = filedialog.asksaveasfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")),
+        #                                             defaultextension="tape")
+        #     self._recorder.dump_to_file(filename)
+
+        # self._lcd.update_screen(screen)
+        # self._kbd.update()
+
+
 def main():
     parser = argparse.ArgumentParser(
                     prog='UT-88 Emulator',
@@ -132,7 +171,7 @@ def main():
     if args.configuration == "basic":
         configuration = BasicConfiguration()
     if args.configuration == "video":
-        configuration = BasicConfiguration()
+        configuration = VideoConfiguration()
     
     configuration.run()
 
