@@ -7,6 +7,10 @@ class Emulator:
         self._machine = machine
         self._cpu = CPU(self._machine)
         self._breakpoints = {}
+        self._startaddr = 0x0000
+
+    def set_start_addr(self, addr):
+        self._startaddr = addr
 
     def add_breakpoint(self, addr, fn):
         if addr not in self._breakpoints:
@@ -30,4 +34,5 @@ class Emulator:
 
     def reset(self):
         self._machine.reset()
+        self._cpu._pc = self._startaddr
 
