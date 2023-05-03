@@ -12,6 +12,7 @@ from lcd import LCD
 from hexkbd import HexKeyboard
 from timer import Timer
 from tape import TapeRecorder
+from keyboard import Keyboard
 from utils import NestedLogger
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
@@ -135,6 +136,9 @@ class VideoConfiguration(Configuration):
         # Add peripherals
         self._recorder = TapeRecorder()
         self._machine.add_io(self._recorder)
+        self._keyboard = Keyboard()
+        self._machine.add_io(self._keyboard)
+
 
         # Suppress logging for some functions in this configuration
         # self.suppress_logging(0x0008, 0x0120, "RST 1: Out byte")
