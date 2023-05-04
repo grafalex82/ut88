@@ -16,17 +16,22 @@ class Display(RAM):
         with open(f"{resources_dir}/font.bin", mode='rb') as f:
             font = f.read()
 
-        self._chars = [self._create_char(font[(c*8):((c+1)*8)]) for c in range(128)]
-        self._chars.extend([self._create_char(font[0:8]) for c in range(128)]) # Chars 128-255 are spaces
+        self._chars = [self._create_char(font[(c*8):((c+1)*8)], False) for c in range(128)]
+        self._chars.extend([self._create_char(font[(c*8):((c+1)*8)], True) for c in range(128)])
 
     
-    def _create_char(self, font):
+    def _create_char(self, font, invert):
         white = (255, 255, 255)
         char = pygame.Surface((CHAR_SIZE, CHAR_SIZE))
 
         for row in range(8):
             for col in range(8):
-                if not font[row] & (0x80 >> col):
+                bitvalue = font[row] & (0x80 >> col) != 0
+
+                if invert:
+                    bitvalue != bitvalue
+
+                if not bitvalue:
                     char.set_at((col*2, row*2), white)
                     char.set_at((col*2, row*2+1), white)
                     char.set_at((col*2+1, row*2), white)
