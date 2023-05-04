@@ -29,7 +29,7 @@ class Display(RAM):
                 bitvalue = font[row] & (0x80 >> col) != 0
 
                 if invert:
-                    bitvalue != bitvalue
+                    bitvalue = not bitvalue
 
                 if not bitvalue:
                     char.set_at((col*2, row*2), white)
