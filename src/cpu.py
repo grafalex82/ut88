@@ -445,10 +445,11 @@ class CPU:
     def _in(self):
         """ IO Input """
         addr = self._fetch_next_byte()
-        self._log_2b_instruction(f"IN {addr:02x}")
 
         self._a = self._machine.read_io(addr)
         self._cycles += 10
+
+        self._log_2b_instruction(f"IN {addr:02x}")
 
 
     def _out(self):
