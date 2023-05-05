@@ -29,7 +29,7 @@ Keys:
 """
 
 def breakpoint():
-    a = 5
+    logging.disable(logging.NOTSET)
 
 class Configuration:
     def __init__(self):
@@ -54,6 +54,8 @@ class Configuration:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     exit()
+
+                self.handle_event(event)
             
             self._emulator.run(50000)
 
@@ -71,6 +73,9 @@ class Configuration:
     def suppress_logging(self, startaddr, endaddr, msg):
         self._emulator.add_breakpoint(startaddr, lambda: self._logger.enter(msg))
         self._emulator.add_breakpoint(endaddr, lambda: self._logger.exit())
+
+    def handle_event(self, event):
+        pass
 
 
 class BasicConfiguration(Configuration):
@@ -148,31 +153,33 @@ class VideoConfiguration(Configuration):
         self._display = Display()
         self._machine.add_memory(self._display)
 
-
-
         # Suppress logging for some functions in this configuration
         self.suppress_logging(0xfcce, 0xfcd4, "Clear Screen")
         self.suppress_logging(0xf849, 0xf84c, "Initial memset")
+        self.suppress_logging(0xfd92, 0xfd95, "Beep")
+        self.suppress_logging(0xfd9a, 0xfdad, "Scan keyboard")
+        #self.suppress_logging(0xfd5c, 0xfd74, "Wait keyboard")
 
         self._emulator.add_breakpoint(0xf852, lambda: self._emulator._machine.write_memory_word(0xf7b2, 0xc000))
-        self._emulator.add_breakpoint(0xfc7c, breakpoint)
+        self._emulator.add_breakpoint(0xf87c, breakpoint)
+        self._emulator.add_breakpoint(0xfc6f, breakpoint)
+        self._emulator.add_breakpoint(0xfca3, breakpoint)
+        self._emulator.add_breakpoint(0xfeef, breakpoint)
+        self._emulator.add_breakpoint(0xfee7, breakpoint)
+        self._emulator.add_breakpoint(0xfe24, breakpoint)
+        self._emulator.add_breakpoint(0xfd52, breakpoint)
 
 
     def get_screen_size(self):
         return (64*16, 32*16)
-    
+
+
     def update(self, screen):
         self._display.update_screen(screen)
-        # if pygame.key.get_pressed()[pygame.K_l]:
-        #     filename = filedialog.askopenfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")))
-        #     self._recorder.load_from_file(filename)
-        # if pygame.key.get_pressed()[pygame.K_s]:
-        #     filename = filedialog.asksaveasfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")),
-        #                                             defaultextension="tape")
-        #     self._recorder.dump_to_file(filename)
 
-        # self._lcd.update_screen(screen)
-        # self._kbd.update()
+
+    def handle_event(self, event):
+        self._keyboard.handle_key_event(event)
 
 
 def main():
