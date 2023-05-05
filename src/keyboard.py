@@ -67,6 +67,26 @@ class Keyboard(IODevice):
         self._key_map['^'] = (0xbf, 0xef, 0xff)     # Char code 0x5e
         self._key_map['_'] = (0xbf, 0xdf, 0xff)     # Char code 0x5f
 
+        # Some symbols are entered with a 'Shift' key (Special Symbol key, port C = 0xfb)
+        #self._key_map[' '] = (0xfe, 0xfe, 0xfd)     # Char code 0x20   # Shift-0 generates a space
+        self._key_map['!'] = (0xfe, 0xfd, 0xfb)     # Char code 0x21
+        self._key_map['"'] = (0xfe, 0xfb, 0xfb)     # Char code 0x22
+        self._key_map['#'] = (0xfe, 0xf7, 0xfb)     # Char code 0x23
+        self._key_map['$'] = (0xfe, 0xef, 0xfb)     # Char code 0x24    # There is no $ in the font. Strange symbol is printed instead
+        self._key_map['%'] = (0xfe, 0xdf, 0xfb)     # Char code 0x25
+        self._key_map['&'] = (0xfe, 0xbf, 0xfb)     # Char code 0x26
+
+        self._key_map['\''] = (0xfd, 0xfe, 0xfb)    # Char code 0x27
+        self._key_map['('] = (0xfd, 0xfd, 0xfb)     # Char code 0x28
+        self._key_map[')'] = (0xfd, 0xfb, 0xfb)     # Char code 0x29
+        self._key_map['*'] = (0xfd, 0xf7, 0xfb)     # Char code 0x2a
+        self._key_map['+'] = (0xfd, 0xef, 0xfb)     # Char code 0x2b
+        self._key_map['<'] = (0xfd, 0xdf, 0xfb)     # Char code 0x2c
+        self._key_map['='] = (0xfd, 0xbf, 0xfb)     # Char code 0x3d
+
+        self._key_map['>'] = (0xfb, 0xfe, 0xfb)     # Char code 0x2e
+        self._key_map['?'] = (0xfb, 0xfd, 0xfb)     # Char code 0x3f
+
         # Alpha keys (with scan codes >= 0x40) with RUS button pressed (portC = 0xfe)
         self._key_map['Ю'] = (0xfb, 0xfb, 0xfe)     # Char code 0x60
         self._key_map['А'] = (0xfb, 0xf7, 0xfe)     # Char code 0x61
