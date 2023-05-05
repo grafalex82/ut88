@@ -66,6 +66,7 @@ class Keyboard(IODevice):
         self._key_map[']'] = (0xbf, 0xf7, 0xff)     # Char code 0x5d
         self._key_map['^'] = (0xbf, 0xef, 0xff)     # Char code 0x5e
         self._key_map['_'] = (0xbf, 0xdf, 0xff)     # Char code 0x5f
+        self._key_map[' '] = (0xbf, 0xdf, 0xff)     # Char code 0x20
 
         # Some symbols are entered with a 'Shift' key (Special Symbol key, port C = 0xfb)
         #self._key_map[' '] = (0xfe, 0xfe, 0xfd)     # Char code 0x20   # Shift-0 generates a space
@@ -81,10 +82,10 @@ class Keyboard(IODevice):
         self._key_map[')'] = (0xfd, 0xfb, 0xfb)     # Char code 0x29
         self._key_map['*'] = (0xfd, 0xf7, 0xfb)     # Char code 0x2a
         self._key_map['+'] = (0xfd, 0xef, 0xfb)     # Char code 0x2b
-        self._key_map['<'] = (0xfd, 0xdf, 0xfb)     # Char code 0x2c
+        self._key_map['<'] = (0xfd, 0xdf, 0xfb)     # Char code 0x3c
         self._key_map['='] = (0xfd, 0xbf, 0xfb)     # Char code 0x3d
 
-        self._key_map['>'] = (0xfb, 0xfe, 0xfb)     # Char code 0x2e
+        self._key_map['>'] = (0xfb, 0xfe, 0xfb)     # Char code 0x3e
         self._key_map['?'] = (0xfb, 0xfd, 0xfb)     # Char code 0x3f
 
         # Alpha keys (with scan codes >= 0x40) with RUS button pressed (portC = 0xfe)
@@ -125,7 +126,14 @@ class Keyboard(IODevice):
         self._key_map['Ч'] = (0xbf, 0xef, 0xfe)     # Char code 0x7e
 
 
-#        self._key_map[''] = ()
+        self._key_codes_map = {}
+        self._key_codes_map[pygame.K_RIGHT]     = (0x7f, 0xfe, 0xff)    # Char code 0x18
+        self._key_codes_map[pygame.K_LEFT]      = (0x7f, 0xfd, 0xff)    # Char code 0x08
+        self._key_codes_map[pygame.K_UP]        = (0x7f, 0xfb, 0xff)    # Char code 0x19
+        self._key_codes_map[pygame.K_DOWN]      = (0x7f, 0xf7, 0xff)    # Char code 0x1a
+        self._key_codes_map[pygame.K_RETURN]    = (0x7f, 0xef, 0xff)    # Char code 0x0d
+        self._key_codes_map[pygame.K_DELETE]    = (0x7f, 0xdf, 0xff)    # Char code 0x1f (Clear screen)
+        self._key_codes_map[pygame.K_HOME]      = (0x7f, 0xbf, 0xff)    # Char code 0x0c
 
 
     def configure(self, value):
@@ -162,17 +170,15 @@ class Keyboard(IODevice):
 
     
     def handle_key_event(self, event):
-        # self._port_c = 0xff
-        # mods = pygame.key.get_mods()
-        # if mods & pygame.KMOD_CTRL:
-        #     self._port_c &= 0xfd
-        # if mods & pygame.KMOD_ALT:
-        #     self._port_c &= 0xfb
-
         if event.type == pygame.TEXTINPUT:
             ch = event.text.upper()
             if ch in self._key_map:
                 self._pressed_key = self._key_map[ch]
                 return
-
+        
+        if event.type == pygame.KEYDOWN:
+            if event.key in self._key_codes_map:
+                self._pressed_key = self._key_codes_map[event.key]
+                return
+            
         self._pressed_key = (0xff, 0xff, 0xff)
