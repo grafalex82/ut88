@@ -387,47 +387,54 @@ fd30  c2 2e fd c9 79 fe 59 c2 6f fc cd d1 fc 3e 02 c3
 fd40  70 fc 79 de 20 4f 0d 3e 04 fa 70 fc cd f3 fc c3
 fd50  46 fd 3e 01 c3 70 fc e5 d5 c5 3e 7f 32 f3 f7 cd
 
+
+; Wait for the keyboard input
+;
+; This function waits for the keyboard input. The function also handles when the key
+; is pressed for some time. In this case repeat mechanism is working, and the key is
+; triggered again, until it is released.
 KBD_INPUT:
     fd57  e5         PUSH HL
     fd58  d5         PUSH DE
     fd59  c5         PUSH BC
 
-    fd5a  3e 7f      MVI A, 7f
-    fd5c  32 f3 f7   STA f7f3
+    fd5a  3e 7f      MVI A, 7f                  ; Reset repeat counter (if the button is _still_ pressed
+    fd5c  32 f3 f7   STA f7f3                   ; let's wait some time until it is triggered again)
 
-?????:
+KBD_INPUT_LOOP:
     fd5f  cd 9a fd   CALL SCAN_KBD_STABLE (fd9a)
 
     fd62  fe ff      CPI ff                     ; Check if something was pressed
-    fd64  c2 74 fd   JNZ fd74
+    fd64  c2 74 fd   JNZ KBD_INPUT_PRESS (fd74)
 
-    fd67  3e 00      MVI A, 00                  ; ?????
+    fd67  3e 00      MVI A, 00                  ; Nothing is pressed - rReset the repeat counter
     fd69  32 f3 f7   STA f7f3
-    fd6c  3e 00      MVI A, 00
+    fd6c  3e 00      MVI A, 00                  ; ... and the pressed flag
     fd6e  32 f4 f7   STA f7f4
 
-    fd71  c3 5f fd   JMP fd5f                   ; Wait until something is pressed
+    fd71  c3 5f fd   JMP KBD_INPUT_LOOP (fd5f)  ; Wait until something is pressed
 
-????:
+KBD_INPUT_PRESS:
     fd74  57         MOV D, A
 
-    fd75  3a f4 f7   LDA f7f4
-    fd78  a7         ANA A
-    fd79  c2 92 fd   JNZ fd92
+    fd75  3a f4 f7   LDA f7f4                   ; If it is pressed for the first time - trigger
+    fd78  a7         ANA A                      ; the button press
+    fd79  c2 92 fd   JNZ KBD_INPUT_TRIGGER (fd92)
 
-    fd7c  3a f3 f7   LDA f7f3
-    fd7f  a7         ANA A
-    fd80  ca 92 fd   JZ fd92
+    fd7c  3a f3 f7   LDA f7f3                   ; If it is pressed for a while - trigger the button 
+    fd7f  a7         ANA A                      ; press (repeat)
+    fd80  ca 92 fd   JZ KBD_INPUT_TRIGGER (fd92)
 
-    fd83  3a f3 f7   LDA f7f3
+    fd83  3a f3 f7   LDA f7f3                   ; Decrease the repeat wait timer
     fd86  3d         DCR A
     fd87  32 f3 f7   STA f7f3
 
     fd8a  c2 5f fd   JNZ fd5f
 
-    fd8d  3e 01      MVI A, 01
+    fd8d  3e 01      MVI A, 01                  ; Raise the pressed flag
     fd8f  32 f4 f7   STA f7f4
 
+KBD_INPUT_TRIGGER:
     fd92  cd 4b fe   CALL BEEP (fe4b)
 
     fd95  7a         MOV A, D
@@ -438,6 +445,9 @@ KBD_INPUT:
 
 
 
+; Detect a stable keyboard press
+;
+; Perform a keyboard matrix scan, and ensure that scan code is stable for some time.
 SCAN_KBD_STABLE:
     fd9a  c5         PUSH BC
 
