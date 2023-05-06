@@ -2,6 +2,81 @@ import pygame
 from interfaces import *
 
 class Keyboard(IODevice):
+    """
+    UT-88 Alpha-Numeric keyboard
+
+    This class emulates 59-keys alpha-numeric keyboard, that is a part of the UT-88 Video Configuration.
+
+    Keyboard features are:
+    - 50 keys containing digits, letters, symbols, and space
+    - 4 arrow keys + home key
+    - Clear screen key
+    - 3 Mod keys:
+        - RUS toggle key, that changes some keys to represent Russian letters (Ё and Ъ letters did not fit
+          the keyboard layout)
+        - Symbol shift - works like 'Shift' key on modern computers, but only for symbols. The computer does
+          not offer lower case (all letters are upper case), so shift key does nothing for letter keys.
+        - Control symbol - works like a 'Ctrl' key on modern computer terminals, but only for letter and 
+          a few other keys. Aim of this button is to allow entering symbols with codes in 0x00-0x1f range.
+
+    With mod keys the keyboard allows entering pretty much every symbol in a range 0x00-0x7f. Among them:
+    - 0x00-0x1f some pseudo-graphics symbols. Also in some modes symbols in this range represent control 
+      symbols (e.g. cursor movement, clear screen) 
+    - 0x20-0x5f - symbols, numbers, and Latin letters. These codes fully match standard ASCII table in this
+      range.
+    - 0x60-0x7f - this part is reserved for Russian letters (Ё and Ъ letters still do not fit the range).
+
+    The keyboard layout is odd, compared to what is being used nowadays, but was quite popular on soviet
+    computers back in 80x. The layout is based on the standard Russian layout, while Latin letters match
+    the Russian ones, where possible.
+
+    Here is the proposed layout. Letters and symbols at the bottom are entered without modificator keys, 
+    symbols on the top require Shift or RUS modificators to be entered. Leyout for arrow, home, and clear
+    screen keys is not described in the magazine.
+
+    |  +  |  !  |  "  |  #  |  $  |  %  |  &  |  '  |  (  |  )  |     |  =  |     |
+    |  ;  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |  9  |  0  |  -  | RUS |
+      |  Й  |  Ц  |  У  |  К  |  Е  |  Н  |  Г  |  Ш  |  Щ  |  З  |  Х  |  *  |     |
+      |  J  |  C  |  U  |  K  |  E  |  N  |  G  |  [  |  ]  |  Z  |  H  |  :  |Enter|
+    |     |  Ф  |  Ы  |  В  |  А  |  П  |  Р  |  О  |  Л  |  Д  |  Ж  |  Э  |     |
+    | Ctrl|  F  |  Y  |  W  |  A  |  P  |  R  |  O  |  L  |  D  |  V  |  \  |Enter|
+      |     |  Я  |  Ч  |  С  |  М  |  И  |  Т  |  Ь  |  Б  |  Ю  |  <  |  ?  |     |
+      |Shift|  Q  |  ^  |  S  |  M  |  I  |  T  |  X  |  B  |  @  |  .  |  /  |Enter|
+
+      
+    
+    Electrical connection notes:
+
+    All the buttons (except for modification keys) are organized in a 8x7 matrix, connected to the
+    computer via i8255 controller. Monitor F selects one column at a time, by setting low level
+    on a corresponding bit in Port A. Row state is captured via Port B (highest bit is ties to gnd, 
+    other bits are pulled up with resistors, and will be read as 1 if no button is pressed in the
+    selected column).
+
+    3 modification keys set low level in one of 3 lowest bits on the Port C.
+
+    The 8255 controller connected as an I/O device at address range 0x04-0x07, but address lines are
+    inverted (so that configuration register is on port 0x04, Port C on port 0x05, Port B on port 0x06,
+    and Port A on port 0x07)
+
+    
+    Emulation notes
+
+    Taking into account the odd layout, it would be quite impossible to emulate the keyboard as is.
+    Instead, this class will detect keyboard press events, and translate it to Port A/B/C values (which
+    in turn represent pressed button and a modification key). This approach allows emulating keyboard
+    presses using currently active keyboard layout on the host system (including English and Russian).
+
+    In order to detect letters on both languages, as well as distinguish symbols that are collocated on 
+    the same button (e.g. colon and semicolon), the pygame.TEXTINPUT event is used. For arrow keys, as
+    well as Ctrl-key combinations, the pygame.KEYDOWN event is used.
+
+    When a button is pressed, the emulator class sets the _pressed_key member to a tripple, representing
+    ports A, B, and C values. When the Monitor F firmware will scan keyboard matrix via port A, the
+    emulator will return port B value according to selected column and button pressed.
+
+    """
+
     def __init__(self):
         IODevice.__init__(self, 0x04, 0x07)
         # The only supported configuration is Port A output, B and C - input
@@ -134,7 +209,7 @@ class Keyboard(IODevice):
         self._key_codes_map[pygame.K_DELETE]    = (0x7f, 0xdf, 0xff)    # Char code 0x1f (Clear screen)
         self._key_codes_map[pygame.K_HOME]      = (0x7f, 0xbf, 0xff)    # Char code 0x0c
 
-        self._ctrl_codes_map = {}
+        self._ctrl_codes_map = {}   # Ctrl mod key is pressed
         self._ctrl_codes_map[pygame.K_a]        = (0xfb, 0xf7, 0xfd)    # Char code 0x01
         self._ctrl_codes_map[pygame.K_b]        = (0xfb, 0xef, 0xfd)    # Char code 0x02
         self._ctrl_codes_map[pygame.K_c]        = (0xfb, 0xdf, 0xfd)    # Char code 0x03
