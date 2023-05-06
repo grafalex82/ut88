@@ -125,7 +125,6 @@ class Keyboard(IODevice):
         self._key_map['Щ'] = (0xbf, 0xf7, 0xfe)     # Char code 0x7d
         self._key_map['Ч'] = (0xbf, 0xef, 0xfe)     # Char code 0x7e
 
-
         self._key_codes_map = {}
         self._key_codes_map[pygame.K_RIGHT]     = (0x7f, 0xfe, 0xff)    # Char code 0x18
         self._key_codes_map[pygame.K_LEFT]      = (0x7f, 0xfd, 0xff)    # Char code 0x08
@@ -134,6 +133,43 @@ class Keyboard(IODevice):
         self._key_codes_map[pygame.K_RETURN]    = (0x7f, 0xef, 0xff)    # Char code 0x0d
         self._key_codes_map[pygame.K_DELETE]    = (0x7f, 0xdf, 0xff)    # Char code 0x1f (Clear screen)
         self._key_codes_map[pygame.K_HOME]      = (0x7f, 0xbf, 0xff)    # Char code 0x0c
+
+        self._ctrl_codes_map = {}
+        self._ctrl_codes_map[pygame.K_a]        = (0xfb, 0xf7, 0xfd)    # Char code 0x01
+        self._ctrl_codes_map[pygame.K_b]        = (0xfb, 0xef, 0xfd)    # Char code 0x02
+        self._ctrl_codes_map[pygame.K_c]        = (0xfb, 0xdf, 0xfd)    # Char code 0x03
+        self._ctrl_codes_map[pygame.K_d]        = (0xfb, 0xbf, 0xfd)    # Char code 0x04
+
+        self._ctrl_codes_map[pygame.K_e]        = (0xf7, 0xfe, 0xfd)    # Char code 0x05
+        self._ctrl_codes_map[pygame.K_f]        = (0xf7, 0xfd, 0xfd)    # Char code 0x06
+        self._ctrl_codes_map[pygame.K_g]        = (0xf7, 0xfb, 0xfd)    # Char code 0x07
+        self._ctrl_codes_map[pygame.K_h]        = (0xf7, 0xf7, 0xfd)    # Char code 0x08
+        self._ctrl_codes_map[pygame.K_i]        = (0xf7, 0xef, 0xfd)    # Char code 0x09
+        self._ctrl_codes_map[pygame.K_j]        = (0xf7, 0xdf, 0xfd)    # Char code 0x0a
+        self._ctrl_codes_map[pygame.K_k]        = (0xf7, 0xbf, 0xfd)    # Char code 0x0b
+
+        self._ctrl_codes_map[pygame.K_l]        = (0xef, 0xfe, 0xfd)    # Char code 0x0c
+        self._ctrl_codes_map[pygame.K_m]        = (0xef, 0xfd, 0xfd)    # Char code 0x0d
+        self._ctrl_codes_map[pygame.K_n]        = (0xef, 0xfb, 0xfd)    # Char code 0x0e
+        self._ctrl_codes_map[pygame.K_o]        = (0xef, 0xf7, 0xfd)    # Char code 0x0f
+        self._ctrl_codes_map[pygame.K_p]        = (0xef, 0xef, 0xfd)    # Char code 0x10
+        self._ctrl_codes_map[pygame.K_q]        = (0xef, 0xdf, 0xfd)    # Char code 0x11
+        self._ctrl_codes_map[pygame.K_r]        = (0xef, 0xbf, 0xfd)    # Char code 0x12
+
+        self._ctrl_codes_map[pygame.K_s]        = (0xdf, 0xfe, 0xfd)    # Char code 0x13
+        self._ctrl_codes_map[pygame.K_t]        = (0xdf, 0xfd, 0xfd)    # Char code 0x14
+        self._ctrl_codes_map[pygame.K_u]        = (0xdf, 0xfb, 0xfd)    # Char code 0x15
+        self._ctrl_codes_map[pygame.K_v]        = (0xdf, 0xf7, 0xfd)    # Char code 0x16
+        self._ctrl_codes_map[pygame.K_w]        = (0xdf, 0xef, 0xfd)    # Char code 0x17
+        self._ctrl_codes_map[pygame.K_x]        = (0xdf, 0xdf, 0xfd)    # Char code 0x18
+        self._ctrl_codes_map[pygame.K_y]        = (0xdf, 0xbf, 0xfd)    # Char code 0x19
+
+        self._ctrl_codes_map[pygame.K_z]        = (0xbf, 0xfe, 0xfd)    # Char code 0x1a
+        self._ctrl_codes_map[pygame.K_COMMA]    = (0xbf, 0xfd, 0xfd)    # Char code 0x1b
+        self._ctrl_codes_map[pygame.K_PERIOD]   = (0xbf, 0xfb, 0xfd)    # Char code 0x1c
+        self._ctrl_codes_map[pygame.K_SEMICOLON]= (0xbf, 0xf7, 0xfd)    # Char code 0x1d
+        self._ctrl_codes_map[pygame.K_QUOTE]    = (0xbf, 0xef, 0xfd)    # Char code 0x1e
+        self._ctrl_codes_map[pygame.K_SLASH]    = (0xbf, 0xdf, 0xfd)    # Char code 0x1f
 
 
     def configure(self, value):
@@ -179,6 +215,10 @@ class Keyboard(IODevice):
         if event.type == pygame.KEYDOWN:
             if event.key in self._key_codes_map:
                 self._pressed_key = self._key_codes_map[event.key]
+                return
+            
+            if event.key in self._ctrl_codes_map and (pygame.key.get_mods() & pygame.KMOD_CTRL):
+                self._pressed_key = self._ctrl_codes_map[event.key]
                 return
             
         self._pressed_key = (0xff, 0xff, 0xff)
