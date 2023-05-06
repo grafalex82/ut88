@@ -75,7 +75,7 @@ class Display(RAM):
         addr -= 0xe800
         ch = self._ram[addr]
         col = addr % 0x40
-        row = addr / 0x40
+        row = addr // 0x40
         self._display.blit(self._chars[ch], (col*CHAR_SIZE, row*CHAR_SIZE))
 
 
