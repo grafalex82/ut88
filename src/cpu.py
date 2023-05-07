@@ -81,7 +81,7 @@ class CPU:
     @a.setter
     def a(self, value):
         assert value >= 0x00 and value <= 0xff
-        self._a = value & 0xff
+        self._a = value
 
 
     @property
@@ -92,7 +92,7 @@ class CPU:
     @b.setter
     def b(self, value):
         assert value >= 0x00 and value <= 0xff
-        self._b = value & 0xff
+        self._b = value
 
 
     @property
@@ -103,7 +103,7 @@ class CPU:
     @c.setter
     def c(self, value):
         assert value >= 0x00 and value <= 0xff
-        self._c = value & 0xff
+        self._c = value
 
 
     @property
@@ -114,7 +114,7 @@ class CPU:
     @d.setter
     def d(self, value):
         assert value >= 0x00 and value <= 0xff
-        self._d = value & 0xff
+        self._d = value
 
 
     @property
@@ -125,7 +125,7 @@ class CPU:
     @e.setter
     def e(self, value):
         assert value >= 0x00 and value <= 0xff
-        self._e = value & 0xff
+        self._e = value
 
 
     @property
@@ -136,7 +136,7 @@ class CPU:
     @h.setter
     def h(self, value):
         assert value >= 0x00 and value <= 0xff
-        self._h = value & 0xff
+        self._h = value
 
 
     @property
@@ -147,7 +147,29 @@ class CPU:
     @l.setter
     def l(self, value):
         assert value >= 0x00 and value <= 0xff
-        self._l = value & 0xff
+        self._l = value
+
+
+    @property
+    def pc(self):
+        return self._pc
+    
+
+    @pc.setter
+    def pc(self, value):
+        assert value >= 0x00 and value <= 0xffff
+        self._pc = value
+
+
+    @property
+    def sp(self):
+        return self._sp
+    
+
+    @sp.setter
+    def sp(self, value):
+        assert value >= 0x00 and value <= 0xffff
+        self._sp = value
 
 
     def _fetch_next_byte(self):

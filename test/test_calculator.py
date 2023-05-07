@@ -111,19 +111,19 @@ class Calculator:
     def run_function(self, addr):
         # Put the breakpoint to the top of the stack
         # When a calculator function will return, it will get to the 0xbeef address
-        self._emulator._cpu._sp = 0xc3ee
+        self._emulator._cpu.sp = 0xc3ee
         self._emulator._machine.write_memory_word(0xc3ee, 0xbeef) # breakpoint return address
 
         # Will execute function starting from the given address
-        self._emulator._cpu._pc = addr
+        self._emulator._cpu.pc = addr
 
         # Run the requested function, until it returns to 0xbeef
         # Set the counter limit to avoid infinite loop
-        while self._emulator._cpu._pc != 0xbeef and self._emulator._cpu._cycles < 100000000:
+        while self._emulator._cpu.pc != 0xbeef and self._emulator._cpu._cycles < 100000000:
             self._emulator.step()
 
         # Validate that the code really reached the end, and not stopped by a cycles limit
-        assert self._emulator._cpu._pc == 0xbeef
+        assert self._emulator._cpu.pc == 0xbeef
 
 
 @pytest.fixture
