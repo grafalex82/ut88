@@ -3,6 +3,7 @@
 ; Important variables:
 ; f7b0 - Current cursor position (offset from video memory start address)
 ; f7b2 - Current cursor position (memory address)
+; f7f8 - Flag indicating that the next char will be cursor direct movement coordinate
 VECTORS:                                        ; Jump vectors to real function implementations
     f800  c3 36 f8   JMP START (f836)
     f803  c3 57 fd   JMP KBD_INPUT (fd57)
@@ -204,20 +205,46 @@ fc20  c2 1e fc 14 15 c2 fb fb f9 f1 c3 70 ff c9 f5 0f
 fc30  0f 0f 0f cd 37 fc f1 e6 0f fe 0a fa 40 fc c6 07
 fc40  c6 30 4f e5 c5 d5 f5 2a b2 f7 23 7e e6 7f 77 2b
 
-; Print a char
+; Print a char (see detailed description below)
 ; A - char to print
 PUT_CHAR_A:
     fc42  4f         MOV C, A
 
 ; Print a char
 ; C - char to print
+;
+; This function puts a char at the cursor location in a terminal mode (including wrapping
+; the cursor to the next line, and scrolling the text if the end of screen reached). 
+;
+; The function is responsible to draw the cursor symbol, by inverting the cursor position (for some
+; reason it intentionally highlights the symbol next to the cursor position). The function is responsible
+; to hide the highlight when the next symbol is printed.
+;
+; The function handles the following special chars:
+; 0x08  - Move cursor 1 position left
+; 0x0c  - Move cursor to the top left position
+; 0x18  - Move cursor 1 position right
+; 0x19  - Move cursor 1 line up
+; 0x1a  - Move cursor 1 line down
+; 0x1f  - Clear screen
+; 0x1b  - Move cursor to a selected position
+;         This is a 4-symbol sequence (similar to Esc sequence):
+;         0x1b, 'Y', 0x20+Y position, 0x20+X position
+;
+; Important variables:
+; f7b2 - Current cursor position (memory address)
+; f7f8 - cursor direct movement state
+;        0 - normal mode, next symbol is a regular symbol
+;        1 - 0x1b printed, expecting 'Y'
+;        2 - expecting Y coordinate
+;        4 - expecting X coordinate
 PUT_CHAR_C:
     fc43  e5         PUSH HL
     fc44  c5         PUSH BC
     fc45  d5         PUSH DE
     fc46  f5         PUSH PSW
 
-    fc47  2a b2 f7   LHLD f7b2
+    fc47  2a b2 f7   LHLD f7b2                  ; Load current cursor location
 
     fc4a  23         INX HL                     ; Remove highlight at the cursor location
     fc4b  7e         MOV A, M
@@ -226,33 +253,36 @@ PUT_CHAR_C:
 
     fc4f  2b         DCX HL
 
-    fc50  11 ba fc   LXI DE, fcba               ; Returning address after a special symbol is processed
+    fc50  11 ba fc   LXI DE, PUT_CHAR_RETURN (fcba) ; Returning address after a special symbol is processed
     fc53  d5         PUSH DE
     
-    fc54  3a f8 f7   LDA f7f8
+    fc54  3a f8 f7   LDA f7f8                   ; Check the direct movement flag state
     fc57  3d         DCR A
-    fc58  fa 74 fc   JM fc74
-    fc5b  ca 34 fd   JZ fb34
-    fc5e  e2 42 fb   JPO fb42
+    fc58  fa 74 fc   JM PRINT_NORMAL_CHAR (fc74); If it is 0 - normal char print
+    fc5b  ca 34 fd   JZ MOVE_CUR_DIRECT_B1 (fd34) ; If it is 1 - expect 'Y' as a second byte of the sequence
+    fc5e  e2 42 fd   JPO MOVE_CUR_DIRECT_B2 (fd42) ; If it is 2 - process Y coordinate of direct cursor movement
 
-    fc61  79         MOV A, C
-    fc62  de 20      SBI 20
+    fc61  79         MOV A, C                   ; Process X coordinate of direct cursor movement
+    fc62  de 20      SBI 20                     ; Adjust by 0x20 (use printable chars)
     fc64  4f         MOV C, A
 
-???:
+MOVE_CUR_DIRECT_L1:
     fc65  0d         DCR C
-    fc66  fa 6f fc   JM fc6f 
-    fc69  cd e2 fc   CALL fce2    
-    fc6c  c3 65 fc   JMP fc65
+    fc66  fa 6f fc   JM MOVE_CUR_DIRECT_RESET (fc6f)
+    fc69  cd e2 fc   CALL MOVE_CUR_RIGHT (fce2)
+    fc6c  c3 65 fc   JMP MOVE_CUR_DIRECT_L1 (fc65)
 
-???:
+MOVE_CUR_DIRECT_RESET:
+    fc6f  af         XRA A                      ; Reset direct movement flag
 
-fc60                                               af
-fc70  32 f8 f7 c9 
+MOVE_CUR_DIRECT_STORE:
+    fc70  32 f8 f7   STA f7f8                   ; Store direct movement flag
+    fc73  c9         RET
 
+PRINT_NORMAL_CHAR:
     fc74  79         MOV A, C                   ; 1b - direct cursor movement
     fc75  fe 1b      CPI 1b
-    fc77  ca 52 fd   JZ fd52
+    fc77  ca 52 fd   JZ MOVE_CUR_DIRECT (fd52)
     fc7a  fe 1f      CPI 1f                     ; 1f - Clear screen
     fc7c  ca ce fc   JZ CLEAR_SCREEN (fcce)
     fc7f  fe 08      CPI 08                     ; 08 - Move cursor left
@@ -270,14 +300,21 @@ fc70  32 f8 f7 c9
 
     fc9d  7c         MOV A, H                   ; Check if we reached end of screen
     fc9e  fe ef      CPI ef
-    fca0  c2 b3 fc   JNZ fcb3
+    fca0  c2 b3 fc   JNZ DO_PUT_CHAR (fcb3)
 
-???:
+DO_SCROLL:
+    fca3  cd 6b fe   CALL IS_BUTTON_PRESSED (fe6b)  ; ?????? It is unclear why it requires reading the btn
+    fca6  b7         ORA A
+    fca7  ca ad fc   JZ DO_SCROLL_1 (fcad)
 
-fca0           cd 6b fe b7 ca ad fc cd 57 fd cd 19 fd
-fcb0  21 bf ee 
+    fcaa  cd 57 fd   CALL KBD_INPUT (fd57)
 
-????:
+DO_SCROLL_1:
+    fcad  cd 19 fd   CALL SCROLL_1_LINE (fd19)
+
+    fcb0  21 bf ee   LXI HL, eebf               ; After the code below cursor will be at the beginning of the last line
+
+DO_PUT_CHAR:
     fcb3  7e         MOV A, M                   ; Store the character while keeping attribute bit
     fcb4  e6 80      ANI 80
     fcb6  b1         ORA C
@@ -333,7 +370,7 @@ MOVE_CUR_RIGHT:
     fce4  fe ef      CPI ef
     fce6  c0         RNZ
 
-    fce7  ca d1 fc   JZ fcd1                    ; If reached - move to the topleft position
+    fce7  ca d1 fc   JZ HOME_SCREEN (fcd1)      ; If reached - move to the topleft position
 
 MOVE_CUR_LEFT:
     fcea  2b         DCX HL                     ; Move cursor left 1 position
@@ -342,8 +379,8 @@ MOVE_CUR_LEFT:
     fcec  fe e7      CPI e7
     fcee  c0         RNZ
 
-    feef  21 ff ee   LXI HL, eeff               ; If reached - move to the bottom right position
-    fef2  c9         RET
+    fcef  21 ff ee   LXI HL, eeff               ; If reached - move to the bottom right position
+    fcf2  c9         RET
 
 
 MOVE_CUR_DOWN:
@@ -378,14 +415,62 @@ CARRIAGE_RETURN:
 
     fd12  7c         MOV A, H                   ; Check that we reached the end of screen
     fd13  fe ef      CPI ef
-    fd15  ca a3 fc   JZ fca3
+    fd15  ca a3 fc   JZ DO_SCROLL (fca3)
     fd18  c9         RET
 
-fd10  0b fd 7c fe ef ca a3 fc c9 21 40 e8 11 00 e8 7e
-fd20  12 13 23 7c fe ef c2 1f fd 21 c0 ee 3e 20 77 2c
-fd30  c2 2e fd c9 79 fe 59 c2 6f fc cd d1 fc 3e 02 c3
-fd40  70 fc 79 de 20 4f 0d 3e 04 fa 70 fc cd f3 fc c3
-fd50  46 fd 3e 01 c3 70 fc e5 d5 c5 3e 7f 32 f3 f7 cd
+SCROLL_1_LINE:
+    fd19  21 40 e8   LXI HL, e840               ; Source address
+    fd1c  11 00 e8   LXI DE, e800               ; Destination address
+
+SCROLL_LOOP:
+    fd1f  7e         MOV A, M                   ; Copy one symbol
+    fd20  12         STAX DE
+
+    fd21  13         INX DE                     ; Advance pointers
+    fd22  23         INX HL
+
+    fd23  7c         MOV A, H                   ; Repeat until reached the end of screen
+    fd24  fe ef      CPI ef
+    fd26  c2 1f fd   JNZ SCROLL_LOOP (fd1f)
+
+    fd29  21 c0 ee   LXI HL, eec0               ; Fill the last line with spaces
+    fd2c  3e 20      MVI A, 20
+
+SCROLL_LOOP_2:
+    fd2e  77         MOV M, A
+    fd2f  2c         INR L
+    fd30  c2 2e fd   JNZ SCROLL_LOOP_2 (fd2e)
+
+    fd33  c9         RET
+
+MOVE_CUR_DIRECT_B1:
+    fd34  79         MOV A, C                   ; Expect 'Y' as a second key of the sequence
+    fd35  fe 59      CPI 59
+    fd37  c2 6f fc   JNZ MOVE_CUR_DIRECT_RESET (fc6f)
+
+    fd3a  cd d1 fc   CALL HOME_SCREEN (fcd1)        
+
+    fd3d  3e 02      MVI A, 02                  ; Prepare for getting cursor coordinates
+    fd3f  c3 70 fc   JMP MOVE_CUR_DIRECT_STORE (fc70)
+
+MOVE_CUR_DIRECT_B2:
+    fd42  79         MOV A, C                   ; Get the position in C (based on 0x20 value)
+    fd43  de 20      SBI 20
+    fd45  4f         MOV C, A
+
+MOVE_CUR_DIRECT_L2:
+    fd46  0d         DCR C                      ; Move cursor down by C positions
+
+    fd47  3e 04      MVI A, 04
+    fd49  fa 70 fc   JN MOVE_CUR_DIRECT_STORE (fc70)
+
+    fd4c  cd f3 fc   CALL MOVE_CUR_DOWN (fcf3)
+    fd4f  c3 46 fd   JMP MOVE_CUR_DIRECT_L2 (fd46)
+
+
+MOVE_CUR_DIRECT:
+    fd52  3e 01      MVI A, 01                  ; Set direct movement flag
+    fd54  c3 70 fc   JMP MOVE_CUR_DIRECT_STORE (fc70)
 
 
 ; Wait for the keyboard input
@@ -393,6 +478,8 @@ fd50  46 fd 3e 01 c3 70 fc e5 d5 c5 3e 7f 32 f3 f7 cd
 ; This function waits for the keyboard input. The function also handles when the key
 ; is pressed for some time. In this case repeat mechanism is working, and the key is
 ; triggered again, until it is released.
+;
+; Input symbol is in A register
 KBD_INPUT:
     fd57  e5         PUSH HL
     fd58  d5         PUSH DE
@@ -508,47 +595,47 @@ SCAN_KBD:
     fdaf  d5         PUSH DE
     fdb0  e5         PUSH HL
 
-    fdb1  06 00      MVI B, 00              ; Resulting scan code (button number)
-    fdb3  0e fe      MVI C, fe              ; Column mask
-    fdb5  16 08      MVI D, 08              ; Columns counter
+    fdb1  06 00      MVI B, 00                  ; Resulting scan code (button number)
+    fdb3  0e fe      MVI C, fe                  ; Column mask
+    fdb5  16 08      MVI D, 08                  ; Columns counter
 
 SCAN_KBD_COLUMN:
-    fdb7  79         MOV A, C               ; Out the column mask to port A
+    fdb7  79         MOV A, C                   ; Out the column mask to port A
     fdb8  d3 07      OUT 07
-    fdba  07         RLC                    ; Shift the mask left, prepare for the next column
+    fdba  07         RLC                        ; Shift the mask left, prepare for the next column
     fdbb  4f         MOV C, A
 
-    fdbc  db 06      IN 06                  ; Input the column state through port B
+    fdbc  db 06      IN 06                      ; Input the column state through port B
 
-    fdbe  e6 7f      ANI 7f                 ; Check if any key is pressed in this column
+    fdbe  e6 7f      ANI 7f                     ; Check if any key is pressed in this column
     fdc0  fe 7f      CPI 7f
     fdc2  c2 df fd   JNZ SCAN_KBP_PRESSED (fddf)
 
-    fdc5  78         MOV A, B               ; Advance scan code by 7
+    fdc5  78         MOV A, B                   ; Advance scan code by 7
     fdc6  c6 07      ADI 07
     fdc8  47         MOV B, A
 
-    fdc9  15         DCR D                  ; Repeat for the next scan column
+    fdc9  15         DCR D                      ; Repeat for the next scan column
     fdca  c2 b7 fd   JNZ SCAN_KBD_COLUMN (fdb7)
 
-    fdcd  db 06      IN 06                  ; It is unclear what shall be connected to the Port B.7
+    fdcd  db 06      IN 06                      ; It is unclear what shall be connected to the Port B.7
     fdcf  e6 80      ANI 80                 
-    fdd1  ca d9 fd   JZ fdd9                ; We should not expect anything there
+    fdd1  ca d9 fd   JZ fdd9                    ; We should not expect anything there
 
-    fdd4  3e fe      MVI A, fe              ; But if something is connected, then return 0xfe as a
-    fdd6  c3 db fd   JMP SCAN_KBD_EXIT (fddb) ; scan code
+    fdd4  3e fe      MVI A, fe                  ; But if something is connected, then return 0xfe as a
+    fdd6  c3 db fd   JMP SCAN_KBD_EXIT (fddb)   ; scan code
 
 SCAN_KBD_NOTHING:
-    fdd9  3e ff      MVI A, ff              ; Returning 0xff means no button is pressed
+    fdd9  3e ff      MVI A, ff                  ; Returning 0xff means no button is pressed
 
 SCAN_KBD_EXIT:
-    fddb  e1         POP HL                 ; Wrap up and exit
+    fddb  e1         POP HL                     ; Wrap up and exit
     fddc  d1         POP DE
     fddd  c1         POP BC
     fdde  c9         RET
 
 SCAN_KBP_PRESSED:
-    fddf  1f         RAR                    ; Count scan code in B
+    fddf  1f         RAR                        ; Count scan code in B
     fde0  d2 e7 fd   JNC SCAN_KBP_CONVERT (fde7)
     fde3  04         INR B
     fde4  c3 df fd   JMP SCAN_KBP_PRESSED (fddf)
@@ -655,8 +742,21 @@ BEEP_DELAY:
     fe5f  c2 5e fe   JNZ fe5e
     fe62  c9         RET
 
-fe60           db 06 e6 80 c2 63 fe c9 af d3 07 db 06
-fe70  2f e6 7f c8 f6 ff c9 2a d1 f7 c9 22 d1 f7 c9 0d
+fe60           db 06 e6 80 c2 63 fe c9 
+
+IS_BUTTON_PRESSED:
+    fe6b  af         XRA A                      ; Select all scan column at once
+    fe6c  d3 07      OUT 07
+
+    fe6e  db 06      IN 06                      ; Get button state
+    fe70  2f         CMA
+    fe71  e6 7f      ANI 7f
+    fe73  c8         RZ                         ; Return A=00 if no buttons pressed
+
+    fe74  f6 ff      ORI ff                     ; Return A=ff if a button is pressed
+    fe76  c9         RET
+
+fe70                       2a d1 f7 c9 22 d1 f7 c9 0d
 
 PROMPT_STR:
     fe7f 0d 0a 18    db '\r\n', 0x18            ; Move to the next line, then step right
