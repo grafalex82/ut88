@@ -57,7 +57,7 @@ class Configuration:
 
                 self.handle_event(event)
             
-            self._emulator.run(50000)
+            self._emulator.run(20000)
 
             if pygame.key.get_pressed()[pygame.K_ESCAPE]:
                 self._emulator.reset()
@@ -157,21 +157,27 @@ class VideoConfiguration(Configuration):
         self.suppress_logging(0xfcce, 0xfcd4, "Clear Screen")
         self.suppress_logging(0xf849, 0xf84c, "Initial memset")
         self.suppress_logging(0xfd92, 0xfd95, "Beep")
-        self.suppress_logging(0xfd9a, 0xfdad, "Scan keyboard")
-        #self.suppress_logging(0xfd5c, 0xfd74, "Wait keyboard")
+        self.suppress_logging(0xfd57, 0xfd99, "Keyboard input")
+        self.suppress_logging(0xfc43, 0xfccd, "Put char")
 
-        self._emulator.add_breakpoint(0xf852, lambda: self._emulator._machine.write_memory_word(0xf7b2, 0xc000))
+        # Monitor F wipes out 0xf7b0-f7ff range during initialization. This range contains monitor's
+        # variables, including 0xf7b2, which contains cursor address. Char printing code does invert of 
+        # the symbol at cursor address, which in this case causing writing into 0x0000 ROM area. This
+        # is not an issue for a real computer - write operation will not harm any memory. But this cause
+        # writing ROM exception on the emulator. 
+        #
+        # The solution is to additionally initialize the variable with some meaningful value
+        self._emulator.add_breakpoint(0xf852, lambda: self._emulator._machine.write_memory_word(0xf7b2, 0xe800))
+
+        # Each key press generates a short beep. This procedure is quite slow, when running under emulator.
+        # So let's just speed it up a little bit, by setting a shorter delay value.
+        self._emulator.add_breakpoint(0xfe4d, lambda: self._emulator._cpu.set_pc(0xfe62))
+
         self._emulator.add_breakpoint(0xf87c, breakpoint)
-        self._emulator.add_breakpoint(0xfc6f, breakpoint)
-        self._emulator.add_breakpoint(0xfca3, breakpoint)
-        self._emulator.add_breakpoint(0xfeef, breakpoint)
-        self._emulator.add_breakpoint(0xfee7, breakpoint)
-        self._emulator.add_breakpoint(0xfe24, breakpoint)
-        self._emulator.add_breakpoint(0xfd52, breakpoint)
 
 
     def get_screen_size(self):
-        return (64*16, 32*16)
+        return (64*16, 28*16)
 
 
     def update(self, screen):
