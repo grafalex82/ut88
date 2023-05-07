@@ -73,6 +73,83 @@ class CPU:
         self._registers_logging = value
 
 
+    @property
+    def a(self):
+        return self._a
+    
+
+    @a.setter
+    def a(self, value):
+        assert value >= 0x00 and value <= 0xff
+        self._a = value & 0xff
+
+
+    @property
+    def b(self):
+        return self._b
+    
+    
+    @b.setter
+    def b(self, value):
+        assert value >= 0x00 and value <= 0xff
+        self._b = value & 0xff
+
+
+    @property
+    def c(self):
+        return self._c
+    
+
+    @c.setter
+    def c(self, value):
+        assert value >= 0x00 and value <= 0xff
+        self._c = value & 0xff
+
+
+    @property
+    def d(self):
+        return self._d
+    
+
+    @d.setter
+    def d(self, value):
+        assert value >= 0x00 and value <= 0xff
+        self._d = value & 0xff
+
+
+    @property
+    def e(self):
+        return self._e
+    
+
+    @e.setter
+    def e(self, value):
+        assert value >= 0x00 and value <= 0xff
+        self._e = value & 0xff
+
+
+    @property
+    def h(self):
+        return self._h
+    
+
+    @h.setter
+    def h(self, value):
+        assert value >= 0x00 and value <= 0xff
+        self._h = value & 0xff
+
+
+    @property
+    def l(self):
+        return self._l
+    
+
+    @l.setter
+    def l(self, value):
+        assert value >= 0x00 and value <= 0xff
+        self._l = value & 0xff
+
+
     def _fetch_next_byte(self):
         if self._enable_interrupts and self._interrupt_instructions:
             data = self._interrupt_instructions[0]
@@ -174,6 +251,7 @@ class CPU:
 
 
     def _set_register(self, reg_idx, value):
+        assert value >= 0x00 and value <= 0xff
         if reg_idx == 0:
             self._b = value
         if reg_idx == 1:

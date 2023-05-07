@@ -280,7 +280,7 @@ fact_numbers = [
 ]
 @pytest.mark.parametrize("arg, res", fact_numbers)
 def test_fact(calculator, arg, res):
-    calculator._emulator._cpu._a = arg & 0xff
+    calculator._emulator._cpu.a = arg & 0xff
 
     calculator.run_function(0x0a98)
 
