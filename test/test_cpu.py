@@ -181,7 +181,7 @@ def test_mvi_l(cpu):
 def test_mvi_m(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x36)    # Instruction Opcode
     cpu._machine.write_memory_byte(0x0001, 0x42)    # Value
-    cpu._set_hl(0x1234)
+    cpu.hl = 0x1234
     cpu.step()
     assert cpu._machine.read_memory_byte(0x1234) == 0x42
     assert cpu._cycles == 10
@@ -500,14 +500,14 @@ def test_cm_2(cpu):
 
 def test_pchl(cpu):
     cpu._machine.write_memory_byte(0x0000, 0xe9)    # Instruction Opcode
-    cpu._set_hl(0x1234)
+    cpu.hl = 0x1234
     cpu.step()
     assert cpu.pc == 0x1234
     assert cpu._cycles == 5
 
 def test_sphl(cpu):
     cpu._machine.write_memory_byte(0x0000, 0xf9)    # Instruction Opcode
-    cpu._set_hl(0x1234)
+    cpu.hl = 0x1234
     cpu.step()
     assert cpu.sp == 0x1234
     assert cpu._cycles == 5
@@ -541,7 +541,7 @@ def test_lda(cpu):
     assert cpu._cycles == 13
 
 def test_shld(cpu):
-    cpu._set_hl(0x1234)   # Value to write
+    cpu.hl = 0x1234   # Value to write
     cpu._machine.write_memory_byte(0x0000, 0x22)    # Instruction Opcode
     cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
     cpu.step()
@@ -553,7 +553,7 @@ def test_lhld(cpu):
     cpu._machine.write_memory_word(0x0001, 0xbeef)  # Address
     cpu._machine.write_memory_word(0xbeef, 0x1234)  # Value to read
     cpu.step()
-    assert cpu._get_hl() == 0x1234
+    assert cpu.hl == 0x1234
     assert cpu._cycles == 16
 
 @pytest.mark.parametrize("opcode, rstaddr", 
@@ -740,7 +740,7 @@ def test_rm_2(cpu):
 def test_push_bc(cpu):
     cpu._machine.write_memory_byte(0x0000, 0xc5)    # Instruction Opcode
     cpu.sp = 0x1234
-    cpu._set_bc(0xbeef)
+    cpu.bc = 0xbeef
     cpu.step()
     assert cpu._cycles == 11
     assert cpu.sp == 0x1232
@@ -749,7 +749,7 @@ def test_push_bc(cpu):
 def test_push_de(cpu):
     cpu._machine.write_memory_byte(0x0000, 0xd5)    # Instruction Opcode
     cpu.sp = 0x1234
-    cpu._set_de(0xbeef)
+    cpu.de = 0xbeef
     cpu.step()
     assert cpu._cycles == 11
     assert cpu.sp == 0x1232
@@ -758,7 +758,7 @@ def test_push_de(cpu):
 def test_push_hl(cpu):
     cpu._machine.write_memory_byte(0x0000, 0xe5)    # Instruction Opcode
     cpu.sp = 0x1234
-    cpu._set_hl(0xbeef)
+    cpu.hl = 0xbeef
     cpu.step()
     assert cpu._cycles == 11
     assert cpu.sp == 0x1232
@@ -794,7 +794,7 @@ def test_pop_bc(cpu):
     cpu.step()
     assert cpu._cycles == 10
     assert cpu.sp == 0x1236
-    assert cpu._get_bc() == 0xbeef
+    assert cpu.bc == 0xbeef
 
 def test_pop_de(cpu):
     cpu._machine.write_memory_byte(0x0000, 0xd1)    # Instruction Opcode
@@ -803,7 +803,7 @@ def test_pop_de(cpu):
     cpu.step()
     assert cpu._cycles == 10
     assert cpu.sp == 0x1236
-    assert cpu._get_de() == 0xbeef
+    assert cpu.de == 0xbeef
 
 def test_pop_hl(cpu):
     cpu._machine.write_memory_byte(0x0000, 0xe1)    # Instruction Opcode
@@ -812,7 +812,7 @@ def test_pop_hl(cpu):
     cpu.step()
     assert cpu._cycles == 10
     assert cpu.sp == 0x1236
-    assert cpu._get_hl() == 0xbeef
+    assert cpu.hl == 0xbeef
 
 def test_pop_psw_1(cpu):
     cpu._machine.write_memory_byte(0x0000, 0xf1)    # Instruction Opcode
@@ -900,7 +900,7 @@ def test_dcr_e(cpu):
 def test_dcr_m(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x35)    # Instruction Opcode
     cpu._machine.write_memory_byte(0xbeef, 0x42)    # Data byte
-    cpu._set_hl(0xbeef)
+    cpu.hl = 0xbeef
     cpu.step()
     assert cpu._cycles == 10
     assert cpu._machine.read_memory_byte(0xbeef) == 0x41
@@ -967,7 +967,7 @@ def test_inr_e(cpu):
 def test_inr_m(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x34)    # Instruction Opcode
     cpu._machine.write_memory_byte(0xbeef, 0x42)    # Data byte
-    cpu._set_hl(0xbeef)
+    cpu.hl = 0xbeef
     cpu.step()
     assert cpu._cycles == 10
     assert cpu._machine.read_memory_byte(0xbeef) == 0x43
@@ -978,7 +978,7 @@ def test_inr_m(cpu):
 
 def test_dcx_bc(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x0b)    # Instruction Opcode
-    cpu._set_bc(0xbeef)
+    cpu.bc = 0xbeef
     cpu.step()
     assert cpu._cycles == 5
     assert cpu.b == 0xbe
@@ -986,7 +986,7 @@ def test_dcx_bc(cpu):
 
 def test_dcx_de(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x1b)    # Instruction Opcode
-    cpu._set_de(0xbeef)
+    cpu.de = 0xbeef
     cpu.step()
     assert cpu._cycles == 5
     assert cpu.d == 0xbe
@@ -994,7 +994,7 @@ def test_dcx_de(cpu):
 
 def test_dcx_hl(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x2b)    # Instruction Opcode
-    cpu._set_hl(0xbeef)
+    cpu.hl = 0xbeef
     cpu.step()
     assert cpu._cycles == 5
     assert cpu.h == 0xbe
@@ -1009,7 +1009,7 @@ def test_dcx_sp(cpu):
 
 def test_inx_bc(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x03)    # Instruction Opcode
-    cpu._set_bc(0xbeef)
+    cpu.bc = 0xbeef
     cpu.step()
     assert cpu._cycles == 5
     assert cpu.b == 0xbe
@@ -1017,7 +1017,7 @@ def test_inx_bc(cpu):
 
 def test_inx_de(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x13)    # Instruction Opcode
-    cpu._set_de(0xbeef)
+    cpu.de = 0xbeef
     cpu.step()
     assert cpu._cycles == 5
     assert cpu.d == 0xbe
@@ -1025,7 +1025,7 @@ def test_inx_de(cpu):
 
 def test_inx_hl(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x23)    # Instruction Opcode
-    cpu._set_hl(0xbeef)
+    cpu.hl = 0xbeef
     cpu.step()
     assert cpu._cycles == 5
     assert cpu.h == 0xbe
@@ -1040,36 +1040,36 @@ def test_inx_sp(cpu):
 
 def test_dad_bc(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x09)    # Instruction Opcode
-    cpu._set_hl(0xa17b)
-    cpu._set_bc(0x339f)
+    cpu.hl = 0xa17b
+    cpu.bc = 0x339f
     cpu.step()
-    assert cpu._get_hl() == 0xd51a
+    assert cpu.hl == 0xd51a
     assert cpu._carry == False
     assert cpu._cycles == 10
 
 def test_dad_de(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x19)    # Instruction Opcode
-    cpu._set_hl(0xa17b)
-    cpu._set_de(0xbeef)
+    cpu.hl = 0xa17b
+    cpu.de = 0xbeef
     cpu.step()
-    assert cpu._get_hl() == 0x606a
+    assert cpu.hl == 0x606a
     assert cpu._carry == True
     assert cpu._cycles == 10
 
 def test_dad_hl(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x29)    # Instruction Opcode
-    cpu._set_hl(0xbeef)
+    cpu.hl = 0xbeef
     cpu.step()
-    assert cpu._get_hl() == 0x7dde
+    assert cpu.hl == 0x7dde
     assert cpu._carry == True
     assert cpu._cycles == 10
 
 def test_dad_sp(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x39)    # Instruction Opcode
-    cpu._set_hl(0x1234)
+    cpu.hl = 0x1234
     cpu.sp = 0xbeef
     cpu.step()
-    assert cpu._get_hl() == 0xd123
+    assert cpu.hl == 0xd123
     assert cpu._carry == False
     assert cpu._cycles == 10
 
@@ -1090,7 +1090,7 @@ def test_mov_b_e(cpu):
 def test_mov_m_d(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x72)    # Instruction Opcode
     cpu.d = 0x42
-    cpu._set_hl(0x1234)
+    cpu.hl = 0x1234
     cpu.step()
     assert cpu._cycles == 7
     assert cpu._machine.read_memory_byte(0x1234) == 0x42
@@ -1098,34 +1098,34 @@ def test_mov_m_d(cpu):
 def test_mov_l_m(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x6e)    # Instruction Opcode
     cpu._machine.write_memory_byte(0x1234, 0x42)    # Data
-    cpu._set_hl(0x1234)
+    cpu.hl = 0x1234
     cpu.step()
     assert cpu._cycles == 7
     assert cpu.l == 0x42
 
 def test_xchg(cpu):
     cpu._machine.write_memory_byte(0x0000, 0xeb)    # Instruction Opcode
-    cpu._set_hl(0x1234)
-    cpu._set_de(0xbeef)
+    cpu.hl = 0x1234
+    cpu.de = 0xbeef
     cpu.step()
-    assert cpu._get_hl() == 0xbeef
-    assert cpu._get_de() == 0x1234
+    assert cpu.hl == 0xbeef
+    assert cpu.de == 0x1234
     assert cpu._cycles == 5
 
 def test_xthl(cpu):
     cpu._machine.write_memory_byte(0x0000, 0xe3)    # Instruction Opcode
     cpu._machine.write_memory_word(0x4321, 0xbeef)  # data to be exchanged
-    cpu._set_hl(0x1234)
+    cpu.hl = 0x1234
     cpu.sp = 0x4321
     cpu.step()
-    assert cpu._get_hl() == 0xbeef
+    assert cpu.hl == 0xbeef
     assert cpu._machine.read_memory_word(0x4321) == 0x1234
     assert cpu._cycles == 18
 
 def test_ldax_bc(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x0a)    # Instruction Opcode
     cpu._machine.write_memory_byte(0xbeef, 0x42)    # Data to load
-    cpu._set_bc(0xbeef)
+    cpu.bc = 0xbeef
     cpu.step()
     assert cpu.a == 0x42
     assert cpu._cycles == 7
@@ -1133,7 +1133,7 @@ def test_ldax_bc(cpu):
 def test_ldax_de(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x1a)    # Instruction Opcode
     cpu._machine.write_memory_byte(0xbeef, 0x42)    # Data to load
-    cpu._set_de(0xbeef)
+    cpu.de = 0xbeef
     cpu.step()
     assert cpu.a == 0x42
     assert cpu._cycles == 7
@@ -1141,7 +1141,7 @@ def test_ldax_de(cpu):
 def test_stax_bc(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x02)    # Instruction Opcode
     cpu.a = 0x42
-    cpu._set_bc(0xbeef)
+    cpu.bc = 0xbeef
     cpu.step()
     assert cpu._machine.read_memory_byte(0xbeef) == 0x42
     assert cpu._cycles == 7
@@ -1149,7 +1149,7 @@ def test_stax_bc(cpu):
 def test_stax_de(cpu):
     cpu._machine.write_memory_byte(0x0000, 0x12)    # Instruction Opcode
     cpu.a = 0x42
-    cpu._set_de(0xbeef)
+    cpu.de = 0xbeef
     cpu.step()
     assert cpu._machine.read_memory_byte(0xbeef) == 0x42
     assert cpu._cycles == 7
@@ -1251,7 +1251,7 @@ def test_ora(cpu):
     cpu._machine.write_memory_byte(0x0000, 0xb6)    # Instruction Opcode
     cpu._machine.write_memory_byte(0x1234, 0x0f)    # Instruction Opcode
     cpu.a = 0x33
-    cpu._set_hl(0x1234)
+    cpu.hl = 0x1234
     cpu.step()
     assert cpu.a == 0x3f
     assert cpu._cycles == 7

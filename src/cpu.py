@@ -172,6 +172,65 @@ class CPU:
         self._sp = value
 
 
+    @property
+    def bc(self):
+        return (self._b << 8) | self._c
+
+
+    @bc.setter
+    def bc(self, value):
+        assert value >= 0x00 and value <= 0xffff
+        self._b = value >> 8
+        self._c = value & 0xff
+
+
+    @property
+    def de(self):
+        return (self._d << 8) | self._e
+
+
+    @de.setter
+    def de(self, value):
+        assert value >= 0x00 and value <= 0xffff
+        self._d = value >> 8
+        self._e = value & 0xff
+
+
+    @property
+    def hl(self):
+        return (self._h << 8) | self._l
+
+
+    @hl.setter
+    def hl(self, value):
+        assert value >= 0x00 and value <= 0xffff
+        self._h = value >> 8
+        self._l = value & 0xff
+
+
+    @property
+    def psw(self):
+        flags = 2 # bit1 is always 1
+        flags |= 0x80 if self._sign else 0
+        flags |= 0x40 if self._zero else 0
+        flags |= 0x10 if self._half_carry else 0
+        flags |= 0x04 if self._parity else 0
+        flags |= 0x01 if self._carry else 0
+
+        return (self._a << 8) | flags
+
+
+    @psw.setter
+    def psw(self, value):
+        assert value >= 0x00 and value <= 0xffff
+        self._a = value >> 8
+        self._sign = (value & 0x80) != 0
+        self._zero = (value & 0x40) != 0
+        self._half_carry = (value & 0x10) != 0
+        self._parity = value & 0x04 != 0
+        self._carry = (value & 0x01) != 0
+
+
     def _fetch_next_byte(self):
         if self._enable_interrupts and self._interrupt_instructions:
             data = self._interrupt_instructions[0]
@@ -206,53 +265,6 @@ class CPU:
         return value
 
 
-    def _get_bc(self):
-        return (self._b << 8) | self._c
-
-
-    def _get_de(self):
-        return (self._d << 8) | self._e
-
-
-    def _get_hl(self):
-        return (self._h << 8) | self._l
-
-
-    def _get_psw(self):
-        flags = 2 # bit1 is always 1
-        flags |= 0x80 if self._sign else 0
-        flags |= 0x40 if self._zero else 0
-        flags |= 0x10 if self._half_carry else 0
-        flags |= 0x04 if self._parity else 0
-        flags |= 0x01 if self._carry else 0
-
-        return (self._a << 8) | flags
-
-
-    def _set_bc(self, value):
-        self._b = value >> 8
-        self._c = value & 0xff
-
-
-    def _set_de(self, value):
-        self._d = value >> 8
-        self._e = value & 0xff
-
-
-    def _set_hl(self, value):
-        self._h = value >> 8
-        self._l = value & 0xff
-
-    
-    def _set_psw(self, value):
-        self._a = value >> 8
-        self._sign = (value & 0x80) != 0
-        self._zero = (value & 0x40) != 0
-        self._half_carry = (value & 0x10) != 0
-        self._parity = value & 0x04 != 0
-        self._carry = (value & 0x01) != 0
-
-
     def _get_register(self, reg_idx):
         if reg_idx == 0:
             return self._b
@@ -267,7 +279,7 @@ class CPU:
         if reg_idx == 5:
             return self._l
         if reg_idx == 6:
-            return self._machine.read_memory_byte(self._get_hl())
+            return self._machine.read_memory_byte(self.hl)
         if reg_idx == 7:
             return self._a
 
@@ -287,29 +299,29 @@ class CPU:
         if reg_idx == 5:
             self._l = value
         if reg_idx == 6:
-            self._machine.write_memory_byte(self._get_hl(), value)
+            self._machine.write_memory_byte(self.hl, value)
         if reg_idx == 7:
             self._a = value
 
 
     def _set_register_pair(self, reg_pair, value):
         if reg_pair == 0:
-            self._set_bc(value)
+            self.bc = value
         if reg_pair == 1:
-            self._set_de(value)
+            self.de = value
         if reg_pair == 2:
-            self._set_hl(value)
+            self.hl = value
         if reg_pair == 3:
             self._sp = value
 
 
     def _get_register_pair(self, reg_pair):
         if reg_pair == 0:
-            return self._get_bc()
+            return self.bc
         if reg_pair == 1:
-            return self._get_de()
+            return self.de
         if reg_pair == 2:
-            return self._get_hl()
+            return self.hl
         if reg_pair == 3:
             return self._sp
 
@@ -330,8 +342,8 @@ class CPU:
 
 
     def _get_cpu_state_str(self):
-        res = f"A={self._a:02x} BC={self._get_bc():04x} DE={self._get_de():04x} "
-        res += f"HL={self._get_hl():04x} SP={self._sp:04x} "
+        res = f"A={self._a:02x} BC={self.bc:04x} DE={self.de:04x} "
+        res += f"HL={self.hl:04x} SP={self._sp:04x} "
         res += f"{'Z' if self._zero else '-'}"
         res += f"{'S' if self._sign else '-'}"
         res += f"{'C' if self._carry else '-'}"
@@ -472,7 +484,7 @@ class CPU:
     def _shld(self):
         """ Store H and L direct"""
         addr = self._fetch_next_word()
-        self._machine.write_memory_word(addr, self._get_hl())
+        self._machine.write_memory_word(addr, self.hl)
         self._cycles += 16
 
         self._log_3b_instruction(f"SHLD {addr:04x}")
@@ -481,7 +493,7 @@ class CPU:
     def _lhld(self):
         """ Load H and L direct"""
         addr = self._fetch_next_word()
-        self._set_hl(self._machine.read_memory_word(addr))
+        self.hl = self._machine.read_memory_word(addr)
         self._cycles += 16
 
         self._log_3b_instruction(f"LHLD {addr:04x}")
@@ -489,9 +501,9 @@ class CPU:
 
     def _xchg(self):
         """ Exchange DE and HL """
-        value = self._get_hl()
-        self._set_hl(self._get_de())
-        self._set_de(value)
+        value = self.hl
+        self.hl = self.de
+        self.de = value
         self._cycles += 5
 
         self._log_1b_instruction(f"XCHG")
@@ -499,8 +511,8 @@ class CPU:
 
     def _xthl(self):
         """ Exchange HL and 2 bytes on the stack """
-        value = self._get_hl()
-        self._set_hl(self._machine.read_stack(self._sp))
+        value = self.hl
+        self.hl = self._machine.read_stack(self._sp)
         self._machine.write_stack(self._sp, value)
         self._cycles += 18
 
@@ -516,7 +528,7 @@ class CPU:
             value = self._get_register_pair(reg_pair)
         else:
             reg_pair_name = "PSW"
-            value = self._get_psw()
+            value = self.psw
 
         self._push_to_stack(value)
         self._cycles += 11
@@ -535,7 +547,7 @@ class CPU:
             self._set_register_pair(reg_pair, value)
         else:
             reg_pair_name = "PSW"
-            self._set_psw(value)
+            self.psw = value
 
         self._cycles += 10
 
@@ -671,14 +683,14 @@ class CPU:
     def _pchl(self):
         """ Load HL value to PC register """
         self._log_1b_instruction(f"PCHL")
-        self._pc = self._get_hl()
+        self._pc = self.hl
         self._cycles += 5
 
 
     def _sphl(self):
         """ Load HL value to SP register """
         self._log_1b_instruction(f"SPHL")
-        self._sp = self._get_hl()
+        self._sp = self.hl
         self._cycles += 5
 
 
@@ -871,8 +883,8 @@ class CPU:
         """ Double Add """
         reg_pair = (self._current_inst & 0x30) >> 4
         value = self._get_register_pair(reg_pair)
-        res = self._get_hl() + value
-        self._set_hl(res & 0xffff)
+        res = self.hl + value
+        self.hl = res & 0xffff
         self._carry = (res >= 0x10000)
 
         self._cycles += 10
