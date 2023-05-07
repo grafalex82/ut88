@@ -62,12 +62,42 @@ ENTER_NEXT_COMMAND:
     f878  00         NOP
 
     f879  cd eb f8   CALL INPUT_LINE (f8eb)
+
+    f87c  21 6c f8   LXI HL, f86c               ; Push ENTER_NEXT_COMMAND address to stack, so commands
+    f87f  e5         PUSH HL                    ; may just return to the next command routine
+
+    f880  21 d3 f7   LXI HL, f7d3               ; Load the first character in the command buffer
+    f883  7e         MOV A, M
+
+    f884  fe 58      CPI 58                     ; Handle command 'X'
+    f886  ca ec fe   JZ COMMAND_X (feec)
+    f889  fe 55      CPI 55                     ; Handle command 'U'
+    f88b  ca 00 f0   JZ COMMAND_U (f000)
+
+    f88e  f5         PUSH PSW
+    f88f  cd 29 f9   CALL PARSE_ARGUMENTS (f929)
+
+    f892  2a cb f7   LHLD f7cb                  ; Load 3rd argument into BC
+    f895  4d         MOV C, L
+    f896  44         MOV B, H
+
+    f897  2a c9 f7   LHLD f7c9                  ; Load 2nd argument into DE
+    f89a  eb         XCHG
+
+    f89b  2a c7 f7   LHLD f7c7                  ; Load 1st argument into HL
+
+    f89e  f1         POP PSW
+    f89f  fe 44      CPI 44                     ; Handle Command 'D'
+    f8a1  ca bf f9   JZ COMMAND_D (f9bf)
+
+    f8a4  fe 43      CPI 43                     ; Handle command 'C'
+    f8a6  ca d1 f9   JZ COMMAND_C (f9d1)
+
+    f8a9  fe 46      CPI 46                     ; Handle command 'F'
+    f8ab  ca e7 f9   JZ COMMAND_F (f9e7)
 ...
 
-f870                                      21 6c f8 e5
-f880  21 d3 f7 7e fe 58 ca ec fe fe 55 ca 00 f0 f5 cd
-f890  29 f9 2a cb f7 4d 44 2a c9 f7 eb 2a c7 f7 f1 fe
-f8a0  44 ca bf f9 fe 43 ca d1 f9 fe 46 ca e7 f9 fe 53
+f8a0                                            fe 53
 f8b0  ca ee f9 fe 54 ca f9 f9 fe 4d ca 20 fa fe 47 ca
 f8c0  39 fa fe 49 ca 7d fa fe 4f ca 08 fb fe 4c ca 02
 f8d0  fa fe 52 ca 62 fa c3 17 ff 
@@ -84,7 +114,7 @@ HANDLE_BACKSPACE:
 
     f8e6  e1         POP HL
     f8e7  2b         DCX HL
-    f8e8  c3 f0 f8   JMP f8f0
+    f8e8  c3 f0 f8   JMP INPUT_LINE_LOOP (f8f0)
 
 
 ; Input a line
@@ -141,6 +171,7 @@ INPUT_LINE_ENTER:
     f91c  06 00      MVI B, 00
     f91e  c9         RET
 
+
 ; Print a string
 ; HL - string address (null terminated string)
 PRINT_STR:
@@ -153,16 +184,112 @@ PRINT_STR:
     f926  c3 1f f9   JMP PRINT_STR (f91f)
 
 
-f920                             21 c7 f7 11 cd f7 0e
-f930  00 cd e7 f9 11 d4 f7 cd 57 f9 22 c7 f7 22 c9 f7
-f940  d8 3e ff 32 cd f7 cd 57 f9 22 c9 f7 d8 cd 57 f9
-f950  22 cb f7 d8 c3 a5 fa 21 00 00 1a 13 fe 0d ca 8b
-f960  f9 fe 2c c8 fe 20 ca 5a f9 d6 30 fa a5 fa fe 0a
-f970  fa 7f f9 fe 11 fa a5 fa fe 17 f2 a5 fa d6 07 4f
-f980  29 29 29 29 da a5 fa 09 c3 5a f9 37 c9
 
+; Parse command arguments
+;
+; This function parses up to 3 command arguments (4 digit hex addresses or values).
+; Arguments are stored at the following addresses:
+; f7c7  - 1st argument
+; f7c9  - 2nd argument (if exists)
+; f7cb  - 3rd argument (if exists)
+; f7cd  - flag indicating there is more than 1 argument (0xff - 2 or more arguments, 0x00 - 1 arg only)
+; 
+; Unused arguments are zeroed
+PARSE_ARGUMENTS:
+    f929  21 c7 f7   LXI HL, f7c7
+    f92c  11 cd f7   LXI DE, f7cd
+    f92f  0e 00      MVI C, 00
+    f931  cd e7 f9   CALL MEMSET (f9e7)
+
+    f934  11 d4 f7   LXI DE, f7d4
+    f937  cd 57 f9   CALL PARSE_ADDR (f957)
+
+    f93a  22 c7 f7   SHLD f7c7                  ; Store first parsed parameter at f7c7
+    f93d  22 c9 f7   SHLD f7c9
+
+    f940  d8         RC                         ; Return if end of line reached
+    
+    f941  3e ff      MVI A, ff                  ; Indicate that we have more than 1 parameters
+    f943  32 cd f7   STA f7cd
+
+    f946  cd 57 f9   CALL PARSE_ADDR (f957)
+
+    f949  22 c9 f7   SHLD f7c9                  ; Store second parsed parameter at f7c9
+
+    f94c  d8         RC                         ; Return if end of line reached
+
+    f94d  cd 57 f9   CALL PARSE_ADDR (f957)
+
+    f950  22 cb f7   SHLD f7cb                  ; Store 3rd parsed parameter at f7cb
+
+    f953  d8         RC                         ; Return if end of line reached
+
+    f954  c3 a5 fa   JMP BAD_INPUT (faa5)       ; If more than 3 arguments - it is a bad input
+
+
+; Parse 4-digit address from the provided string buffer
+; Stop parsing on ',' separator, or end of line (0x0d).
+; Spaces are ignored.
+;
+; Parameters:
+; DE - string buffer to parse
+;
+; Result:
+; HL - parsed address, in case of success
+; carry flag set if the end of line reached
+PARSE_ADDR:
+    f957  21 00 00   LXI HL, 0000
+
+PARSE_ADDR_LOOP:
+    f95a  1a         LDAX DE
+    f95b  13         INX DE
+
+    f95c  fe 0d      CPI 0d                     ; Enter
+    f95e  ca 8b f9   JZ PARSE_ADDR_EOL (f98b)
+
+    f961  fe 2c      CPI 2c                     ; ','
+    f963  c8         RZ
+
+    f964  fe 20      CPI 20                     ; Skip spaces
+    f966  ca 5a f9   JZ PARSE_ADDR_LOOP (f95a)
+
+    f969  d6 30      SUI 30                     ; Symbols below 0x30 are bad input
+    f96b  fa a5 fa   JN BAD_INPUT (faa5)
+
+    f96e  fe 0a      CPI 0a                     ; Match digit (0x30-0x39)
+    f970  fa 7f f9   JN PARSE_ADDR_DIGIT (f97f)
+
+    f973  fe 11      CPI 11                     ; Match hex letter ('A' - 'F')
+    f975  fa a5 fa   JN BAD_INPUT (faa5)        ; Other character is a bad input
+
+    f978  fe 17      CPI 17
+    f97a  f2 a5 fa   JP BAD_INPUT (faa5)
+
+    f97d  d6 07      SUI 07                     ; Convert letter to a number
+
+PARSE_ADDR_DIGIT:
+    f97f  4f         MOV C, A                   ; Store parsed digit in C (suppose B==0x00, but why???)
+
+    f980  29         DAD HL                     ; Shift parsed address 4 bits left
+    f981  29         DAD HL
+    f982  29         DAD HL
+    f983  29         DAD HL
+
+    f984  da a5 fa   JC BAD_INPUT (faa5)        ; If more than 4 digits in the address - it is a bad input
+
+    f987  09         DAD BC                     ; Add parsed digit to the result in HL
+
+    f988  c3 5a f9   JMP PARSE_ADDR_LOOP (f95a) ; Repeat until end of line, or ',' separator found
+
+PARSE_ADDR_EOL:
+    f98b  37         STC
+    f98c  c9         RET
+
+
+; Compare HL and DE
+; Set Z flag if equal
 CMP_HL_DE:
-    f98d  7c         MOV A, H                   ; Compare HL and DE, set Z flag if equal
+    f98d  7c         MOV A, H
     f98e  ba         CMP D
     f98f  c0         RNZ
     f990  7d         MOV A, L
@@ -191,6 +318,7 @@ f9e0  03 cd 93 f9 c3 d1 f9                      79 be
 ; HL    - start address
 ; DE    - end address
 ; C     - byte to fill
+COMMAND_F:
 MEMSET:
     f9e7  71         MOV M, C
     f9e8  cd 96 f9   CALL ADVANCE_HL (f996)
