@@ -758,16 +758,18 @@ class CPU:
         if op == 6: # OR
             res = self._a | value
 
+        res &= 0xff
+
         # Store result for all operations, except for CMP
         if op != 7:
-            self._a = res & 0xff
+            self._a = res
 
         # Update common flags
         if op >= 4 and op < 7: self._carry = False
         if op >= 4 and op < 7: self._half_carry = False
-        self._zero = (res & 0xff) == 0
-        self._parity = self._count_bits(self._a) % 2 == 0
-        self._sign = (self._a & 0x80) != 0
+        self._zero = res == 0
+        self._parity = self._count_bits(res) % 2 == 0
+        self._sign = (res & 0x80) != 0
 
 
     def _alu(self):

@@ -1282,7 +1282,7 @@ def test_cmp_2(cpu):
     assert cpu.a == 0x02 # Does not change
     assert cpu._cycles == 4
     assert cpu._zero == False
-    assert cpu._sign == False
+    assert cpu._sign == True
     assert cpu._parity == False
     assert cpu._carry == True
     assert cpu._half_carry == False
@@ -1429,7 +1429,7 @@ def test_cpi(cpu):
     assert cpu._cycles == 7
     assert cpu._zero == False
     assert cpu._sign == False
-    assert cpu._parity == False
+    assert cpu._parity == True
     assert cpu._carry == False
     assert cpu._half_carry == False
 
