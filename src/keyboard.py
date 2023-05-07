@@ -141,7 +141,7 @@ class Keyboard(IODevice):
         self._key_map[']'] = (0xbf, 0xf7, 0xff)     # Char code 0x5d
         self._key_map['^'] = (0xbf, 0xef, 0xff)     # Char code 0x5e
         self._key_map['_'] = (0xbf, 0xdf, 0xff)     # Char code 0x5f
-        self._key_map[' '] = (0xbf, 0xdf, 0xff)     # Char code 0x20
+        self._key_map[' '] = (0xbf, 0xbf, 0xff)     # Char code 0x20
 
         # Some symbols are entered with a 'Shift' key (Special Symbol key, port C = 0xfb)
         #self._key_map[' '] = (0xfe, 0xfe, 0xfd)     # Char code 0x20   # Shift-0 generates a space
