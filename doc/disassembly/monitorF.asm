@@ -50,7 +50,9 @@ START:
     f867  3e c3      MVI A, c3
     f869  32 c6 f7   STA f7c6
 
-    f86c  31 af f7   LXI SP, f7af
+ENTER_NEXT_COMMAND:
+    f86c  31 af f7   LXI SP, f7af               ; Some subroutines will jump directly here. Reset the SP
+
     f86f  21 7f fe   LXI HL, PROMPT_STR (fe7f)
     f872  cd 1f f9   CALL PRINT_STR (f91f)
     
@@ -59,7 +61,7 @@ START:
     f877  00         NOP
     f878  00         NOP
 
-    f879  cd eb f8   CALL f8eb
+    f879  cd eb f8   CALL INPUT_LINE (f8eb)
 ...
 
 f870                                      21 6c f8 e5
@@ -70,10 +72,11 @@ f8b0  ca ee f9 fe 54 ca f9 f9 fe 4d ca 20 fa fe 47 ca
 f8c0  39 fa fe 49 ca 7d fa fe 4f ca 08 fb fe 4c ca 02
 f8d0  fa fe 52 ca 62 fa c3 17 ff 
 
+; Handle the backspace button while entering a line
 HANDLE_BACKSPACE:
-    f8d9  3e 63      MVI A, 63                  ; ????
+    f8d9  3e 63      MVI A, 63                  ; ???? Should be D3? not 63?
     f8db  bd         CMP L
-    f8dc  ca ee f8   JZ f8ee
+    f8dc  ca ee f8   JZ INPUT_LINE_RESET (f8ee)
 
     f8df  e5         PUSH HL                    ; Clear a symbole left to the cursor, move cursor left
     f8e0  21 b7 fe   LXI HL, BACKSPACE_STR (feb7)
@@ -83,12 +86,27 @@ HANDLE_BACKSPACE:
     f8e7  2b         DCX HL
     f8e8  c3 f0 f8   JMP f8f0
 
-????:
-    f8eb  21 d3 f7   LXI HL, f7d3
 
-????:
+; Input a line
+;
+; Inputs a line into buffer at 0xf7d3, 32 bytes long. The function handles regular chars, and puts
+; them into the buffer. The function also handles backspace symbolc, removing the characted to the left
+; from the cursor. 
+;
+; Special conditions:
+; - When 'Enter' char is entered, the function returns, and DE contains the address of the buffer (0xf7d3)
+; - When nothing is entered, the carry flag will not reset. The carry flag is set when something is in the
+;   buffer.
+; - If the user types '.' symbol, enterring the current line is abandoned. CPU jumps to the main loop.
+; - If the user enters more than 32 symbols, the input is abandoned as well.
+
+INPUT_LINE:
+    f8eb  21 d3 f7   LXI HL, f7d3               ; Set the buffer address to HL
+
+INPUT_LINE_RESET:
     f8ee  06 00      MVI B, 00
-????:
+
+INPUT_LINE_LOOP:
     f8f0  cd 57 fd   CALL KBD_INPUT (fd57)
 
     f8f3  fe 08      CPI 08                     ; Handle left arrow button
@@ -97,12 +115,31 @@ HANDLE_BACKSPACE:
     f8f8  fe 7f      CPI 7f                     ; Same as back space
     f8fa  ca d9 f8   JZ HANDLE_BACKSPACE (f8d9)
 
-    f8fd  c4 42 fc   CNZ PUT_CHAR_A (fc42)
+    f8fd  c4 42 fc   CNZ PUT_CHAR_A (fc42)      ; Print entered symbol
 
-....
+    f900  77         MOV M, A                   ; And store it at the buffer
 
-f900  77 fe 0d ca 17 f9 fe 2e ca 6c f8 06 ff 3e f2 bd
-f910  ca a5 fa 23 c3 f0 f8 78 17 11 d3 f7 06 00 c9
+    f901  fe 0d      CPI 0d                     ; Handle 'Enter' button
+    f903  ca 17 f9   JZ INPUT_LINE_ENTER (f917)
+    f906  fe 2e      CPI 2e                     ; Handle '.' (reset the current line input)
+    f908  ca 6c f8   JZ ENTER_NEXT_COMMAND (f86c)   ; Bug: we are in a subroutine
+
+    f90b  06 ff      MVI B, ff                  
+    
+    f90d  3e f2      MVI A, f2                  ; Check if we reached the end of the input buffer
+    f90f  bd         CMP L
+    f910  ca a5 fa   JZ BAD_INPUT (faa5)
+
+    f913  23         INX HL                     ; Repeat for the next symbol
+    f914  c3 f0 f8   JMP INPUT_LINE_LOOP (f8f0)
+
+INPUT_LINE_ENTER:
+    f917  78         MOV A, B                   ; Move B state to carry flag
+    f918  17         RAL
+
+    f919  11 d3 f7   LXI DE, f7d3               ; Return buffer address in DE
+    f91c  06 00      MVI B, 00
+    f91e  c9         RET
 
 ; Print a string
 ; HL - string address (null terminated string)
@@ -171,7 +208,13 @@ fa60  c6 f7 7c d3 fa 7d d3 f9 db f8 02 03 cd 96 f9 c3
 fa70  65 fa 2a b0 f7 c9 e5 2a b0 f7 7e e1 c9 3a cd f7
 fa80  b7 ca 88 fa 7b 32 cf f7 cd ad fa cd 51 fb eb cd
 fa90  51 fb eb c5 cd f6 fa 60 69 cd 51 fb d1 cd 8d f9
-faa0  c8 eb cd 51 fb 3e 3f cd 42 fc c3 6c f8 3e ff cd
+faa0  c8 eb cd 51 fb                         3e ff cd
+
+BAD_INPUT:
+    faa5  3e 3f      MVI A, 3f                  ; Print '?'
+    faa7  cd 42 fc   CALL PUT_CHAR_A (fc42)
+    faaa  c3 6c f8   JMP ENTER_NEXT_COMMAND (f86c)
+
 fab0  df fa e5 09 eb cd dd fa e1 09 eb e5 cd ea fa 3e
 fac0  ff cd df fa e1 c9 06 00 70 23 7c fe f0 c2 c8 fa
 fad0  d1 e1 c9 1f 1a 2a 60 74 2f 38 38 2a 00 3e 08 cd
