@@ -120,7 +120,7 @@ ENTER_NEXT_COMMAND:
     c8d1  fe 52      CPI 52                     ; Handle command 'R'
     c8d3  ca 62 fa   JZ COMMAND_R (fa62)
     
-    c8d6  c3 17 ff   JMP ff17
+    c8d6  c3 17 ff   JMP COMMAND_HANDLER_CONT (ff17)
 
 
 ; Handle the backspace button while entering a line
@@ -464,7 +464,36 @@ HELLO_STR:
 
 fae0  71 fb 47 3e 08 cd 71 fb 4f c9 3e 08 cd 71 fb 77
 faf0  cd 96 f9 c3 ea fa 01 00 00 7e 81 4f d2 00 fb 04
-fb00  cd 8d f9 c8 23 c3 f9 fa 79 b7 ca 10 fb 32 d0 f7
+
+; Calculate CRC for a memory range
+; 
+; The algorithm is a simple 16-bit sum of all bytes in the range
+;
+; Arguments:
+; - start address (HL)
+; - end address (DE)
+;
+; Result - BC
+CALC_CRC:
+    faf6  01 00 00   LXI BC, 0000               ; Initial value
+
+CALC_CRC_LOOP:
+    faf9  7e         MOV A, M                   ; Simply add the next byte to BC
+    fafa  81         ADD C
+    fafb  4f         MOV C, A
+
+    fafc  d2 00 fb   JNC CALC_CRC_1 (fb00)
+    faff  04         INR B
+
+CALC_CRC_1:
+    fb00  cd 8d f9   CALL CMP_HL_DE (f98d)
+
+    fb03  c8         RZ                         ; Return when reached the end address
+
+    fb04  23         INX HL                     ; Advance to the next byte, and repeat
+    fb05  c3 f9 fa   JMP CALC_CRC_LOOP (faf9)
+
+fb00                          79 b7 ca 10 fb 32 d0 f7
 fb10  e5 cd f6 fa e1 cd 51 fb eb cd 51 fb eb e5 60 69
 fb20  cd 51 fb e1 c5 01 00 00 cd ee fb 05 e3 e3 c2 28
 fb30  fb 0e e6 cd ee fb cd 69 fb eb cd 69 fb eb cd 5f
@@ -1102,15 +1131,60 @@ fed0  d5 c5 2a b4 f7 31 af f7 cd 51 fb eb 2a c3 f7 cd
 fee0  8d f9 c2 6c f8 3a c5 f7 77 c3 6c f8 21 8c fe cd
 fef0  1f f9 21 b4 f7 06 06 5e 23 56 c5 e5 eb cd 51 fb
 ff00  cd eb f8 d2 0f ff cd 57 f9 d1 d5 eb 72 2b 73 e1
-ff10  c1 05 23 c2 f7 fe c9 fe 42 ca f3 ff fe 57 ca 00
-ff20  c0 fe 56 ca 29 ff c3 7e ff f3 21 00 00 01 7a 01
+ff10  c1 05 23 c2 f7 fe c9 
+
+COMMAND_HANDLER_CONT:
+    ff17  fe 42      CPI 42                     ; Handle command 'B'
+    ff19  ca f3 ff   JZ COMMAND_B (fff3)
+
+    ff1c  fe 57      CPI 57                     ; Handle command 'W'
+    ff1e  ca 00 c0   JZ c000                    ; Jump directly to 0xc000
+
+    ff21  fe 56      CPI 56                     ; Handle command 'V'
+    ff23  ca 29 ff   JZ COMMAND_V (ff29)
+
+    ff26  c3 7e ff   JMP COMMAND_HANDLER_CONT_2 (ff7e)
+
+ff20                             f3 21 00 00 01 7a 01
 ff30  db a1 a0 5f db a1 a0 bb ca 34 ff 5f db a1 a0 23
 ff40  bb ca 3c ff 5f 0d c2 3c ff 29 29 7c b7 fa 5e ff
 ff50  2f e6 20 0f 0f 0f 47 0f 1f 80 3c 47 7c 90 32 cf
 ff60  f7 fb cd b4 f9 c3 6c f8 ff f3 e5 c5 d5 c3 74 fb
 ff70  d1 c1 e1 fb c3 2d fc f3 e5 c5 d5 c3 f1 fb fe 4b
-ff80  ca 86 ff c3 6c f8 e5 cd f6 fa e1 cd 51 fb eb cd
-ff90  51 fb eb e5 60 69 cd 51 fb e1 c3 6c f8 ff ff ff
+
+COMMAND_HANDLER_CONT_2:
+    ff7e  fe 4b      CPI 4b                     ; Handle command 'K'
+    ff80  ca 86 ff   JZ COMMAND_K (ff86)
+
+    ff83  c3 6c f8   JMP ENTER_NEXT_COMMAND (f86c)  ; Invalid command
+
+
+; Calculate CRC for a range
+;
+; Arguments:
+; - start address (HL)
+; - end address (DE)
+COMMAND_K:
+    ff86  e5         PUSH HL                    ; Calculate the CRC on HL-DE range. Result in BC
+    ff87  cd f6 fa   CALL CALC_CRC (faf6)
+    ff8a  e1         POP HL
+
+    ff8b  cd 51 fb   CALL PRINT_HEX_ADDR (fb51) ; Print the start address
+
+    ff8e  eb         XCHG                       ; Print the end address
+    ff8f  cd 51 fb   CALL PRINT_HEX_ADDR (fb51) 
+
+    ff92  eb         XCHG
+    ff93  e5         PUSH HL
+
+    ff94  60         MOV H, B                   ; Print the CRC
+    ff95  69         MOV L, C
+    ff96  cd 51 fb   CALL PRINT_HEX_ADDR (fb51) 
+
+    ff99  e1         POP HL
+    ff9a  c3 6c f8   JMP ENTER_NEXT_COMMAND (f86c)
+
+ff90                                         ff ff ff
 ffa0  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
 ffb0  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
 ffc0  00 f3 f5 c5 d5 e5 21 f0 ff 11 fd f6 06 03 1a 3c
