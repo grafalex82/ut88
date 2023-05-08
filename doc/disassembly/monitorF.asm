@@ -95,12 +95,33 @@ ENTER_NEXT_COMMAND:
 
     f8a9  fe 46      CPI 46                     ; Handle command 'F'
     f8ab  ca e7 f9   JZ COMMAND_F (f9e7)
-...
 
-f8a0                                            fe 53
-f8b0  ca ee f9 fe 54 ca f9 f9 fe 4d ca 20 fa fe 47 ca
-f8c0  39 fa fe 49 ca 7d fa fe 4f ca 08 fb fe 4c ca 02
-f8d0  fa fe 52 ca 62 fa c3 17 ff 
+    f8ae  fe 53      CPI 53                     ; Handle command 'S'
+    f8b0  ca ee f9   JZ COMMAND_S (f9ee)
+
+    f8b3  fe 54      CPI 54                     ; Handle command 'T'
+    f8b5  ca f9 f9   JZ COMMAND_T (f9f9)
+
+    f8b8  fe 4d      CPI 4d                     ; Handle command 'M'
+    f8ba  ca 20 fa   JZ COMMAND_M (fa20)
+
+    f8bd  fe 47      CPI 47                     ; Handle command 'G'
+    f8bf  ca 39 fa   JZ COMMAND_G (fa39)
+
+    f8c2  fe 49      CPI 49                     ; Handle command 'I'
+    f8c4  ca 7d fa   JZ COMMAND_I (fa7d)
+
+    f8c7  fe 4f      CPI 4f                     ; Handle command 'O'
+    f8c9  ca 08 fb   JZ COMMAND_O (fb08)
+
+    f8cc  fe 4c      CPI 4c                     ; Handle command 'L'
+    f8ce  ca 02 fa   JZ COMMAND_L (fa02)
+
+    c8d1  fe 52      CPI 52                     ; Handle command 'R'
+    c8d3  ca 62 fa   JZ COMMAND_R (fa62)
+    
+    c8d6  c3 17 ff   JMP ff17
+
 
 ; Handle the backspace button while entering a line
 HANDLE_BACKSPACE:
@@ -384,8 +405,39 @@ MEMSET:
 
 
 f9f0  cc 51 fb cd 93 f9 c3 ee f9 7e 02 03 cd 96 f9 c3
-fa00  f9 f9 cd 51 fb 7e b7 fa 0f fa fe 20 d2 11 fa 3e
-fa10  2e cd 42 fc cd 93 f9 7d e6 0f ca 02 fa c3 05 fa
+fa00  f9 f9 
+
+; Dump memory in a text representation
+;
+; Arguments:
+; - start address (HL)
+; - end address (DE)
+COMMAND_L:
+    fa02  cd 51 fb   CALL PRINT_HEX_ADDR (fb51)
+
+COMMAND_L_LOOP:
+    fa05  7e         MOV A, M                   ; Load the next byte to print
+
+    fa06  b7         ORA A                      ; Bytes >= 0x80 are printed as dots
+    fa07  fa 0f fa   JN COMMAND_L_DOT (fa0f)
+
+    fa0a  fe 20      CPI 20                     ; Bytes < 0x20 are printed as dots
+    fa0c  d2 11 fa   JNC COMMAND_L_CHAR (fa11)       ; Printable symbols are printed as is
+
+COMMAND_L_DOT:
+    fa0f  3e 2e      MVI 2e                     ; Print '.'
+
+COMMAND_L_CHAR:
+    fa11  cd 42 fc   CALL PUT_CHAR_A (fc42)
+
+    fa14  cd 93 f9   CALL f993                  ; Do something ???? and advance HL, exit if reached DE
+
+    fa17  7d         MOV A, L                   ; Move to the new line every 16 symbols
+    fa18  e6 0f      ANI 0f
+    fa1a  ca 02 fa   JZ COMMAND_L (fa02)
+
+    fa1d  c3 05 fa   JMP COMMAND_L_LOOP (fa05)  ; Repeat for the new symbol
+
 fa20  cd 51 fb cd b3 f9 e5 cd eb f8 e1 d2 35 fa e5 cd
 fa30  57 f9 7d e1 77 23 c3 20 fa cd 8d f9 ca 54 fa eb
 fa40  22 c3 f7 7e 32 c5 f7 36 f7 3e c3 32 30 00 21 bb
