@@ -22,6 +22,8 @@ class LCD(MemoryDevice):
 
         self._images = [pygame.image.load(f"{resources_dir}/digit_{d:1X}.png") for d in range(0x10)]
 
+        self._display = pygame.Surface((75*6, 94))
+
 
     def _draw_byte(self, screen, byte, x):
         digit1 = (byte & 0xf0) >> 4
@@ -32,10 +34,14 @@ class LCD(MemoryDevice):
         return x + self._images[digit2].get_width()
 
 
+    def _update_screen_buffer(self):
+        x = self._draw_byte(self._display, self._ram[2], 0)
+        x = self._draw_byte(self._display, self._ram[1], x)
+        self._draw_byte(self._display, self._ram[0], x)
+
+
     def update_screen(self, screen):
-        x = self._draw_byte(screen, self._ram[2], 0)
-        x = self._draw_byte(screen, self._ram[1], x)
-        self._draw_byte(screen, self._ram[0], x)
+        screen.blit(self._display, (0, 0))
 
 
     def _check_value(self, value, max):
@@ -49,6 +55,8 @@ class LCD(MemoryDevice):
 
         self._ram[addr - self._startaddr] = value
 
+        self._update_screen_buffer()
+
 
     def write_word(self, addr, value):
         self.validate_addr(addr)
@@ -56,3 +64,5 @@ class LCD(MemoryDevice):
 
         self._ram[addr - self._startaddr] = value & 0xff
         self._ram[addr - self._startaddr + 1] = value >> 8
+
+        self._update_screen_buffer()
