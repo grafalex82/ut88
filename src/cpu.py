@@ -870,7 +870,7 @@ class CPU:
         """ Decrement a register pair """
         reg_pair = (self._current_inst & 0x30) >> 4
         value = self._get_register_pair(reg_pair)
-        self._set_register_pair(reg_pair, value - 1)
+        self._set_register_pair(reg_pair, (value - 1) & 0xffff)
         self._cycles += 5
 
         self._log_1b_instruction(f"DCX {self._reg_pair_symb(reg_pair)}")
@@ -880,7 +880,7 @@ class CPU:
         """ Increment a register pair """
         reg_pair = (self._current_inst & 0x30) >> 4
         value = self._get_register_pair(reg_pair)
-        self._set_register_pair(reg_pair, value + 1)
+        self._set_register_pair(reg_pair, (value + 1) & 0xffff)
         self._cycles += 5
 
         self._log_1b_instruction(f"INX {self._reg_pair_symb(reg_pair)}")
