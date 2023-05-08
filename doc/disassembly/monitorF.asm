@@ -110,7 +110,7 @@ HANDLE_BACKSPACE:
 
     f8df  e5         PUSH HL                    ; Clear a symbole left to the cursor, move cursor left
     f8e0  21 b7 fe   LXI HL, BACKSPACE_STR (feb7)
-    f8e3  cd 1f f9   CALL f91f
+    f8e3  cd 1f f9   CALL PRINT_STR (f91f)
 
     f8e6  e1         POP HL
     f8e7  2b         DCX HL
@@ -296,6 +296,9 @@ CMP_HL_DE:
     f991  bb         CMP E
     f992  c9         RET
 
+????:
+    f993  cd a1 f9   CALL f9a1
+
 ADVANCE_HL:                                     ; Advance HL until it reaches DE
     f996  cd 8d f9   CALL CMD_HL_DE (f98d)
     f999  c2 9f f9   JNZ ADVANCE_HL_1 (f99f)
@@ -309,16 +312,71 @@ ADVANCE_HL_1:
     f9a0  c9         RET
 
 
-f9a0     3e ff a7 fe 03 c0 c3 a5 fa e5 21 85 fe cd 1f
-f9b0  f9 e1 c9 7e c5 cd 2e fc 3e 20 cd 42 fc c1 c9 cd
-f9c0  51 fb cd b3 f9 cd 93 f9 7d e6 0f ca bf f9 c3 c2
-f9d0  f9 0a be ca e0 f9 cd 51 fb cd b3 f9 0a cd b4 f9
+?????:
+    f9a1  3e ff      MVI A, ff
+    f9a3  a7         ANA A
+    f9a4  fe 03      CPI 03
+    f9a6  c0         RNZ
+    f9a7  c3 a5 fa   JMP BAD_INPUT (faa5)
+
+
+; Start new dump line
+NEW_DUMP_LINE:
+    f9aa  e5         PUSH HL
+    f9ab  21 85 fe   LXI HL, TAB_STR (fe85)     ; Print new tabbed line
+    f9ae  cd 1f f9   CALL PRINT_STR (f91f)
+    f9b1  e1         POP HL
+    f9b2  c9         RET
+
+
+; Print a byte at [HL] as a 2-digit hex value, then add a space
+PRINT_MEMORY_BYTE:
+    f9b3  7e         MOV A, M
+
+; Print a 2-digit hex value in A, then add a space
+PRINT_HEX_BYTE_SPACE:
+    f9b4  c5         PUSH BC
+    f9b5  cd 2e fc   CALL PRINT_HEX_BYTE (fc2e)
+
+    f9b8  3e 20      MVI A, 20                  ; Print ' '
+    f9ba  cd 42 fc   CALL PUT_CHAR_A (fc42)
+
+    f9bd  c1         POP BC
+    f9be  c9         RET
+
+; Command D - Dump memory
+; 
+; Arguments:
+; - start address (HL)
+; - end address (DE)
+COMMAND_D:
+    f9bf  cd 51 fb   CALL PRINT_HEX_ADDR (fb51) ; Print new line, and a memory address
+
+COMMAND_D_LOOP:
+    f9c2  cd b3 f9   CALL PRINT_MEMORY_BYTE (f9b3)  ; Print next byte
+    f9c5  cd 93 f9   CALL f993                  ; Do something ??? and advance HL
+
+    f9c8  7d         MOV A, L                   ; Check if we reached end of current line
+    f9c9  e6 0f      ANI 0f
+    f9cb  ca bf f9   JZ f9bf                    ; Get to the new line
+
+    f9ce  c3 c2 f9   JMP COMMAND_D_LOOP (f9c2)
+
+    
+
+f9d0     0a be ca e0 f9 cd 51 fb cd b3 f9 0a cd b4 f9
 f9e0  03 cd 93 f9 c3 d1 f9                      79 be
 
+; Command F - fill a memory range with a specified byte.
+;
+; Command arguments:
+; - start address (HL)
+; - end address (DE)
+; - value to fill with (C)
+COMMAND_F:
 ; HL    - start address
 ; DE    - end address
 ; C     - byte to fill
-COMMAND_F:
 MEMSET:
     f9e7  71         MOV M, C
     f9e8  cd 96 f9   CALL ADVANCE_HL (f996)
@@ -359,7 +417,24 @@ fb10  e5 cd f6 fa e1 cd 51 fb eb cd 51 fb eb e5 60 69
 fb20  cd 51 fb e1 c5 01 00 00 cd ee fb 05 e3 e3 c2 28
 fb30  fb 0e e6 cd ee fb cd 69 fb eb cd 69 fb eb cd 5f
 fb40  fb 21 00 00 cd 69 fb 0e e6 cd ee fb e1 cd 69 fb
-fb50  c9 c5 cd aa f9 7c cd 2e fc 7d cd b4 f9 c1 c9 4e
+fb50  c9                                           4e
+
+; Prints an address as a 4 byte hex value on a new line.
+; Parameters: HL - address to print
+PRINT_HEX_ADDR:
+    fb51  c5         PUSH BC
+    fb52  cd aa f9   CALL NEW_DUMP_LINE (f9aa)
+
+    fb55  7c         MOV A, H                   ; Print high byte
+    fb56  cd 2e fc   CALL PRINT_HEX_BYTE (fc2e)
+
+    fb59  7d         MOV A, L                   ; Print low byte
+    fb5a  cd b4 f9   CALL PRINT_HEX_BYTE_SPACE (f9b4)
+
+    fb5d  c1         POP BC
+    fb5e  c9         RET
+
+
 fb60  cd ee fb cd 96 f9 c3 5f fb 4c cd ee fb 4d c3 ee
 fb70  fb c3 69 ff 57 21 00 00 39 31 00 00 22 c0 f7 0e
 fb80  00 db a1 e6 01 5f f1 79 e6 7f 07 4f 26 00 25 ca
@@ -372,9 +447,33 @@ fbe0  c0 f7 f9 7a b7 f2 a5 fa cd a1 f9 c3 75 fb c3 77
 fbf0  ff f5 21 00 00 39 31 00 00 16 08 f1 79 07 4f 3e
 fc00  01 a9 d3 a1 00 3a d0 f7 47 f1 05 c2 09 fc 3e 00
 fc10  a9 d3 a1 00 15 3a d0 f7 c2 1d fc d6 0e 47 f1 05
-fc20  c2 1e fc 14 15 c2 fb fb f9 f1 c3 70 ff c9 f5 0f
-fc30  0f 0f 0f cd 37 fc f1 e6 0f fe 0a fa 40 fc c6 07
-fc40  c6 30 4f e5 c5 d5 f5 2a b2 f7 23 7e e6 7f 77 2b
+fc20  c2 1e fc 14 15 c2 fb fb f9 f1 c3 70 ff c9
+
+; Print a byte in A as 2-digit hex value
+PRINT_HEX_BYTE:
+    fc2e  f5         PUSH PSW
+
+    fc2f  0f         RRC                        ; Print upper half-byte first
+    fc30  0f         RRC
+    fc31  0f         RRC
+    fc32  0f         RRC
+
+    fc33  cd 37 fc   CALL PRINT_HEX_DIGIT (fc37)
+
+    fc36  f1         POP PSW                    ; Restore A, and print lower half-byte
+
+; Print a single hex digit in A (lower half-byte)
+PRINT_HEX_DIGIT:
+    fc37  e6 0f      ANI 0f
+    fc39  fe 0a      CPI 0a
+    fc3b  fa 40 fc   JN PRINT_HEX_DIGIT_1 (fc40)
+
+    fc3e  c6 07      ADI 07
+
+PRINT_HEX_DIGIT_1:
+    fc40  c6 30      ADI 30                     ; Finish digit to char conversion.
+    fc42  4f         MOV C, A                   ; Fall trough Put Char function
+
 
 ; Print a char (see detailed description below)
 ; A - char to print
@@ -934,7 +1033,11 @@ PROMPT_STR:
     fe82 3d 3e 00    db "=>", 0x00
 ...
 
-fe80                 0d 0a 18 18 18 18 00 0d 0a 20 50
+TAB_STR:
+    fe85 0d 0a 18    db '\r\n', 0x18
+    fe88 18 18 18 00 db 0x18, 0x18, 0x18, 0x00
+
+fe80                                      0d 0a 20 50
 fe90  43 2d 0d 0a 20 48 4c 2d 0d 0a 20 42 43 2d 0d 0a
 fea0  20 44 45 2d 0d 0a 20 53 50 2d 0d 0a 20 41 46 2d
 feb0  19 19 19 19 19 19 00 08 20 08 00 22 b6 f7 f5 e1
