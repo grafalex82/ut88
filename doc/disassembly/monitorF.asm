@@ -383,10 +383,27 @@ COMMAND_D_LOOP:
 
     f9ce  c3 c2 f9   JMP COMMAND_D_LOOP (f9c2)
 
-    
+; Command C - Compare memory ranges
+;
+; Arguments:
+; - Range 1 start address (HL)
+; - Range 1 end address (DE)
+; - Range 2 start address (BC)
+COMMAND_C:
+    f9d1  0a         LDAX BC                    ; Compare bytes from both ranges
+    f9d2  be         CMP M
+    f9d3  ca e0 f9   JZ COMMAND_C_NEXT (f9e0)   ; Advance to the next byte if equal
 
-f9d0     0a be ca e0 f9 cd 51 fb cd b3 f9 0a cd b4 f9
-f9e0  03 cd 93 f9 c3 d1 f9                      79 be
+    f9d6  cd 51 fb   CALL PRINT_HEX_ADDR (fb51) ; Print the address of the unmatched byte
+    f9d9  cd b3 f9   CALL PRINT_MEMORY_BYTE (f9b3)  ; Print source byte
+    f9dc  0a         LDAX BC
+    f9de  cd b4 f9   CALL PRINT_HEX_BYTE_SPACE (f9b4)   ; Print unmatched destination byte
+
+COMMAND_C_NEXT:
+    f9e0  03         INX BC                     ; Advance BC
+    f9e1  cd 93 f9   CALL f993                  ; Do something??? and advance HL, exit if reached DE
+    f9e4  c3 d1 f9   JMP COMMAND_C (f9d1)
+
 
 ; Command F - fill a memory range with a specified byte.
 ;
@@ -403,9 +420,36 @@ MEMSET:
     f9e8  cd 96 f9   CALL ADVANCE_HL (f996)
     f9eb  c3 e7 f9   JMP MEMSET (f9e7)
 
+; Search a byte in a memory range
+;
+; Arguments:
+; - start address (HL)
+; - end address (DE)
+; - Byte to search (C)
+COMMAND_S:
+    f9ee  79         MOV A, C                   ; Compare the memory byte
+    f9ef  be         CMP M
 
-f9f0  cc 51 fb cd 93 f9 c3 ee f9 7e 02 03 cd 96 f9 c3
-fa00  f9 f9 
+    f9f0  cc 51 fb   CZ fb51                    ; If found - print the address
+    f9f3  cd 93 f9   CALL f993                  ; Do something ???? and advance HL, exit if reached DE
+    f9f6  c3 ee f9   JMP COMMAND_S (f9ee)       ; Repeat for the next symbol
+
+
+; Copy memory
+;
+; Arguments:
+; - Start address (HL)
+; - End address (DE)
+; - Target start address (BC)
+COMMAND_T:
+    f9f9  7e         MOV A, M               ; Copy single byte
+    f9fa  02         STAX BC
+
+    f9fb  03         INX BC                 ; Advance BC
+    f9fc  cd 96 f9   CALL ADVANCE_HL (f996) ; Advance HL, exit when reached DE
+
+    f9ff  c3 f9 f9   JMP COMMAND_T (f9f9)
+
 
 ; Dump memory in a text representation
 ;
