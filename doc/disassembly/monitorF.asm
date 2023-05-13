@@ -47,7 +47,7 @@ START:
     f861  21 2a 1d   LXI HL, 1d2a
     f864  22 cf f7   SHLD f7cf
 
-    f867  3e c3      MVI A, c3
+    f867  3e c3      MVI A, c3                  ; JMP instruction code, f7c7 contains the entered address
     f869  32 c6 f7   STA f7c6
 
 ENTER_NEXT_COMMAND:
@@ -146,7 +146,7 @@ HANDLE_BACKSPACE:
 ;
 ; Special conditions:
 ; - When 'Enter' char is entered, the function returns, and DE contains the address of the buffer (0xf7d3)
-; - When nothing is entered, the carry flag will not reset. The carry flag is set when something is in the
+; - When nothing is entered, the carry flag will be reset. The carry flag is set when something is in the
 ;   buffer.
 ; - If the user types '.' symbol, enterring the current line is abandoned. CPU jumps to the main loop.
 ; - If the user enters more than 32 symbols, the input is abandoned as well.
@@ -482,11 +482,70 @@ COMMAND_L_CHAR:
 
     fa1d  c3 05 fa   JMP COMMAND_L_LOOP (fa05)  ; Repeat for the new symbol
 
-fa20  cd 51 fb cd b3 f9 e5 cd eb f8 e1 d2 35 fa e5 cd
-fa30  57 f9 7d e1 77 23 c3 20 fa cd 8d f9 ca 54 fa eb
-fa40  22 c3 f7 7e 32 c5 f7 36 f7 3e c3 32 30 00 21 bb
-fa50  fe 22 31 00 31 b8 f7 c1 d1 e1 f1 f9 2a b6 f7 c3
-fa60  c6 f7 7c d3 fa 7d d3 f9 db f8 02 03 cd 96 f9 c3
+
+; Command M - edit memory
+;
+; Arguments:
+; - Address to view and edit (HL)
+COMMAND_M:
+    fa20  cd 51 fb   CALL PRINT_HEX_ADDR (fb51) ; Print the address and current byte value
+    fa23  cd b3 f9   CALL PRINT_MEMORY_BYTE (f9b3)
+
+    fa26  e5         PUSH HL                    ; Input the new value
+    fa27  cd eb f8   CALL INPUT_LINE (f8eb)
+    fa2a  e1         POP HL
+
+    fa2b  d2 35 fa   JNC COMMAND_M_NEXT (fa35)  ; If no new value entered - move to the next byte
+
+    fa2e  e5         PUSH HL                    ; If a value entered - parse it
+    fa2f  cd 57 f9   CALL PARSE_ADDR (f957)
+
+    fa32  7d         MOV A, L                   ; Store parsed value to the memory at current address
+    fa33  e1         POP HL
+    fa34  77         MOV M, A
+
+COMMAND_M_NEXT:
+    fa35  23         INX HL                     ; Advance to the next address and repeat
+    fa36  c3 20 fa   JMP COMMAND_M (fa20)
+
+
+; Run program from specified address
+;
+; Arguments:
+; - Address of the program (HL)
+; - (optional) ????
+COMMAND_G:
+    fa39  cd 8d f9   CALL CMP_HL_DE (f98d)
+    fa3c  ca 54 fa   JZ fa54
+
+    fa3f  eb         XCHG                       ; Store second argument at f7c3 ???
+    fa40  22 c3 f7   SHLD f7c3                  
+
+    fa43  7e         MOV A, M                   ; Load byte at argument and store at f7c5 ????
+    fa44  32 c5 f7   STA f7c5
+
+    fa47  36 f7      MVI M, f7                  ; ???
+
+    fa49  3e c3      MVI A, c3                  ; Store JMP febb opcode at 0x0030 ????
+    fa4b  32 30 00   STA 0030 
+    fa4e  21 bb fe   LXI HL, febb
+    fa51  22 31 00   SHLD 0031
+
+???:
+    fa54  31 b8 f7   LXI SP, f7b8               ; What is contained here????
+    fa57  c1         POP BC
+    fa58  d1         POP DE
+    fa59  e1         POP HL
+    fa5a  f1         POP PSW
+
+    fa5b  f9         SPHL
+
+    fa5c  2a b6 f7   LHLD f7b6                  ; ????? 
+
+    fa5f  c3 c6 f7   JMP f7c6
+
+
+fa60        7c d3 fa 7d d3 f9 db f8 02 03 cd 96 f9 c3
 fa70  65 fa 2a b0 f7 c9 e5 2a b0 f7 7e e1 c9 3a cd f7
 fa80  b7 ca 88 fa 7b 32 cf f7 cd ad fa cd 51 fb eb cd
 fa90  51 fb eb c5 cd f6 fa 60 69 cd 51 fb d1 cd 8d f9
@@ -1159,12 +1218,27 @@ PROMPT_STR:
 ...
 
 TAB_STR:
-    fe85 0d 0a 18    db '\r\n', 0x18
+    fe85 0d 0a 18    db "\r\n", 0x18
     fe88 18 18 18 00 db 0x18, 0x18, 0x18, 0x00
 
-fe80                                      0d 0a 20 50
-fe90  43 2d 0d 0a 20 48 4c 2d 0d 0a 20 42 43 2d 0d 0a
-fea0  20 44 45 2d 0d 0a 20 53 50 2d 0d 0a 20 41 46 2d
+
+REGISTERS_STR:
+    fe8c 0d 0a 20    db "\r\n", " "
+    fe8f 50 43 2d    db "PC-"
+    fe92 0d 0a 20    db "\r\n", " "
+    fe95 48 4c 2d    db "HL-"
+    fe98 0d 0a 20    db "\r\n", " "
+    fe9b 42 43 2d    db "BC-"
+    fe9e 0d 0a 20    db "\r\n", " "
+    fea1 44 45 2d    db "DE-"
+    fea4 0d 0a 20    db "\r\n", " "
+    fea7 53 50 2d    db "SP-"
+    feaa 0d 0a 20    db "\r\n", " "
+    fead 41 46 2d    db "AF-"
+    feb0 19 19 19    db 19, 19, 19
+    feb3 19 19 19 00 db 19, 19, 19, 0
+
+
 feb0  19 19 19 19 19 19 00 08 20 08 00 22 b6 f7 f5 e1
 
 BACKSPACE_STR:
@@ -1172,10 +1246,49 @@ BACKSPACE_STR:
 
 fec0  22 be f7 e1 2b 22 b4 f7 21 00 00 39 31 be f7 e5
 fed0  d5 c5 2a b4 f7 31 af f7 cd 51 fb eb 2a c3 f7 cd
-fee0  8d f9 c2 6c f8 3a c5 f7 77 c3 6c f8 21 8c fe cd
-fef0  1f f9 21 b4 f7 06 06 5e 23 56 c5 e5 eb cd 51 fb
-ff00  cd eb f8 d2 0f ff cd 57 f9 d1 d5 eb 72 2b 73 e1
-ff10  c1 05 23 c2 f7 fe c9 
+fee0  8d f9 c2 6c f8 3a c5 f7 77 c3 6c f8 
+
+; Command X - Dump CPU registers
+COMMAND_X:
+    feec  21 8c fe   LXI HL, REGISTERS_STR (fe8c)
+    feef  cd 1f f9   CALL PRINT_STR (f91f)
+
+    fef2  21 b4 f7   LXI HL, f7b4               ; Display 6 register pairs starting 0xf7b4
+    fef5  06 06      MVI B, 06
+
+COMMAND_X_LOOP:
+    fef7  5e         MOV E, M                   ; Load register pair to DE
+    fef8  23         INX HL
+    fef9  56         MOV D, M
+
+    fefa  c5         PUSH BC
+    fefb  e5         PUSH HL
+
+    fefc  eb         XCHG                       ; Print register pair
+    fefd  cd 51 fb   CALL PRINT_HEX_ADDR (fb51)
+
+    ff00  cd eb f8   CALL INPUT_LINE (f8eb)
+    ff03  d2 0f ff   JNC COMMAND_X_NO_INPUT (ff0f)
+
+    ff06  cd 57 f9   CALL PARSE_ADDR (f957)     ; Enter new value for the register pair
+
+    ff09  d1         POP DE                     ; Restore address in HL
+    ff0a  d5         PUSH DE
+    ff0b  eb         XCHG
+
+    ff0c  72         MOV M, D                   ; Store entered value
+    ff0d  2b         DCX HL
+    ff0e  73         MOV M, E
+
+COMMAND_X_NO_INPUT:
+    ff0f  e1         POP HL                     ; Do this for all 6 register pairs
+    ff10  c1         POP BC
+    ff11  05         DCR B
+    ff12  23         INX HL
+    ff13  c2 f7 fe   JNZ COMMAND_X_LOOP (fef7)
+
+    ff16  c9         RET
+
 
 COMMAND_HANDLER_CONT:
     ff17  fe 42      CPI 42                     ; Handle command 'B'
