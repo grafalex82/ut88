@@ -20,9 +20,8 @@ START:
     f836  3e 8b      MVI A, 8b                  ; Configure 8255 keyboard matrix controller as
     f838  d3 04      OUT 04                     ; port A - output, ports B and C - input (all mode 0).
 
-    f83a  3e 82      MVI A, 82                  ; ????????????
-    f83c  d3 fb      OUT fb
-    No IO registered for address 0xfb
+    f83a  3e 82      MVI A, 82                  ; Set up external ROM over i8255 controller
+    f83c  d3 fb      OUT fb                     ; Ports A and C as output (address), Port B - input (data)
     
     f83e  31 af f7   LXI SP, f7af               ; Initial stack pointer set up
 
@@ -509,7 +508,7 @@ COMMAND_M_NEXT:
     fa36  c3 20 fa   JMP COMMAND_M (fa20)
 
 
-; Run program from specified address
+; Command G - Run program from specified address
 ;
 ; Arguments:
 ; - Address of the program (HL)
@@ -545,8 +544,41 @@ COMMAND_G:
     fa5f  c3 c6 f7   JMP f7c6
 
 
-fa60        7c d3 fa 7d d3 f9 db f8 02 03 cd 96 f9 c3
-fa70  65 fa 2a b0 f7 c9 e5 2a b0 f7 7e e1 c9 3a cd f7
+; Command R - read external ROM
+;
+; Import specified data range from external ROM to the main RAM.
+;
+; It is supposed that the ROM is connected via a i8255 controller, where ROM address lines are
+; connected to ports B (low byte) and C (high byte), while data is read over port A.
+;
+; Note: the magazine never published the external ROM schematics, so described connection is just
+; a guess, based on the code below. Moreover it contradicts with the i8255 setup above, which for some
+; reason configures ports A and C as output, and B as input.
+;
+; Note: it is not clear what type of ROM is connected, and what its size. The code below reads up to 
+; 256 bytes, but there is no technical limitation to read a larger ROM.
+;
+; Arguments:
+; - ROM start address (HL)
+; - ROM end address (DE)
+; - Target (RAM) start address (BC)
+COMMAND_R:
+    fa62  7c         MOV A, H                   ; Output high byte of the address to port C
+    fa63  d3 fa      OUT fa
+
+COMMAND_R_LOOP:
+    fa65  7d         MOV A, L                   ; Output low byte of the address to port B
+    fa66  d3 f9      OUT f9
+
+    fa68  db f8      IN f8                      ; Read ROM value and save it at target address
+    fa6a  02         STAX BC
+    fa6b  03         INX BC
+
+    fa6c  cd 96 f9   CALL ADVANCE_HL (f996)
+    fa6f  c3 65 fa   JMP COMMAND_R_LOOP (fa65)
+
+
+fa70        2a b0 f7 c9 e5 2a b0 f7 7e e1 c9 3a cd f7
 fa80  b7 ca 88 fa 7b 32 cf f7 cd ad fa cd 51 fb eb cd
 fa90  51 fb eb c5 cd f6 fa 60 69 cd 51 fb d1 cd 8d f9
 faa0  c8 eb cd 51 fb                         3e ff cd
@@ -1249,6 +1281,9 @@ fed0  d5 c5 2a b4 f7 31 af f7 cd 51 fb eb 2a c3 f7 cd
 fee0  8d f9 c2 6c f8 3a c5 f7 77 c3 6c f8 
 
 ; Command X - Dump CPU registers
+;
+; Print 6 register pairs stored at addresses f7b4-f7bf (in the order of PC, HL, BC, DE, SP, AF).
+; Allow the User to enter a new register value.
 COMMAND_X:
     feec  21 8c fe   LXI HL, REGISTERS_STR (fe8c)
     feef  cd 1f f9   CALL PRINT_STR (f91f)
