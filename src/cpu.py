@@ -177,6 +177,11 @@ class CPU:
         self._sp = value
 
 
+    def set_sp(self, value):    # Sometimes need a function, not a property
+        assert value >= 0x00 and value <= 0xffff
+        self._sp = value
+
+
     @property
     def bc(self):
         return (self._b << 8) | self._c

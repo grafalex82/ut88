@@ -159,6 +159,7 @@ class VideoConfiguration(Configuration):
         self.suppress_logging(0xfd92, 0xfd95, "Beep")
         self.suppress_logging(0xfd57, 0xfd99, "Keyboard input")
         self.suppress_logging(0xfc43, 0xfccd, "Put char")
+        self.suppress_logging(0xfbee, 0xfc2d, "Out byte")
 
         # Monitor F wipes out 0xf7b0-f7ff range during initialization. This range contains monitor's
         # variables, including 0xf7b2, which contains cursor address. Char printing code does invert of 
@@ -173,7 +174,10 @@ class VideoConfiguration(Configuration):
         # So let's just speed it up a little bit, by setting a shorter delay value.
         self._emulator.add_breakpoint(0xfe4d, lambda: self._emulator._cpu.set_pc(0xfe62))
 
-        self._emulator.add_breakpoint(0xf87c, breakpoint)
+        # Function that outputs a byte to the tape for some reason sets SP to 0, and then does a POP
+        # instruction. In the real computer this does not make any harm - just reads a garbage, but emulator
+        # asserts that there stack operations on ROM (and ROM at 0x0000 may not be even installed)
+        self._emulator.add_breakpoint(0xfbf9, lambda: self._emulator._cpu.set_sp(0xc000))
 
 
     def get_screen_size(self):
