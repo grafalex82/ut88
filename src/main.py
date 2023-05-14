@@ -24,8 +24,8 @@ Keys:
   0-9, A-F  - hexadecimal buttons
   Backspace - step back button
   Esc       - CPU Reset
-  L         - Load a tape file
-  S         - Save a tape file
+  Alt-L     - Load a tape file
+  Alt-S     - Save a tape file
 """
 
 def breakpoint():
@@ -118,13 +118,15 @@ class BasicConfiguration(Configuration):
         return (450, 294)
     
     def update(self, screen):
-        if pygame.key.get_pressed()[pygame.K_l]:
+        alt_pressed = pygame.key.get_mods() & (pygame.KMOD_ALT | pygame.KMOD_META) 
+        if pygame.key.get_pressed()[pygame.K_l] and alt_pressed:
             filename = filedialog.askopenfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")))
             self._recorder.load_from_file(filename)
-        if pygame.key.get_pressed()[pygame.K_s]:
+        if pygame.key.get_pressed()[pygame.K_s] and alt_pressed:
             filename = filedialog.asksaveasfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")),
                                                     defaultextension="tape")
             self._recorder.dump_to_file(filename)
+
 
         self._lcd.update_screen(screen)
         self._kbd.update()
@@ -179,12 +181,25 @@ class VideoConfiguration(Configuration):
         # asserts that there stack operations on ROM (and ROM at 0x0000 may not be even installed)
         self._emulator.add_breakpoint(0xfbf9, lambda: self._emulator._cpu.set_sp(0xc000))
 
+        self._emulator.add_breakpoint(0xfa7d, breakpoint) # Command I
+        self._emulator.add_breakpoint(0xff29, breakpoint) # Command V
+        #self._emulator.add_breakpoint(0xfb2b, breakpoint) # ...
+
 
     def get_screen_size(self):
         return (64*16, 28*16)
 
 
     def update(self, screen):
+        alt_pressed = pygame.key.get_mods() & (pygame.KMOD_ALT | pygame.KMOD_META) 
+        if pygame.key.get_pressed()[pygame.K_l] and alt_pressed:
+            filename = filedialog.askopenfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")))
+            self._recorder.load_from_file(filename)
+        if pygame.key.get_pressed()[pygame.K_s] and alt_pressed:
+            filename = filedialog.asksaveasfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")),
+                                                    defaultextension="tape")
+            self._recorder.dump_to_file(filename)
+
         self._display.update_screen(screen)
 
 
