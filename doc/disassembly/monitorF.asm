@@ -3,14 +3,16 @@
 ; Important variables:
 ; f7b0 - Current cursor position (offset from video memory start address)
 ; f7b2 - Current cursor position (memory address)
+; f7d0 - Tape delay constant
 ; f7f8 - Flag indicating that the next char will be cursor direct movement coordinate
 VECTORS:                                        ; Jump vectors to real function implementations
     f800  c3 36 f8   JMP START (f836)
     f803  c3 57 fd   JMP KBD_INPUT (fd57)
     f806  c3 71 fb   JMP fb71
     f809  c3 43 fc   JMP PUT_CHAR_C (fc43)
+    f80c  c3 ee fb   JMP OUT_BYTE (fbee)
 
-f800                                      c3 ee fb c3
+f800                                               c3
 f810  43 fc c3 6b fe c3 2e fc          c3 9a fd c3 72
     f818  c3 1f f9   JMP PRINT_STR (f91f)
 f820  fa c3 76 fa c3 ad fa c3 24 fb c3 f6 fa c9 ff ff
@@ -588,6 +590,7 @@ BAD_INPUT:
     faa7  cd 42 fc   CALL PUT_CHAR_A (fc42)
     faaa  c3 6c f8   JMP ENTER_NEXT_COMMAND (f86c)
 
+
 fab0  df fa e5 09 eb cd dd fa e1 09 eb e5 cd ea fa 3e
 fac0  ff cd df fa e1 c9 06 00 70 23 7c fe f0 c2 c8 fa
 fad0  d1 e1 c9 1f 1a 2a 60 74 2f 38 38 2a 00 3e 08 cd
@@ -628,12 +631,69 @@ CALC_CRC_1:
     fb04  23         INX HL                     ; Advance to the next byte, and repeat
     fb05  c3 f9 fa   JMP CALC_CRC_LOOP (faf9)
 
-fb00                          79 b7 ca 10 fb 32 d0 f7
-fb10  e5 cd f6 fa e1 cd 51 fb eb cd 51 fb eb e5 60 69
-fb20  cd 51 fb e1 c5 01 00 00 cd ee fb 05 e3 e3 c2 28
-fb30  fb 0e e6 cd ee fb cd 69 fb eb cd 69 fb eb cd 5f
-fb40  fb 21 00 00 cd 69 fb 0e e6 cd ee fb e1 cd 69 fb
-fb50  c9                                           4e
+
+
+; Command O - output data to the tape
+;
+; Arguments:
+; - Start address (HL)
+; - End address (DE)
+; - Tape constant (C)
+COMMAND_O:
+    fb08  79         MOV A, C                   ; Check if the constant is 0
+    fb09  b7         ORA A
+    fb0a  ca 10 fb   JZ COMMAND_O_1 (fb10)
+
+    fb0d  32 d0 f7   STA f7d0                   ; Store the constant at 0xf7d0
+
+COMMAND_O_1:
+    fb10  e5         PUSH HL                    ; Calculate CRC
+    fb11  cd f6 fa   CALL CALC_CRC (faf6)
+    fb14  e1         POP HL
+
+    fb15  cd 51 fb   CALL PRINT_HEX_ADDR (fb51) ; Print start and end address
+    fb18  eb         XCHG
+    fb19  cd 51 fb   CALL PRINT_HEX_ADDR (fb51)
+    fb1c  eb         XCHG
+
+    fb1d  e5         PUSH HL                    ; Print CRC
+    fb1e  60         MOV H, B
+    fb1f  69         MOV L, C
+    fb20  cd 51 fb   CALL PRINT_HEX_ADDR (fb51)
+    fb23  e1         POP HL
+
+    fb24  c5         PUSH BC
+    fb25  01 00 00   LXI BC, 0000               ; Output 256 zeros
+
+TAPE_SYNC_LOOP:
+    fb28  cd ee fb   CALL OUT_BYTE (fbee)
+
+    fb2b  05         DCR B
+    fb2c  e3         XTHL                       ; ???? Delay?
+    fb2d  e3         XTHL
+    fb2e  c2 28 fb   JNZ TAPE_SYNC_LOOP (fb28)
+
+    fb31  0e e6      MVI C, e6                  ; Output symchronization byte 0xe6
+    fb33  cd ee fb   CALL OUT_BYTE (fbee)
+
+    fb36  cd 69 fb   CALL OUT_WORD (fb69)       ; Write start address
+    fb39  eb         XCHG
+    fb3a  cd 69 fb   CALL OUT_WORD (fb69)       ; Write end address
+    fb3d  eb         XCHG
+
+    fb3e  cd 5f fb   CALL OUT_BYTE_RANGE (fb5f) ; Write data
+
+    fb41  21 00 00   LXI HL, 0000               ; Write 0000 word
+    fb44  cd 69 fb   CALL OUT_WORD (fb69)
+
+    fb47  0e e6      MVI C, e6                  ; Output another sync byte
+    fb49  cd ee fb   CALL OUT_BYTE (fbee)
+    
+    fb4c  e1         POP HL
+    fb4d  cd 69 fb   CALL OUT_WORD (fb69)
+    
+    fb50  c9         RET
+
 
 ; Prints an address as a 4 byte hex value on a new line.
 ; Parameters: HL - address to print
@@ -650,20 +710,122 @@ PRINT_HEX_ADDR:
     fb5d  c1         POP BC
     fb5e  c9         RET
 
+; Output a byte range HL-DE to the tape
+OUT_BYTE_RANGE:
+    fb5f  4e         MOV C, M
+    fb60  cd ee fb   CALL OUT_BYTE (fbee)
+    fb63  cd 96 f9   CALL ADVANCE_HL (f996)
+    fb66  c3 5f fb   JMP OUT_BYTE_RANGE (fb5f)
 
-fb60  cd ee fb cd 96 f9 c3 5f fb 4c cd ee fb 4d c3 ee
-fb70  fb c3 69 ff 57 21 00 00 39 31 00 00 22 c0 f7 0e
+
+
+; Output HL word to the tape
+OUT_WORD:
+    fb69  4c         MOV C, H
+    fb6a  cd ee fb   CALL OUT_BYTE (fbee)
+    fb6d  4d         MOV C, L
+    fb6e  c3 ee fb   JMP OUT_BYTE (fbee)
+
+
+fb70     c3 69 ff 57 21 00 00 39 31 00 00 22 c0 f7 0e
 fb80  00 db a1 e6 01 5f f1 79 e6 7f 07 4f 26 00 25 ca
 fb90  df fb f1 db a1 e6 01 bb ca 8e fb b1 4f 15 3a cf
 fba0  f7 c2 a6 fb d6 12 47 f1 05 c2 a7 fb 14 db a1 e6
 fbb0  01 5f 7a b7 f2 d0 fb 79 fe e6 c2 c4 fb af 32 ce
 fbc0  f7 c3 ce fb fe 19 c2 86 fb 3e ff 32 ce f7 16 09
 fbd0  15 c2 86 fb 2a c0 f7 f9 3a ce f7 a9 c3 70 ff 2a
-fbe0  c0 f7 f9 7a b7 f2 a5 fa cd a1 f9 c3 75 fb c3 77
-fbf0  ff f5 21 00 00 39 31 00 00 16 08 f1 79 07 4f 3e
-fc00  01 a9 d3 a1 00 3a d0 f7 47 f1 05 c2 09 fc 3e 00
-fc10  a9 d3 a1 00 15 3a d0 f7 c2 1d fc d6 0e 47 f1 05
-fc20  c2 1e fc 14 15 c2 fb fb f9 f1 c3 70 ff c9
+fbe0  c0 f7 f9 7a b7 f2 a5 fa cd a1 f9 c3 75 fb 
+
+; Output a byte to the tape (byte in С)
+;
+; This function outputs a byte to the tape, according to 2-phase coding algorithm.
+; 
+; Data storage format is based on the 2-phase coding algorithm. Each bit is 
+; coded as 2 periods with opposite values. The actual bit value is determined
+; at the transition between the periods:
+; - transition from 1 to 0 represents value 0
+; - transition from 0 to 1 represents value 1
+;    
+; Bytes are written MSB first. Typical recording speed is 1500 bits per second, but
+; adjusted with a constant in 0xf7d0
+;
+;                       Example of 0xA5 byte transfer
+;      D7=1 |  D6=0 |  D5=1 |  D4=0 |  D3=0 |  D2=1 |  D1=0 |  D0=1 |
+;       +---|---+   |   +---|---+   |---+   |   +---|---+   |   +---|
+;       |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
+;    ---+   |   +---|---+   |   +---|   +---|---+   |   +---|---+   |
+;           |<--T-->|       |       |       |       |       |       |
+; 
+; Note: this function uses a non-typical way for making delays between bits. Instead of
+; using NOPs, it sets stack pointer to 0000, and does random memory stack reads. Unlike
+; NOP operation, which is just 4 cycles, POP operation takes 10 cycles. This is not a problem
+; for the real hardware, but emulator treats stack and memory operations differently, and
+; therefore must take this into account. Overall this looks like a strange solution - setting
+; SP, and restoring it back take precious bytes, while extra NOPs could be just accounted
+; in the delay constant.
+;
+OUT_BYTE:
+    fbee  c3 77 ff   JMP OUT_BYTE_INTRO (ff77)  ; Save registers and disable interrupts
+
+DO_OUT_BYTE:
+    fbf1  f5         PUSH PSW                   ; Save current SP at HL
+    fbf2  21 00 00   LXI HL, 0000
+    fbf5  39         DAD SP
+    fbf6  31 00 00   LXI SP, 0000
+
+    fbf9  16 08      MVI D, 08                  ; Will be sending 8 bits to output
+
+OUT_BYTE_NEXT_BIT:
+    fbfb  f1         POP PSW
+
+    fbfc  79         MOV A, C                   ; Roll to the next bit
+    fbfd  07         RLC
+    fbfe  4f         MOV C, A
+
+    fbff  3e 01      MVI A, 01                  ; Output negative pulse
+    fc01  a9         XRA C
+    fc02  d3 a1      OUT a1
+
+    fc04  00         NOP                        ; Do a short delay (specified in tape constant at f7d0)
+    fc05  3a d0 f7   LDA f7d0
+    fc08  47         MOV B, A
+
+OUT_BYTE_DELAY_1:
+    fc09  f1         POP PSW
+    fc0a  05         DCR B
+    fc0b  c2 09 fc   JNZ OUT_BYTE_DELAY_1 (fc09)
+
+    fc0e  3e 00      MVI A, 00                  ; Output positive pulse
+    fc10  a9         XRA C
+    fc11  d3 a1      OUT a1
+
+    fc13  00         NOP                        ; Prepare for delay after positive pulse
+    fc14  15         DCR D
+    fc15  3a d0 f7   LDA f7d0
+    fc18  c2 1d fc   JNZ OUT_BYTE_1 (fc1d)
+
+    fc1b  d6 0e      SUI 0e                     ; Do a shorter delay between bytes
+
+OUT_BYTE_1:
+    fc1d  47         MOV B, A                   ; Do the delay
+
+OUT_BYTE_DELAY_2:
+    fc1e  f1         POP PSW
+    fc1f  05         DCR B
+
+    fc20  c2 1e fc   JNZ OUT_BYTE_DELAY_2 (fc1e)
+
+    fc23  14         INR D                      ; Repeat for the next bit
+    fc24  15         DCR D
+    fc25  c2 fb fb   JNZ OUT_BYTE_NEXT_BIT (fbfb)
+
+    fc28  f9         SPHL                       ; Restore original SP
+    fc29  f1         POP PSW
+    fc2a  c3 70 ff   JMP OUT_BYTE_OUTRO (ff70)  ; Restore registers and enable interrupts
+
+OUT_BYTE_EXIT:
+    fc2d  c9         RET                        ; Exit
+
 
 ; Print a byte in A as 2-digit hex value
 PRINT_HEX_BYTE:
@@ -1342,7 +1504,25 @@ ff30  db a1 a0 5f db a1 a0 bb ca 34 ff 5f db a1 a0 23
 ff40  bb ca 3c ff 5f 0d c2 3c ff 29 29 7c b7 fa 5e ff
 ff50  2f e6 20 0f 0f 0f 47 0f 1f 80 3c 47 7c 90 32 cf
 ff60  f7 fb cd b4 f9 c3 6c f8 ff f3 e5 c5 d5 c3 74 fb
-ff70  d1 c1 e1 fb c3 2d fc f3 e5 c5 d5 c3 f1 fb fe 4b
+
+
+; Restoring registers and interrupt after outputing a byte to the tape
+OUT_BYTE_OUTRO:
+    ff70  d1         POP DE
+    ff71  c1         POP BC
+    ff72  e1         POP HL
+    ff73  fb         EI
+    ff74  c3 2d fc   JMP OUT_BYTE_EXIT (fc2d)
+
+; A preparation for outputing a byte to the tape - disable interrupts and save registers
+OUT_BYTE_INTRO:
+    ff77  f3         DI                         ; Disable interrupts to avoid tape data corruption
+
+    ff78  e5         PUSH HL
+    ff79  c5         PUSH BC
+    ff7a  d5         PUSH DE
+    ff7b  c3 f1 fb   JMP DO_OUT_BYTE (fbf1)
+
 
 COMMAND_HANDLER_CONT_2:
     ff7e  fe 4b      CPI 4b                     ; Handle command 'K'
@@ -1382,4 +1562,20 @@ ffb0  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
 ffc0  00 f3 f5 c5 d5 e5 21 f0 ff 11 fd f6 06 03 1a 3c
 ffd0  27 12 be c2 de ff af 12 23 13 05 c2 ce ff 2a fe
 ffe0  f6 3a fd f6 32 00 90 22 01 90 e1 d1 c1 f1 fb c9
-fff0  60 60 24 2a fe c3 3a fd c3 ef df c3 6c f8 00 00
+fff0  60 60 24      
+
+; Command B - display time on LCD display
+;
+; This is an analog of the Monitor 0 function to display current time. 
+; It displays current time on LCD display of the CPU module.
+;
+; It is supposed that time interrupts are still connected to the CPU, and handled
+; by the CPU module.
+COMMAND_B:
+    fff3  2a fe c3   LHLD c3fe                  ; Load time information (updated by CPU module)
+    fff6  3a fd c3   LDA c3fd
+
+    fff9  ef         RST 5                      ; Display it on the LCD
+    fffa  df         RST 3                      ; Delay 1s
+
+    fffb  c3 6c f8   JMP ENTER_NEXT_COMMAND (f86c)
