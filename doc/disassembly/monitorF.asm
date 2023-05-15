@@ -3,20 +3,31 @@
 ; Important variables:
 ; f7b0 - Current cursor position (offset from video memory start address)
 ; f7b2 - Current cursor position (memory address)
-; f7d0 - Tape delay constant
+; f7ce - Tape input polarity (0x00 if non-inverted, 0xff if inverted)
+; f7cf - Tape delay constant when loading
+; f7d0 - Tape delay constant when saving
+; f7d1 - ???
 ; f7f8 - Flag indicating that the next char will be cursor direct movement coordinate
 VECTORS:                                        ; Jump vectors to real function implementations
     f800  c3 36 f8   JMP START (f836)
     f803  c3 57 fd   JMP KBD_INPUT (fd57)
-    f806  c3 71 fb   JMP fb71
+    f806  c3 71 fb   JMP IN_BYTE (fb71)
     f809  c3 43 fc   JMP PUT_CHAR_C (fc43)
     f80c  c3 ee fb   JMP OUT_BYTE (fbee)
-
-f800                                               c3
-f810  43 fc c3 6b fe c3 2e fc          c3 9a fd c3 72
+    f80f  c3 43 fc   JMP PUT_CHAR_C (fc43)
+    f812  c3 6b fe   JMP IS_BUTTON_PRESSED (fe6b)
+    f815  c3 2e fc   JMP PRINT_HEX_BYTE (fc2e)
     f818  c3 1f f9   JMP PRINT_STR (f91f)
-f820  fa c3 76 fa c3 ad fa c3 24 fb c3 f6 fa c9 ff ff
-f830  c3 77 fe c3 7b fe 
+    f81b  c3 9a fd   JMP SCAN_KBD_STABLE (fd9a)
+    f81e  c3 72 fa   JMP fa72
+    f821  c3 76 fa   JMP fa76
+    f824  c3 ad fa   JMP IN_PROGRAM (faad)
+    f827  c3 24 fb   JMP DO_OUT_MEMORY (fb24)
+    f82a  c3 f6 fa   JMP CALC_CRC (faf6)
+    f82d  c9 ff ff   RET
+    f830  c3 77 fe   JMP fe77
+    f833  c3 7b fe   JMP fe7b
+
 
 START:
     f836  3e 8b      MVI A, 8b                  ; Configure 8255 keyboard matrix controller as
@@ -45,8 +56,8 @@ START:
     f85b  21 ff df   LXI HL, dfff
     f85e  22 d1 f7   SHLD f7d1
 
-    f861  21 2a 1d   LXI HL, 1d2a
-    f864  22 cf f7   SHLD f7cf
+    f861  21 2a 1d   LXI HL, 1d2a               ; Precalculated tape delay constants (0x2a for loading,
+    f864  22 cf f7   SHLD f7cf                  ; and 0x1d for saving)
 
     f867  3e c3      MVI A, c3                  ; JMP instruction code, f7c7 contains the entered address
     f869  32 c6 f7   STA f7c6
@@ -73,7 +84,7 @@ ENTER_NEXT_COMMAND:
     f884  fe 58      CPI 58                     ; Handle command 'X'
     f886  ca ec fe   JZ COMMAND_X (feec)
     f889  fe 55      CPI 55                     ; Handle command 'U'
-    f88b  ca 00 f0   JZ COMMAND_U (f000)
+    f88b  ca 00 f0   JZ f000                    ; Execute program starting address 0xf000
 
     f88e  f5         PUSH PSW
     f88f  cd 29 f9   CALL PARSE_ARGUMENTS (f929)
@@ -580,10 +591,44 @@ COMMAND_R_LOOP:
     fa6f  c3 65 fa   JMP COMMAND_R_LOOP (fa65)
 
 
-fa70        2a b0 f7 c9 e5 2a b0 f7 7e e1 c9 3a cd f7
-fa80  b7 ca 88 fa 7b 32 cf f7 cd ad fa cd 51 fb eb cd
-fa90  51 fb eb c5 cd f6 fa 60 69 cd 51 fb d1 cd 8d f9
-faa0  c8 eb cd 51 fb                         3e ff cd
+fa70        2a b0 f7 c9 e5 2a b0 f7 7e e1 c9 
+
+; Command I - load data from tape
+;
+; Arguments:
+; - Offset (HL)
+; - (Optional) Tape constant (E)
+COMMAND_I:
+    fa7d  3a cd f7   LDA f7cd                   ; Check if tape constant is set
+    fa80  b7         ORA A
+    fa81  ca 88 fa   JZ COMMAND_I_1 (fa88)
+
+    fa84  7b         MOV A, E                   ; Save tape constant at 0xf7cf
+    fa85  32 cf f7   STA f7cf
+
+COMMAND_I_1:
+    fa88  cd ad fa   CALL IN_PROGRAM (faad)     ; Load the program from tape
+
+    fa8b  cd 51 fb   CALL PRINT_HEX_ADDR (fb51) ; Print start and end address
+    fa8e  eb         XCHG
+    fa8f  cd 51 fb   CALL PRINT_HEX_ADDR (fb51)
+    fa92  eb         XCHG
+
+    fa93  c5         PUSH BC
+    fa94  cd f6 fa   CALL CALC_CRC (faf6)       ; Calculate and print CRC
+
+    fa97  60         MOV H, B
+    fa98  69         MOV L, C
+    fa99  cd 51 fb   CALL PRINT_HEX_ADDR (fb51)
+
+    fa9c  d1         POP DE                     ; Compare calculated CRC with recorded one
+    fa9d  cd 8d f9   CALL CMP_HL_DE (f98d)
+
+    faa0  c8         RZ                         ; If everything is ok - just exit
+
+    faa1  eb         XCHG                       ; If CRC does not match - print it, and show an error
+    faa2  cd 51 fb   CALL PRINT_HEX_ADDR (fb51)
+
 
 BAD_INPUT:
     faa5  3e 3f      MVI A, 3f                  ; Print '?'
@@ -591,17 +636,74 @@ BAD_INPUT:
     faaa  c3 6c f8   JMP ENTER_NEXT_COMMAND (f86c)
 
 
-fab0  df fa e5 09 eb cd dd fa e1 09 eb e5 cd ea fa 3e
-fac0  ff cd df fa e1 c9 06 00 70 23 7c fe f0 c2 c8 fa
-fad0  d1 e1 c9 1f 1a 2a 60 74 2f 38 38 2a 00 3e 08 cd
+
+IN_PROGRAM:
+    faad  3e ff      MVI A, ff                  ; Receive start address to BC
+    faaf  cd df fa   CALL IN_WORD_SYNC (fadf)
+
+    fab2  e5         PUSH HL                    ; Apply start address offset
+    fab3  09         DAD BC
+    fab4  eb         XCHG
+
+    fab5  cd dd fa   CALL IN_WORD (fadd)        ; Receive end address to BC
+
+    fab8  e1         POP HL                     ; Apply end address offset
+    fab9  09         DAD BC
+    faba  eb         XCHG
+
+    fabb  e5         PUSH HL                    ; At this point HL - start address, DE - end address
+
+    fabc  cd ea fa   CALL IN_BYTES_LOOP (faea)
+
+    fabf  3e ff      MVI A, ff                  ; Wait for a sync byte, and then CRC
+    fac1  cd df fa   CALL IN_WORD_SYNC (fadf)   ; Return CRC in BC
+
+    fac4  e1         POP HL
+    fac5  c9         RET
+
+
+?????:
+    fac6  06 00      MVI B, 00
+?????_LOOP:
+    fac8  70         MOV M, B
+    fac9  23         INX H
+    faca  7c         MOV A, H
+    facb  fe f0      CPI f0
+    facd  c2 c8 fa   JNZ ?????_LOOP (fac8)
+
+    fad0  d1         POP DE
+    fad1  e1         POP HL
+    fad2  c9         RET
+
 
 HELLO_STR:
     fad3 1f          db 1f                      # Clear screen  
     fad4 1a          db 1a                      # Move to the second line
     fad5 2a 60 74 2f 38 38 2a 00     db "*ЮТ/88*", 0x00    # Hello string
 
-fae0  71 fb 47 3e 08 cd 71 fb 4f c9 3e 08 cd 71 fb 77
-faf0  cd 96 f9 c3 ea fa 01 00 00 7e 81 4f d2 00 fb 04
+; Receive 2 bytes from tape
+; Result in BC
+IN_WORD:
+    fadd 3e 08       MVI A, 08
+
+IN_WORD_SYNC:
+    fadf  cd 71 fb   CALL IN_BYTE (fb71)
+    fae2  47         MOV B, A
+    fae3  3e 08      MVI A, 08
+    fae5  cd 71 fb   CALL IN_BYTE (fb71)
+    fae8  4f         MOV C, A
+    fae9  c9         RET 
+
+
+
+IN_BYTES_LOOP:
+    faea  3e 08      MVI A, 08
+    faec  cd 71 fb   CALL IN_BYTE (fb71)
+    faef  77         MOV M, A
+    faf0  cd 96 f9   CALL ADVANCE_HL (f996)
+    faf3  c3 ea fa   JMP IN_BYTES_LOOP (faea)
+
+
 
 ; Calculate CRC for a memory range
 ; 
@@ -662,6 +764,7 @@ COMMAND_O_1:
     fb20  cd 51 fb   CALL PRINT_HEX_ADDR (fb51)
     fb23  e1         POP HL
 
+DO_OUT_MEMORY:
     fb24  c5         PUSH BC
     fb25  01 00 00   LXI BC, 0000               ; Output 256 zeros
 
@@ -726,15 +829,121 @@ OUT_WORD:
     fb6d  4d         MOV C, L
     fb6e  c3 ee fb   JMP OUT_BYTE (fbee)
 
+; Receive a byte from tape
+;
+; Parameters:
+; A - number of bits to receive (typically 8), or 0xff if synchronization is required first.
+;
+; If the synchronization procedure is required (A=0xff as a parameter), the function will wait for
+; a pilot tone, then a synchronization byte (0xe6 or 0x19) to determine polarity. Then the requested
+; byte is received. Polarity is stored at 0xf7ce.
+;
+; Returns received byte in A
+IN_BYTE:
+    fb71  c3 69 ff   JMP IN_BYTE_INTRO (ff69)
 
-fb70     c3 69 ff 57 21 00 00 39 31 00 00 22 c0 f7 0e
-fb80  00 db a1 e6 01 5f f1 79 e6 7f 07 4f 26 00 25 ca
-fb90  df fb f1 db a1 e6 01 bb ca 8e fb b1 4f 15 3a cf
-fba0  f7 c2 a6 fb d6 12 47 f1 05 c2 a7 fb 14 db a1 e6
-fbb0  01 5f 7a b7 f2 d0 fb 79 fe e6 c2 c4 fb af 32 ce
-fbc0  f7 c3 ce fb fe 19 c2 86 fb 3e ff 32 ce f7 16 09
-fbd0  15 c2 86 fb 2a c0 f7 f9 3a ce f7 a9 c3 70 ff 2a
-fbe0  c0 f7 f9 7a b7 f2 a5 fa cd a1 f9 c3 75 fb 
+DO_IN_BYTE:
+    fb74  57         MOV D, A
+
+IN_BYTE_1:
+    fb75  21 00 00   LXI HL, 0000               ; Save SP at f7c0, and set SP to 0000
+    fb78  39         DAD SP
+    fb79  31 00 00   LXI SP, 0000
+    fb7c  22 c0 f7   SHLD f7c0
+
+    fb7f  0e 00      MVI C, 00                  ; Reset byte accumulator
+
+    fb81  db a1      IN a1                      ; Input the bit to E register
+    fb83  e6 01      ANI 01
+    fb85  5f         MOV E, A
+
+IN_BYTE_NEXT_BIT:
+    fb86  f1         POP PSW
+
+    fb87  79         MOV A, C                   ; Shift the received byte left, reserving rightmost bit
+    fb88  e6 7f      ANI 7f                     ; for the next input bit
+    fb8a  07         RLC
+    fb8b  4f         MOV C, A
+
+    fb8c  26 00      MVI H, 00
+
+IN_BYTE_WAIT:
+    fb8e  25         DCR H                      ; If phase does not change for too long - signal an error
+    fb8f  ca df fb   JZ IN_BYTE_ERROR (fbdf)
+
+    fb92  f1         POP PSW
+
+    fb93  db a1      IN a1                      ; Input the bit until the phase change
+    fb95  e6 01      ANI 01
+    fb97  bb         CMP E
+    fb98  ca 8e fb   JZ IN_BYTE_WAIT (fb8e)
+
+    fb9b  b1         ORA C                      ; Store received bit in the received byte register (C)
+    fb9c  4f         MOV C, A
+
+    fb9d  15         DCR D
+    fb9e  3a cf f7   LDA f7cf
+    fba1  c2 a6 fb   JNZ IN_BYTE_DELAY (fba6)
+
+    fba4  d6 12      SUI 12                     ; Compensate the delay between bytes
+
+IN_BYTE_DELAY:
+    fba6  47         MOV B, A
+
+IN_BYTE_DELAY_LOOP:
+    fba7  f1         POP PSW
+    fba8  05         DCR B
+    fba9  c2 a7 fb   JNZ IN_BYTE_DELAY_LOOP (fba7)
+
+    fbac  14         INR D                      ; Start receiving the next bit
+    fbad  db a1      IN a1
+    fbaf  e6 01      ANI 01
+    fbb1  5f         MOV E, A
+
+    fbb2  7a         MOV A, D                   ; Check if synchronization has already happened
+    fbb3  b7         ORA A
+    fbb4  f2 d0 fb   JP IN_BYTE_4 (fbd0)
+
+    fbb7  79         MOV A, C                   ; Check if the received byte is a synchronization byte
+    fbb8  fe e6      CPI e6
+    fbba  c2 c4 fb   JNZ IN_BYTE_2 (fbc4)
+
+    fbbd  af         XRA A                      ; Save the input polarity
+    fbbe  32 ce f7   STA f7ce
+    fbc1  c3 ce fb   JMP IN_BYTE_3 (fbce)
+
+IN_BYTE_2:
+    fbc4  fe 19      CPI 19                     ; Check if we received an inverted sync byte (~0x19 = 0xe6)
+    fbc6  c2 86 fb   JNZ IN_BYTE_NEXT_BIT (fb86); Wait until a sync byte is received
+
+    fbc9  3e ff      MVI A, ff                  ; Save the input polarity
+    fbcb  32 ce f7   STA f7ce
+
+IN_BYTE_3:
+    fbce  16 09      MVI D, 09                  ; Now we can receive 8 data bits
+
+IN_BYTE_4:
+    fbd0  15         DCR D
+    fbd1  c2 86 fb   JNZ IN_BYTE_NEXT_BIT (fb86)
+
+    fbd4  2a c0 f7   LHLD f7c0                  ; Restore SP
+    fbd7  f9         SPHL
+
+    fbd8  3a ce f7   LDA f7ce                   ; Apply tape polarity constant
+    fbdb  a9         XRA C
+    fbdc  c3 70 ff   JMP OUT_BYTE_OUTRO (ff70)
+
+
+IN_BYTE_ERROR:
+    fbdf  2a c0 f7   LHLD f7c0                  ; Restore SP
+    fbe2  f9         SPHL
+    fbe3  7a         MOV A, D
+    fbe4  b7         ORA A
+    fbe5  f2 a5 fa   JP BAD_INPUT (faa5)        ; Perhaps synchronization did not happen
+
+    fbe8  cd a1 f9   CALL f9a1                  ; ????
+    fbeb  c3 75 fb   JMP IN_BYTE_1 (fb75)       ; something went wrong, try receiving another byte
+
 
 ; Output a byte to the tape (byte in С)
 ;
@@ -1404,7 +1613,14 @@ IS_BUTTON_PRESSED:
     fe74  f6 ff      ORI ff                     ; Return A=ff if a button is pressed
     fe76  c9         RET
 
-fe70                       2a d1 f7 c9 22 d1 f7 c9 0d
+;
+????:
+    fe77  2a d1 f7   LHLD f7d1
+    fe7a  c9         RET
+    
+?????:
+    fe7b  22 d1 f7   SHLD f7d1
+    fe7e  c9         RET
 
 PROMPT_STR:
     fe7f 0d 0a 18    db '\r\n', 0x18            ; Move to the next line, then step right
@@ -1503,8 +1719,14 @@ ff20                             f3 21 00 00 01 7a 01
 ff30  db a1 a0 5f db a1 a0 bb ca 34 ff 5f db a1 a0 23
 ff40  bb ca 3c ff 5f 0d c2 3c ff 29 29 7c b7 fa 5e ff
 ff50  2f e6 20 0f 0f 0f 47 0f 1f 80 3c 47 7c 90 32 cf
-ff60  f7 fb cd b4 f9 c3 6c f8 ff f3 e5 c5 d5 c3 74 fb
+ff60  f7 fb cd b4 f9 c3 6c f8 ff 
 
+IN_BYTE_INTRO:
+    ff69  f3         DI
+    ff6a  e5         PUSH HL
+    ff6b  c5         PUSH BC
+    ff6c  d5         PUSH DE
+    ff6d  c3 74 fb   JMP DO_IN_BYTE (fb74)
 
 ; Restoring registers and interrupt after outputing a byte to the tape
 OUT_BYTE_OUTRO:
