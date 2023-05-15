@@ -142,6 +142,7 @@ class VideoConfiguration(Configuration):
         self._emulator.set_start_addr(0xf800)
 
         # Create main RAM and ROMs
+        self._machine.add_memory(RAM(0x3000, 0x3fff))
         self._machine.add_memory(RAM(0xc000, 0xc3ff))
         self._machine.add_memory(RAM(0xf400, 0xf7ff))
         self._machine.add_memory(ROM(f"{resources_dir}/Monitor0.bin", 0x0000))
@@ -162,6 +163,8 @@ class VideoConfiguration(Configuration):
         self.suppress_logging(0xfd57, 0xfd99, "Keyboard input")
         self.suppress_logging(0xfc43, 0xfccd, "Put char")
         self.suppress_logging(0xfbee, 0xfc2d, "Out byte")
+        self.suppress_logging(0xfb71, 0xfc2d, "Input byte")
+        self.suppress_logging(0xfba1, 0xfbac, "Tape read delay")
 
         # Monitor F wipes out 0xf7b0-f7ff range during initialization. This range contains monitor's
         # variables, including 0xf7b2, which contains cursor address. Char printing code does invert of 
@@ -176,14 +179,16 @@ class VideoConfiguration(Configuration):
         # So let's just speed it up a little bit, by setting a shorter delay value.
         self._emulator.add_breakpoint(0xfe4d, lambda: self._emulator._cpu.set_pc(0xfe62))
 
-        # Function that outputs a byte to the tape for some reason sets SP to 0, and then does a POP
-        # instruction. In the real computer this does not make any harm - just reads a garbage, but emulator
-        # asserts that there stack operations on ROM (and ROM at 0x0000 may not be even installed)
+        # Functions that intputs/outputs a byte to/from the tape for some reason sets SP to 0, and then
+        # does a POP instruction. Perhaps this is done for some kind of a delay - POP operation takes 10
+        # CPU cycles, while NOP takes just 4. In the real computer this does not make any harm - just
+        # reads a garbage, but emulator asserts that there stack operations on ROM (and ROM at 0x0000 
+        # may not be even installed).
         self._emulator.add_breakpoint(0xfbf9, lambda: self._emulator._cpu.set_sp(0xc000))
+        self._emulator.add_breakpoint(0xfb7c, lambda: self._emulator._cpu.set_sp(0xc000))
+        self._emulator.add_breakpoint(0xfb86, lambda: self._emulator._cpu.set_sp(0xc000))
 
-        self._emulator.add_breakpoint(0xfa7d, breakpoint) # Command I
-        self._emulator.add_breakpoint(0xff29, breakpoint) # Command V
-        #self._emulator.add_breakpoint(0xfb2b, breakpoint) # ...
+        #self._emulator.add_breakpoint(0xff49, breakpoint) # ...
 
 
     def get_screen_size(self):

@@ -19,8 +19,8 @@ VECTORS:                                        ; Jump vectors to real function 
     f815  c3 2e fc   JMP PRINT_HEX_BYTE (fc2e)
     f818  c3 1f f9   JMP PRINT_STR (f91f)
     f81b  c3 9a fd   JMP SCAN_KBD_STABLE (fd9a)
-    f81e  c3 72 fa   JMP fa72
-    f821  c3 76 fa   JMP fa76
+    f81e  c3 72 fa   JMP GET_CURSOR_POS (fa72)
+    f821  c3 76 fa   JMP GET_CHAR_AT_CURS (fa76)
     f824  c3 ad fa   JMP IN_PROGRAM (faad)
     f827  c3 24 fb   JMP DO_OUT_MEMORY (fb24)
     f82a  c3 f6 fa   JMP CALC_CRC (faf6)
@@ -591,7 +591,26 @@ COMMAND_R_LOOP:
     fa6f  c3 65 fa   JMP COMMAND_R_LOOP (fa65)
 
 
-fa70        2a b0 f7 c9 e5 2a b0 f7 7e e1 c9 
+; Get current cursor position
+GET_CURSOR_POS:
+    fa72  2a b0 f7   LHLD f7b0                  ; Load cursor position to HL
+    fa75  c9         RET
+
+; Get symbol at cursor position
+;
+; Return: A - symbol under cursor
+;
+; BUG: Memory value at f7b0 contains cursor position relative to the video memory start.
+; This is not an absolute byte address, so reading memory at this location will return 
+; garbage. Perhaps it needs to use f7b2 variable instead, which is absolute address of the
+; cursor.
+GET_CHAR_AT_CURS:
+    fa76  e5         PUSH HL                    ; Get character under cursor
+    fa77  2a b0 f7   LHLD f7b0
+    fa7a  7e         MOV A, M
+    fa7b  e1         POP HL
+    fa7c  c9         RET
+
 
 ; Command I - load data from tape
 ;
@@ -1715,11 +1734,68 @@ COMMAND_HANDLER_CONT:
 
     ff26  c3 7e ff   JMP COMMAND_HANDLER_CONT_2 (ff7e)
 
-ff20                             f3 21 00 00 01 7a 01
-ff30  db a1 a0 5f db a1 a0 bb ca 34 ff 5f db a1 a0 23
-ff40  bb ca 3c ff 5f 0d c2 3c ff 29 29 7c b7 fa 5e ff
-ff50  2f e6 20 0f 0f 0f 47 0f 1f 80 3c 47 7c 90 32 cf
-ff60  f7 fb cd b4 f9 c3 6c f8 ff 
+
+; Command V - Measure the tape constant
+;
+COMMAND_V:
+    ff29  f3         DI
+
+    ff2a  21 00 00   LXI HL, 0000               ; The counter
+    ff2d  01 7a 01   LXI BC, 017a               ; B=01 - input bitmask, C=7a - number of pulses to measure
+    
+    ff30  db a1      IN a1                      ; Input the bit
+    ff32  a0         ANA B
+    ff33  5f         MOV E, A
+
+COMMAND_V_LOOP_1:
+    ff34  db a1      IN a1                      ; Wait until the bit changes
+    ff36  a0         ANA B
+    ff37  bb         CMP E
+
+    ff38  ca 34 ff   JZ COMMAND_V_LOOP_1 (ff34)
+
+    ff3b  5f         MOV E, A                   ; Temporary store the value at E register
+
+COMMAND_V_LOOP_2:
+    ff3c  db a1      IN a1                      ; Wait until the pulse ends
+    ff3e  a0         ANA B
+    ff3f  23         INX HL                     ; Measure pulse duration in HL
+    ff40  bb         CMP E
+    ff41  ca 3c ff   JZ COMMAND_V_LOOP_2 (ff3c)
+
+    ff44  5f         MOV E, A                   
+    ff45  0d         DCR C                      ; Count pulses in C
+    ff46  c2 3c ff   JNZ COMMAND_V_LOOP_2 (ff3c)
+
+    ff49  29         DAD HL                     ; Some constant calculations
+    ff4a  29         DAD HL
+    ff4b  7c         MOV A, H
+    ff4c  b7         ORA A                      ; If the measured value is too big - just save it
+    ff4d  fa 5e ff   JN COMMAND_V_1 (ff5e)
+
+    ff50  2f         CMA                        ; Another portion of calculations
+    ff51  e6 20      ANI 20
+    ff53  0f         RRC
+    ff54  0f         RRC
+    ff55  0f         RRC
+    ff56  47         MOV B, A
+
+    ff57  0f         RRC
+    ff58  1f         RAR
+    ff59  80         ADD B
+    ff5a  3c         INR A
+    ff5b  47         MOV B, A
+    ff5c  7c         MOV A, H
+    ff5d  90         SUB B
+
+COMMAND_V_1:
+    ff5e  32 cf f7   STA f7cf                   ; Store measured value
+
+    ff61  fb         EI                         ; Enable interrups and print the value
+    ff62  cd b4 f9   CALL PRINT_HEX_BYTE_SPACE (f9b4)
+
+    ff65  c3 6c f8   JMP ENTER_NEXT_COMMAND (f86c)
+
 
 IN_BYTE_INTRO:
     ff69  f3         DI
