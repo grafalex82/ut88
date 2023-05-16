@@ -1934,13 +1934,73 @@ COMMAND_K:
     ff99  e1         POP HL
     ff9a  c3 6c f8   JMP ENTER_NEXT_COMMAND (f86c)
 
-ff90                                         ff ff ff
-ffa0  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
-ffb0  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
-ffc0  00 f3 f5 c5 d5 e5 21 f0 ff 11 fd f6 06 03 1a 3c
-ffd0  27 12 be c2 de ff af 12 23 13 05 c2 ce ff 2a fe
-ffe0  f6 3a fd f6 32 00 90 22 01 90 e1 d1 c1 f1 fb c9
-fff0  60 60 24      
+
+; It is supposed that Monitor 0 ROM (0x0000-0x3fff) ROM is installed simultaneously 
+; with the Monitor F ROM (0xf800-0xffff). In this case Monitor 0 is responsible for
+; time interrupts, and stores time values at 0xc3fd-0xc3ff
+;
+; The alternative configuration does not suppose using Monitor 0 ROM. Instead it uses
+; only Monitor F, which is now responsible for time interrupt handling.
+; 
+; The interrupt mechanism remains the same - timer clock triggers an interrupt, the CPU
+; reads 0xff from the data bus, which corresponds to RST 7 instruction. Since Monitor 0 
+; may be switched off, time interrupt require a RAM at 0x0000-0x003f addresses, with a 
+; certain JMP instructions somehow loaded into these addresses:
+
+; RST0:
+; 0000 f3        DI
+; 0001 c3 00 f8  JMP f800
+;
+; RST7:
+; 0038 c3 c1 ff  JMP ffc1
+;
+; The implementation of the time interrupt is pretty much identical to one in the Monitor 0
+; It uses 0xf6fd, 0xf6fe, and 0xf6ff variables to store seconds, minutes, and hours respectively.
+;
+; Additionally it displays current time on the CPU module LCD.
+TIME_INTERRUPT:
+    ffc1  f3         DI                         ; Save registers
+    ffc2  f5         PUSH PSW
+    ffc3  c5         PUSH BC
+    ffc4  d5         PUSH DE
+    ffc5  e5         PUSH HL
+
+    ffc6  21 f0 ff   LXI HL, TIME_LIMITS (fff0) ; Advance time values at 0xf6fd-0xf6ff
+    ffc9  11 fd f6   LXI DE, f6fd
+    ffcc  06 03      MVI B, 03                  ; 3 values to advance
+
+TIME_INTERRUPT_LOOP:
+    ffce  1a         LDAX DE                    ; Advance particular value
+    ffcf  3c         INR A
+    ffd0  27         DAA
+    ffd1  12         STAX DE
+
+    ffd2  be         CMP M                      ; Compare it with the limit
+    ffd3  c2 de ff   JNZ TIME_INTERRUPT_EXIT (ffde)
+
+    ffd6  af         XRA A                      ; If limit reached - zero the current value, and
+    ffd7  12         STAX DE                    ; advance the second one
+    ffd8  23         INX HL
+    ffd9  13         INX DE
+    ffda  05         DCR B
+    ffdb  c2 ce ff   JNZ TIME_INTERRUPT_LOOP (ffce)
+
+TIME_INTERRUPT_EXIT:
+    ffde  2a fe f6   LHLD f6fe                  ; Display current time at CPU module LCD
+    ffe1  3a fd f6   LDA f6fd
+    ffe4  32 00 90   STA 9000
+    ffe7  22 01 90   SHLD 9001
+
+    ffea  e1         POP HL                     ; Restore registers and exit
+    ffeb  d1         POP DE
+    ffec  c1         POP BC
+    ffed  f1         POP PSW
+    ffee  fb         EI
+    ffef  c9         RET
+
+TIME_LIMITS:
+    fff0  60 60 24   db 60, 60, 24              ; Maximum values for seconds, minutes, and hours
+
 
 ; Command B - display time on LCD display
 ;
