@@ -3,6 +3,14 @@
 ; Important variables:
 ; f7b0 - Current cursor position (offset from video memory start address)
 ; f7b2 - Current cursor position (memory address)
+; f7b4 - User program PC register (when stopping at breakpoint)
+; f7b6 - User program HL register (when stopping at breakpoint)
+; f7b8 - User program BC register (when stopping at breakpoint)
+; f7bA - User program DE register (when stopping at breakpoint)
+; f7bc - User program SP register (when stopping at breakpoint)
+; f7be - User program AF register (when stopping at breakpoint)
+; f7c3 - Breakpoint address (when running user program with Command G)
+; f7c5 - Original opcode under breakpoint address (see Command G description)
 ; f7ce - Tape input polarity (0x00 if non-inverted, 0xff if inverted)
 ; f7cf - Tape delay constant when loading
 ; f7d0 - Tape delay constant when saving
@@ -525,36 +533,61 @@ COMMAND_M_NEXT:
 ;
 ; Arguments:
 ; - Address of the program (HL)
-; - (optional) ????
+; - (optional) Breakpoint address (DE)
+;
+; This command runs the user program starting the specified address. Optionally,
+; it is possible to set a breakpoint address, where the program execution will break,
+; and the flow returns to the Monitor. When the program is stopped at breakpoint, the
+; User can use X Command to display and modify program registers.
+;
+; If the user specified breakpoint address, the following algorithm applies:
+; - Instruction at the breakpoint address is replaced with RST 6 (original byte is
+;   saved at f7c5)
+; - Bytes 0x0030-0x0032 which are executed on RST 6 are replaced with JMP febb (breakpoint handler)
+; 
+; When a breakpoint happens:
+; - All registers (including SP, and PC at the breakpoint address) are stored at f7b4-f7bf.
+; - Instruction at the breakpoint address is restored with the backup at f7c5
+; - Control flow passed to the main command loop
+;
+; The user may now:
+; - Inspect and edit program data
+; - Inspect and edit CPU registers stored to f7b4-f7bf by running Commmand X
+; - Run the program from the breakpoint address with Command G. In this case the command handler
+;   will run the following extra actions:
+;   - Restore CPU registers from f7b4-f7bf
+;   - Run the user program starting from specified address
 COMMAND_G:
     fa39  cd 8d f9   CALL CMP_HL_DE (f98d)
-    fa3c  ca 54 fa   JZ fa54
+    fa3c  ca 54 fa   JZ RUN_PROGRAM (fa54)
 
-    fa3f  eb         XCHG                       ; Store second argument at f7c3 ???
-    fa40  22 c3 f7   SHLD f7c3                  
+    fa3f  eb         XCHG                       ; Store breakpoint address at f7c3 in order to
+    fa40  22 c3 f7   SHLD f7c3                  ; restore original program later
 
-    fa43  7e         MOV A, M                   ; Load byte at argument and store at f7c5 ????
+    fa43  7e         MOV A, M                   ; Load byte under break point and store it at f7c5
     fa44  32 c5 f7   STA f7c5
 
-    fa47  36 f7      MVI M, f7                  ; ???
+    fa47  36 f7      MVI M, f7                  ; Put RST 6 instruction instead
 
-    fa49  3e c3      MVI A, c3                  ; Store JMP febb opcode at 0x0030 ????
+    fa49  3e c3      MVI A, c3                  ; Store JMP febb opcode at RST6 handler (0x0030)
     fa4b  32 30 00   STA 0030 
     fa4e  21 bb fe   LXI HL, febb
     fa51  22 31 00   SHLD 0031
 
-???:
-    fa54  31 b8 f7   LXI SP, f7b8               ; What is contained here????
-    fa57  c1         POP BC
+RUN_PROGRAM:
+    fa54  31 b8 f7   LXI SP, f7b8               ; Restore registers previously saved to f7b4-f7bf 
+    fa57  c1         POP BC                     ; by the breakpoint handler
     fa58  d1         POP DE
     fa59  e1         POP HL
     fa5a  f1         POP PSW
 
-    fa5b  f9         SPHL
+    fa5b  f9         SPHL                       ; Restore SP
 
-    fa5c  2a b6 f7   LHLD f7b6                  ; ????? 
+    fa5c  2a b6 f7   LHLD f7b6                  ; Restore HL
 
-    fa5f  c3 c6 f7   JMP f7c6
+    fa5f  c3 c6 f7   JMP f7c6                   ; Jump to the user program (f7c6 contains JMP instruction
+                                                ; opcode, f7c7 contains the command argument with the user
+                                                ; program address)
 
 
 ; Command R - read external ROM
@@ -1618,7 +1651,17 @@ BEEP_DELAY:
     fe5f  c2 5e fe   JNZ fe5e
     fe62  c9         RET
 
-fe60           db 06 e6 80 c2 63 fe c9 
+; UNUSED FUNCTION
+;
+; Wait for Bit 7 on keyboard Port B
+;
+; It is unclear what is connected to this port. Schematic shows this pin floating.
+WAIT_B7_PORTB:
+    fe63  db 06      IN 06                      ; Wait until MSB is set on keyboard Port B
+    fe65  e6 80      ANI A, 80
+    fe67  c2 63 fe   JNZ WAIT_B7_PORTB (fe63)
+    fe6a  c9         RET
+
 
 IS_BUTTON_PRESSED:
     fe6b  af         XRA A                      ; Select all scan column at once
@@ -1644,7 +1687,7 @@ IS_BUTTON_PRESSED:
 PROMPT_STR:
     fe7f 0d 0a 18    db '\r\n', 0x18            ; Move to the next line, then step right
     fe82 3d 3e 00    db "=>", 0x00
-...
+
 
 TAB_STR:
     fe85 0d 0a 18    db "\r\n", 0x18
@@ -1668,14 +1711,51 @@ REGISTERS_STR:
     feb3 19 19 19 00 db 19, 19, 19, 0
 
 
-feb0  19 19 19 19 19 19 00 08 20 08 00 22 b6 f7 f5 e1
-
 BACKSPACE_STR:
     feb7  08 20 08 00   db 0x08, ' ', 0x08, 0x00    ; Clear symbol left to the cursor, move cursor left
 
-fec0  22 be f7 e1 2b 22 b4 f7 21 00 00 39 31 be f7 e5
-fed0  d5 c5 2a b4 f7 31 af f7 cd 51 fb eb 2a c3 f7 cd
-fee0  8d f9 c2 6c f8 3a c5 f7 77 c3 6c f8 
+; Breakpoint handler
+;
+; The handler is executed as a result of G command, that replaces an instruction at desired 
+; address to RST 6, which eventually jumps here. The handler stores user program registers
+; to f7b4-f7bf memory cells, so that they may be reviewed/changed with X command. Finally,
+; the breakpoint restores original instruction byte under the breakpoint address, and jumps to
+; the command main loop.
+;
+; See Command G description for more information
+BREAKPOINT:
+    febb  22 b6 f7   SHLD f7b6                      ; Store HL at f7b6
+
+    febe  f5         PUSH PSW                       ; Store AF at f7be
+    febf  e1         POP HL
+    fec0  22 be f7   SHLD f7be
+
+    fec3  e1         POP HL                         ; Store return address-1 to f7b4
+    fec4  2b         DCX HL
+    fec5  22 b4 f7   SHLD f7b4
+
+    fec8  21 00 00   LXI HL, 0000                   ; Move SP to HL
+    fecb  39         DAD SP
+
+    fecc  31 be f7   LXI SP, f7be                   ; Store BC, DE, and previous SP f7b8, f7bb, and f7bd
+    fecf  e5         PUSH HL
+    fed0  d5         PUSH DE
+    fed1  c5         PUSH BC
+
+    fed2  2a b4 f7   LHLD f7b4                      ; Print previous PC
+    fed5  31 af f7   LXI SP, f7af
+    fed8  cd 51 fb   CALL PRINT_HEX_ADDR (fb51)
+
+    fedb  eb         XCHG                           ; Check if the PC address really matches breakpoint
+    fedc  2a c3 f7   LHLD f7c3                      ; address previously stored in f7c3
+    fedf  cd 8d f9   CALL CMP_HL_DE (f98d)
+    fee2  c2 6c f8   JNZ ENTER_NEXT_COMMAND (f86c)
+
+    fee5  3a c5 f7   LDA f7c5                       ; Restore the original instruction under the breakpoint
+    fee8  77         MOV M, A                       ; address
+
+    fee9  c3 6c f8   JMP ENTER_NEXT_COMMAND (f86c)  ; Jump to the main command loop
+
 
 ; Command X - Dump CPU registers
 ;
