@@ -10,6 +10,9 @@ class Disassembler:
         self._startaddr = int(startaddr, 16)
         self._endaddr = self._startaddr + len(self._data)
 
+        self._lines = {}
+        self._labels = []
+
         self._init_instruction_table()
 
     def _init_instruction_table(self):
@@ -287,8 +290,18 @@ class Disassembler:
         self._instructions[0xfe] = "CPI A, {d8}"
         self._instructions[0xff] = "RST 7"
 
+
     def _fetch_byte(self, addr):
         return self._data[addr - self._startaddr], addr+1
+
+
+    def _add_line(self, addr, line):
+        self._lines[addr] = line
+
+
+    def _add_label(self, addr):
+        self._labels.append(addr)
+
 
     def disassemble_instruction(self, addr):
         instruction_addr = addr
@@ -308,8 +321,9 @@ class Disassembler:
             bstr += f"{a16l:02x} {a16h:02x} "
             value = (a16h << 8) | a16l
             mnemonic = mnemonic.replace("{a16}", f"{value:04x}")
+            self._add_label(value)
 
-        print(f"    {instruction_addr:04x}  {bstr:10} {mnemonic}")
+        self._add_line(instruction_addr, f"    {instruction_addr:04x}  {bstr:10} {mnemonic}")
         return addr
 
 
@@ -318,6 +332,11 @@ class Disassembler:
         while addr < self._endaddr:
             addr = self.disassemble_instruction(addr)
 
+        for addr, line in self._lines.items():
+            if addr in self._labels:
+                print("????:")
+            print(line)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -325,9 +344,7 @@ def main():
                     description='i8080 simple disassembler')
     parser.add_argument('binfile')
     parser.add_argument('startaddr')
-    #parser.add_argument("-t", "--tape", action="store_true", help="Add tape header")
     args = parser.parse_args()
-
 
     dis = Disassembler(args.binfile, args.startaddr)
     dis.disassemble()
