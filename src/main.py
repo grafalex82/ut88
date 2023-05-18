@@ -29,7 +29,7 @@ Keys:
 """
 
 filetypes=((".PKI tape files", "*.pki *.gam"), 
-           (".RK Tape files", "*.rk"), 
+           (".RK Tape files", "*.rk *.rku"), 
            ("All files", "*.*"))
 
 def open_pki():

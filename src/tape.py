@@ -70,7 +70,7 @@ class TapeRecorder(IODevice):
         with open(fname, "wb") as f:
             if fname.upper().endswith(".PKI") or fname.upper().endswith(".GAM"):
                 f.write(self._buffer[256:])     # Skip the pilot tone, but write the sync bytes
-            elif fname.upper().endswith(".RK"):
+            elif fname.upper().endswith(".RK") or fname.upper().endswith(".RKU"):
                 f.write(self._buffer[257:])     # Skip the pilot tone and sync byte, write everything else
             else:
                 f.write(self._buffer)           # Write the buffer as is
@@ -87,7 +87,7 @@ class TapeRecorder(IODevice):
             if fname.upper().endswith(".PKI") or fname.upper().endswith(".GAM"):
                 self._buffer = bytearray(b'\x00' * 256)     # Pilot tone
                 self._buffer += bytearray(f.read())         # Sync byte shall be a part of the file
-            elif fname.upper().endswith(".RK"):
+            elif fname.upper().endswith(".RK") or fname.upper().endswith(".RKU"):
                 self._buffer = bytearray(b'\x00' * 256)     # Pilot tone
                 self._buffer += bytearray(b'\xe6')          # Sync byte
                 self._buffer += bytearray(f.read())         # .RK file contains only data
