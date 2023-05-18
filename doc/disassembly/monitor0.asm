@@ -57,10 +57,10 @@
 ; - C <addr>    - Enter new time. Same as command 0, but interrupts disabled. Address shall be 0x3cfd
 ;
 ; Important memory adresses:
-; - 0x3fc       - tape reading polarity (0x00 - non inverted, 0xff - inverted)
-; - 0x3fd       - seconds
-; - 0x3fe       - minutes
-; - 0x3ff       - hours
+; - 0xc3fc      - tape reading polarity (0x00 - non inverted, 0xff - inverted)
+; - 0xc3fd      - seconds
+; - 0xc3fe      - minutes
+; - 0xc3ff      - hours
 ;
 ; Tape recording format:
 ; - 256 x 0xff  - pilot tone, to sync with the sequence
