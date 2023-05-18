@@ -44,7 +44,10 @@ class Configuration:
         self._logger = NestedLogger()
         self._emulator.add_breakpoint(self.get_start_address(), lambda: self._logger.reset())
 
+        self._suppressed_logs = []
+
         self._emulator.set_start_addr(self.get_start_address())
+
 
 
     def get_start_address(self):
@@ -77,8 +80,17 @@ class Configuration:
             pygame.display.set_caption(f"UT-88 Emulator (FPS={self._clock.get_fps()})")
 
     def suppress_logging(self, startaddr, endaddr, msg):
-        self._emulator.add_breakpoint(startaddr, lambda: self._logger.enter(msg))
-        self._emulator.add_breakpoint(endaddr, lambda: self._logger.exit())
+        self._suppressed_logs.append((startaddr, endaddr, msg))
+
+
+    def enable_logging(self, enable):
+        if enable:
+            logging.basicConfig(level=logging.DEBUG)
+
+            for startaddr, endaddr, msg in self._suppressed_logs:
+                self._emulator.add_breakpoint(startaddr, lambda: self._logger.enter(msg))
+                self._emulator.add_breakpoint(endaddr, lambda: self._logger.exit())
+
 
     def handle_event(self, event):
         pass
@@ -226,17 +238,19 @@ def main():
                     description='UT-88 DIY i8080-based computer emulator')
     
     parser.add_argument('configuration', choices=["basic", "video"])
+    parser.add_argument('-d', '--debug', help="enable CPU instructions logging", action='store_true')
     args = parser.parse_args()
 
     pygame.init()
 
-    logging.basicConfig(level=logging.DEBUG)
     
     if args.configuration == "basic":
         configuration = BasicConfiguration()
     if args.configuration == "video":
         configuration = VideoConfiguration()
     
+    configuration.enable_logging(args.debug)
+
     configuration.run()
 
 
