@@ -123,6 +123,14 @@
 ; f7f8 - Flag indicating that the next char will be cursor direct movement coordinate
 ; f7f9 - f7ff   - Unused
 ;
+; Monitor F may handle 1 second time interrupts. As in Monitor 0 time interrupts are handled
+; with RST 7 (by executing a code ad 0x0038). Things are simple with Monitor 0 which is located
+; at this range. To route time interrupts handling to the Monitor F some modifications required:
+; - Monitor 0 is disconnected
+; - A RAM is installed at the 0x0000-... memory range
+; - A JMP instruction is stored at 0x0038 that routes time interrupt handling to the Monitor F.
+; See TIME_INTERRUPT handler description for more details.
+;
 ; Notes:
 ; - Some functions (such as loading and saving data to the tape) use an odd delay mechanism - they
 ;   point SP to some random memory, and do stack reads. Perhaps this add some longer delay, compared
@@ -164,8 +172,8 @@ START:
     f847  0e 00      MVI C, 00
     f849  cd e7 f9   CALL MEMSET (f9e7)
 
-    f84c  21 af f7   LXI HL, f7af               ; ???
-    f84f  22 bc f7   SHLD f7bc
+    f84c  21 af f7   LXI HL, f7af               ; SP when running a user program (Command G)
+    f84f  22 bc f7   SHLD f7bc                  
 
     f852  21 d3 fa   LXI HL, HELLO_STR (fad3)   ; Print the Hello string ("*UT-88*")
     f855  cd 1f f9   CALL PRINT_STR (f91f)
@@ -174,14 +182,14 @@ START:
     f859  00         NOP
     f85a  00         NOP
 
-    f85b  21 ff df   LXI HL, dfff
+    f85b  21 ff df   LXI HL, dfff               ; Set unclear 2-byte variable. Never used in the Monitor F
     f85e  22 d1 f7   SHLD f7d1
 
     f861  21 2a 1d   LXI HL, 1d2a               ; Precalculated tape delay constants (0x2a for loading,
     f864  22 cf f7   SHLD f7cf                  ; and 0x1d for saving)
 
     f867  3e c3      MVI A, c3                  ; JMP instruction code, f7c7 contains the entered address
-    f869  32 c6 f7   STA f7c6
+    f869  32 c6 f7   STA f7c6                   ; Used to jump to the user program (Command G)
 
 ENTER_NEXT_COMMAND:
     f86c  31 af f7   LXI SP, f7af               ; Some subroutines will jump directly here. Reset the SP
@@ -194,7 +202,7 @@ ENTER_NEXT_COMMAND:
     f877  00         NOP
     f878  00         NOP
 
-    f879  cd eb f8   CALL INPUT_LINE (f8eb)
+    f879  cd eb f8   CALL INPUT_LINE (f8eb)     ; Input the monitor command
 
     f87c  21 6c f8   LXI HL, f86c               ; Push ENTER_NEXT_COMMAND address to stack, so commands
     f87f  e5         PUSH HL                    ; may just return to the next command routine
@@ -204,10 +212,11 @@ ENTER_NEXT_COMMAND:
 
     f884  fe 58      CPI 58                     ; Handle command 'X'
     f886  ca ec fe   JZ COMMAND_X (feec)
+
     f889  fe 55      CPI 55                     ; Handle command 'U'
     f88b  ca 00 f0   JZ f000                    ; Execute program starting address 0xf000
 
-    f88e  f5         PUSH PSW
+    f88e  f5         PUSH PSW                   ; Other commands may require parsing arguments
     f88f  cd 29 f9   CALL PARSE_ARGUMENTS (f929)
 
     f892  2a cb f7   LHLD f7cb                  ; Load 3rd argument into BC
@@ -258,15 +267,15 @@ ENTER_NEXT_COMMAND:
 
 ; Handle the backspace button while entering a line
 HANDLE_BACKSPACE:
-    f8d9  3e 63      MVI A, 63                  ; ???? Should be D3? not 63?
-    f8db  bd         CMP L
-    f8dc  ca ee f8   JZ INPUT_LINE_RESET (f8ee)
+    f8d9  3e 63      MVI A, 63                  ; Bug: This constant shall limit writing prior the command
+    f8db  bd         CMP L                      ; buffer, which is located at 0xf7d3. So the constant shall
+    f8dc  ca ee f8   JZ INPUT_LINE_RESET (f8ee) ; be 0xd3, not 0x63. Perhaps a scanning issue.
 
     f8df  e5         PUSH HL                    ; Clear a symbole left to the cursor, move cursor left
     f8e0  21 b7 fe   LXI HL, BACKSPACE_STR (feb7)
     f8e3  cd 1f f9   CALL PRINT_STR (f91f)
 
-    f8e6  e1         POP HL
+    f8e6  e1         POP HL                     ; Adjust the pointer in the command buffer
     f8e7  2b         DCX HL
     f8e8  c3 f0 f8   JMP INPUT_LINE_LOOP (f8f0)
 
@@ -274,14 +283,15 @@ HANDLE_BACKSPACE:
 ; Input a line
 ;
 ; Inputs a line into buffer at 0xf7d3, 32 bytes long. The function handles regular chars, and puts
-; them into the buffer. The function also handles backspace symbolc, removing the characted to the left
+; them into the buffer. The function also handles backspace symbol, removing the characted to the left
 ; from the cursor. 
 ;
 ; Special conditions:
 ; - When 'Enter' char is entered, the function returns, and DE contains the address of the buffer (0xf7d3)
-; - When nothing is entered, the carry flag will be reset. The carry flag is set when something is in the
+; - When nothing is entered, the carry flag is reset. The carry flag is set when something is in the
 ;   buffer.
 ; - If the user types '.' symbol, enterring the current line is abandoned. CPU jumps to the main loop.
+;   (this behavior is used to exit command M)
 ; - If the user enters more than 32 symbols, the input is abandoned as well.
 
 INPUT_LINE:
@@ -305,10 +315,11 @@ INPUT_LINE_LOOP:
 
     f901  fe 0d      CPI 0d                     ; Handle 'Enter' button
     f903  ca 17 f9   JZ INPUT_LINE_ENTER (f917)
-    f906  fe 2e      CPI 2e                     ; Handle '.' (reset the current line input)
-    f908  ca 6c f8   JZ ENTER_NEXT_COMMAND (f86c)   ; Bug: we are in a subroutine
 
-    f90b  06 ff      MVI B, ff                  
+    f906  fe 2e      CPI 2e                     ; Handle '.' (reset the current line input)
+    f908  ca 6c f8   JZ ENTER_NEXT_COMMAND (f86c)
+
+    f90b  06 ff      MVI B, ff                  ; Set the flag indicating that something is entered
     
     f90d  3e f2      MVI A, f2                  ; Check if we reached the end of the input buffer
     f90f  bd         CMP L
@@ -342,6 +353,7 @@ PRINT_STR:
 ; Parse command arguments
 ;
 ; This function parses up to 3 command arguments (4 digit hex addresses or values).
+;
 ; Arguments are stored at the following addresses:
 ; f7c7  - 1st argument
 ; f7c9  - 2nd argument (if exists)
@@ -350,12 +362,12 @@ PRINT_STR:
 ; 
 ; Unused arguments are zeroed
 PARSE_ARGUMENTS:
-    f929  21 c7 f7   LXI HL, f7c7
+    f929  21 c7 f7   LXI HL, f7c7               ; Zero all arguments
     f92c  11 cd f7   LXI DE, f7cd
     f92f  0e 00      MVI C, 00
     f931  cd e7 f9   CALL MEMSET (f9e7)
 
-    f934  11 d4 f7   LXI DE, f7d4
+    f934  11 d4 f7   LXI DE, f7d4               ; Start parsing from the first symbol after command char
     f937  cd 57 f9   CALL PARSE_ADDR (f957)
 
     f93a  22 c7 f7   SHLD f7c7                  ; Store first parsed parameter at f7c7
@@ -398,10 +410,10 @@ PARSE_ADDR_LOOP:
     f95a  1a         LDAX DE
     f95b  13         INX DE
 
-    f95c  fe 0d      CPI 0d                     ; Enter
+    f95c  fe 0d      CPI 0d                     ; Handle end of line
     f95e  ca 8b f9   JZ PARSE_ADDR_EOL (f98b)
 
-    f961  fe 2c      CPI 2c                     ; ','
+    f961  fe 2c      CPI 2c                     ; stop on ','
     f963  c8         RZ
 
     f964  fe 20      CPI 20                     ; Skip spaces
@@ -410,7 +422,7 @@ PARSE_ADDR_LOOP:
     f969  d6 30      SUI 30                     ; Symbols below 0x30 are bad input
     f96b  fa a5 fa   JN BAD_INPUT (faa5)
 
-    f96e  fe 0a      CPI 0a                     ; Match digit (0x30-0x39)
+    f96e  fe 0a      CPI 0a                     ; Match numbers (0x30-0x39)
     f970  fa 7f f9   JN PARSE_ADDR_DIGIT (f97f)
 
     f973  fe 11      CPI 11                     ; Match hex letter ('A' - 'F')
@@ -422,7 +434,7 @@ PARSE_ADDR_LOOP:
     f97d  d6 07      SUI 07                     ; Convert letter to a number
 
 PARSE_ADDR_DIGIT:
-    f97f  4f         MOV C, A                   ; Store parsed digit in C (suppose B==0x00, but why???)
+    f97f  4f         MOV C, A                   ; Store parsed digit in C (assume B==0x00, but why???)
 
     f980  29         DAD HL                     ; Shift parsed address 4 bits left
     f981  29         DAD HL
@@ -450,8 +462,24 @@ CMP_HL_DE:
     f991  bb         CMP E
     f992  c9         RET
 
-????:
-    f993  cd a1 f9   CALL f9a1
+
+; Advance HL register until it reaches DE
+;
+; The aim of this function is to organize loops in the Monitor F in a common fashion.
+; Typically loop goes through some addresses pointed by HL, advanching the HL pointer
+; on each iteration. Execution finishes when HL reaches DE.
+;
+; The key feature of this function is that it exits from the caller function as well, when
+; HL reaches DE. Calling this function is the way to exit the loop.
+;
+; There are 2 versions of this function:
+; - ADVANCE_HL is a normal version, when HL is advanced until reached DE
+; - ADVANCE_HL_WITH_BREAK - similar to previous, but checks if the user pressed Ctrl-C. If
+;   this key combination is pressed, execution of the program stops, and the Monitor F gets
+;   back to the main command loop. Unfortunately this mode is not really implemented in UT-88
+;   and this variant works same way as previous.
+ADVANCE_HL_WITH_BREAK:
+    f993  cd a1 f9   CALL CHECK_CTRL_C (f9a1)
 
 ADVANCE_HL:                                     ; Advance HL until it reaches DE
     f996  cd 8d f9   CALL CMD_HL_DE (f98d)
@@ -462,11 +490,15 @@ ADVANCE_HL:                                     ; Advance HL until it reaches DE
     f99e  c9         RET
 
 ADVANCE_HL_1:
-    f99f  23         INX HL
+    f99f  23         INX HL                     ; Actually advance the HL
     f9a0  c9         RET
 
 
-?????:
+; This function is supposed to check for Ctrl-C keyboard press (0x03 code). At least a similar 
+; code in the Radio-86RK monitor is working this way. Apparently this feature was disabled for UT-88
+; for some reason, and the code below never triggers. That is strange, as UT-88 can generate
+; Ctrl-C keyboard code
+CHECK_CTRL_C:
     f9a1  3e ff      MVI A, ff
     f9a3  a7         ANA A
     f9a4  fe 03      CPI 03
@@ -474,8 +506,9 @@ ADVANCE_HL_1:
     f9a7  c3 a5 fa   JMP BAD_INPUT (faa5)
 
 
-; Start new dump line
-NEW_DUMP_LINE:
+; Print the new line. It also prints a tabulation (4 spaces) so that next information (typically
+; an address or some value) is printed after
+PRINT_NEW_LINE:
     f9aa  e5         PUSH HL
     f9ab  21 85 fe   LXI HL, TAB_STR (fe85)     ; Print new tabbed line
     f9ae  cd 1f f9   CALL PRINT_STR (f91f)
@@ -487,7 +520,7 @@ NEW_DUMP_LINE:
 PRINT_MEMORY_BYTE:
     f9b3  7e         MOV A, M
 
-; Print a 2-digit hex value in A, then add a space
+; Print a 2-digit hex value in A, then print a space
 PRINT_HEX_BYTE_SPACE:
     f9b4  c5         PUSH BC
     f9b5  cd 2e fc   CALL PRINT_HEX_BYTE (fc2e)
@@ -497,6 +530,7 @@ PRINT_HEX_BYTE_SPACE:
 
     f9bd  c1         POP BC
     f9be  c9         RET
+
 
 ; Command D - Dump memory
 ; 
@@ -508,13 +542,15 @@ COMMAND_D:
 
 COMMAND_D_LOOP:
     f9c2  cd b3 f9   CALL PRINT_MEMORY_BYTE (f9b3)  ; Print next byte
-    f9c5  cd 93 f9   CALL f993                  ; Do something ??? and advance HL
+    f9c5  cd 93 f9   CALL ADVANCE_HL_WITH_BREAK (f993)  ; Advance HL, exit if reached DE
 
     f9c8  7d         MOV A, L                   ; Check if we reached end of current line
     f9c9  e6 0f      ANI 0f
-    f9cb  ca bf f9   JZ f9bf                    ; Get to the new line
+    f9cb  ca bf f9   JZ COMMAND_D (f9bf)        ; Get to the new line
 
     f9ce  c3 c2 f9   JMP COMMAND_D_LOOP (f9c2)
+
+
 
 ; Command C - Compare memory ranges
 ;
@@ -528,13 +564,14 @@ COMMAND_C:
     f9d3  ca e0 f9   JZ COMMAND_C_NEXT (f9e0)   ; Advance to the next byte if equal
 
     f9d6  cd 51 fb   CALL PRINT_HEX_ADDR (fb51) ; Print the address of the unmatched byte
-    f9d9  cd b3 f9   CALL PRINT_MEMORY_BYTE (f9b3)  ; Print source byte
+
+    f9d9  cd b3 f9   CALL PRINT_MEMORY_BYTE (f9b3)      ; Print source byte
     f9dc  0a         LDAX BC
     f9de  cd b4 f9   CALL PRINT_HEX_BYTE_SPACE (f9b4)   ; Print unmatched destination byte
 
 COMMAND_C_NEXT:
     f9e0  03         INX BC                     ; Advance BC
-    f9e1  cd 93 f9   CALL f993                  ; Do something??? and advance HL, exit if reached DE
+    f9e1  cd 93 f9   CALL ADVANCE_HL_WITH_BREAK (f993)  ; Advance HL, exit if reached DE
     f9e4  c3 d1 f9   JMP COMMAND_C (f9d1)
 
 
@@ -545,6 +582,8 @@ COMMAND_C_NEXT:
 ; - end address (DE)
 ; - value to fill with (C)
 COMMAND_F:
+
+; Fill memory with a constant
 ; HL    - start address
 ; DE    - end address
 ; C     - byte to fill
@@ -552,6 +591,7 @@ MEMSET:
     f9e7  71         MOV M, C
     f9e8  cd 96 f9   CALL ADVANCE_HL (f996)
     f9eb  c3 e7 f9   JMP MEMSET (f9e7)
+
 
 ; Search a byte in a memory range
 ;
@@ -563,8 +603,9 @@ COMMAND_S:
     f9ee  79         MOV A, C                   ; Compare the memory byte
     f9ef  be         CMP M
 
-    f9f0  cc 51 fb   CZ fb51                    ; If found - print the address
-    f9f3  cd 93 f9   CALL f993                  ; Do something ???? and advance HL, exit if reached DE
+    f9f0  cc 51 fb   CZ PRINT_HEX_ADDR (fb51)   ; If found - print the address
+
+    f9f3  cd 93 f9   CALL ADVANCE_HL_WITH_BREAK (f993)  ; Advance HL, exit if reached DE
     f9f6  c3 ee f9   JMP COMMAND_S (f9ee)       ; Repeat for the next symbol
 
 
@@ -607,7 +648,7 @@ COMMAND_L_DOT:
 COMMAND_L_CHAR:
     fa11  cd 42 fc   CALL PUT_CHAR_A (fc42)
 
-    fa14  cd 93 f9   CALL f993                  ; Do something ???? and advance HL, exit if reached DE
+    fa14  cd 93 f9   CALL ADVANCE_HL_WITH_BREAK (f993)  ; Advance HL, exit if reached DE
 
     fa17  7d         MOV A, L                   ; Move to the new line every 16 symbols
     fa18  e6 0f      ANI 0f
@@ -650,13 +691,13 @@ COMMAND_M_NEXT:
 ;
 ; This command runs the user program starting the specified address. Optionally,
 ; it is possible to set a breakpoint address, where the program execution will break,
-; and the flow returns to the Monitor. When the program is stopped at breakpoint, the
+; and the control flow returns to the Monitor. When the program is stopped at breakpoint, the
 ; User can use X Command to display and modify program registers.
 ;
 ; If the user specified breakpoint address, the following algorithm applies:
 ; - Instruction at the breakpoint address is replaced with RST 6 (original byte is
 ;   saved at f7c5)
-; - Bytes 0x0030-0x0032 which are executed on RST 6 are replaced with JMP febb (breakpoint handler)
+; - Bytes 0x0030-0x0032 (which are executed on RST 6) are replaced with JMP febb (breakpoint handler)
 ; 
 ; When a breakpoint happens:
 ; - All registers (including SP, and PC at the breakpoint address) are stored at f7b4-f7bf.
@@ -670,8 +711,11 @@ COMMAND_M_NEXT:
 ;   will run the following extra actions:
 ;   - Restore CPU registers from f7b4-f7bf
 ;   - Run the user program starting from specified address
+;
+; Note: Breakpoint feature works only if Monitor 0 is physically disconnected, and 0x0000+ memory
+;       range is replaced with a RAM
 COMMAND_G:
-    fa39  cd 8d f9   CALL CMP_HL_DE (f98d)
+    fa39  cd 8d f9   CALL CMP_HL_DE (f98d)      ; Check if the breakpoint address is specified
     fa3c  ca 54 fa   JZ RUN_PROGRAM (fa54)
 
     fa3f  eb         XCHG                       ; Store breakpoint address at f7c3 in order to
@@ -715,7 +759,9 @@ RUN_PROGRAM:
 ; reason configures ports A and C as output, and B as input.
 ;
 ; Note: it is not clear what type of ROM is connected, and what its size. The code below reads up to 
-; 256 bytes, but there is no technical limitation to read a larger ROM.
+; 256 bytes, but there is no technical limitation to read a larger ROM. Probably this code is taken
+; from Radio-86RK Monitor, but there there is no 256 byte limitation, and it can read more than 256
+; bytes normally.
 ;
 ; Arguments:
 ; - ROM start address (HL)
@@ -734,7 +780,7 @@ COMMAND_R_LOOP:
     fa6b  03         INX BC
 
     fa6c  cd 96 f9   CALL ADVANCE_HL (f996)
-    fa6f  c3 65 fa   JMP COMMAND_R_LOOP (fa65)
+    fa6f  c3 65 fa   JMP COMMAND_R_LOOP (fa65)  ; Change loop pointer to fa62 in order to read > 256 bytes
 
 
 ; Get current cursor position
@@ -815,8 +861,8 @@ BAD_INPUT:
 ; and load the program to a different memory area. After all data bytes are loaded, the function
 ; reads the CRC which is also stored on the tape.
 IN_PROGRAM:
-    faad  3e ff      MVI A, ff                  ; Receive start address to BC
-    faaf  cd df fa   CALL IN_WORD_SYNC (fadf)
+    faad  3e ff      MVI A, ff                  ; Receive start address to BC (wait for syncronization
+    faaf  cd df fa   CALL IN_WORD_SYNC (fadf)   ; byte first)
 
     fab2  e5         PUSH HL                    ; Apply start address offset
     fab3  09         DAD BC
@@ -839,6 +885,10 @@ IN_PROGRAM:
     fac5  c9         RET
 
 
+; Unused function
+;
+; Looks like filling entire screen with zeroes, but the start address is not set.
+; This function is never called in the Monitor F.
 ?????:
     fac6  06 00      MVI B, 00
 ?????_LOOP:
@@ -852,7 +902,7 @@ IN_PROGRAM:
     fad1  e1         POP HL
     fad2  c9         RET
 
-
+; Hello UT-88 string, printed on reboot
 HELLO_STR:
     fad3 1f          db 1f                      # Clear screen  
     fad4 1a          db 1a                      # Move to the second line
@@ -872,7 +922,11 @@ IN_WORD_SYNC:
     fae9  c9         RET 
 
 
-
+; Load bytes from the tape
+;
+; Parameters:
+; HL - current address, where the next received byte will be received to
+; DE - end address
 IN_BYTES_LOOP:
     faea  3e 08      MVI A, 08
     faec  cd 71 fb   CALL IN_BYTE (fb71)
@@ -941,6 +995,7 @@ COMMAND_O_1:
     fb20  cd 51 fb   CALL PRINT_HEX_ADDR (fb51)
     fb23  e1         POP HL
 
+
 ; Output the program to the tape
 ;
 ; The function outputs the memory range to the tape in the following format:
@@ -995,7 +1050,7 @@ TAPE_SYNC_LOOP:
 ; Parameters: HL - address to print
 PRINT_HEX_ADDR:
     fb51  c5         PUSH BC
-    fb52  cd aa f9   CALL NEW_DUMP_LINE (f9aa)
+    fb52  cd aa f9   CALL PRINT_NEW_LINE (f9aa)
 
     fb55  7c         MOV A, H                   ; Print high byte
     fb56  cd 2e fc   CALL PRINT_HEX_BYTE (fc2e)
@@ -1006,7 +1061,12 @@ PRINT_HEX_ADDR:
     fb5d  c1         POP BC
     fb5e  c9         RET
 
-; Output a byte range HL-DE to the tape
+
+; Output a memory range specified by HL-DE registers to the tape
+;
+; Arguments:
+; HL - start of the memory range to output
+; DE - end of the memory range
 OUT_BYTE_RANGE:
     fb5f  4e         MOV C, M
     fb60  cd ee fb   CALL OUT_BYTE (fbee)
@@ -1016,11 +1076,16 @@ OUT_BYTE_RANGE:
 
 
 ; Output HL word to the tape
+; Outputs high byte first
+;
+; Arguments:
+; HL - word to output
 OUT_WORD:
     fb69  4c         MOV C, H
     fb6a  cd ee fb   CALL OUT_BYTE (fbee)
     fb6d  4d         MOV C, L
     fb6e  c3 ee fb   JMP OUT_BYTE (fbee)
+
 
 ; Receive a byte from tape
 ;
@@ -1134,7 +1199,8 @@ IN_BYTE_ERROR:
     fbe4  b7         ORA A
     fbe5  f2 a5 fa   JP BAD_INPUT (faa5)        ; Perhaps synchronization did not happen
 
-    fbe8  cd a1 f9   CALL f9a1                  ; ????
+    fbe8  cd a1 f9   CALL CHECK_CTRL_C (f9a1)   ; Exit the program import on Ctrl-C
+
     fbeb  c3 75 fb   JMP IN_BYTE_1 (fb75)       ; something went wrong, try receiving another byte
 
 
@@ -1617,14 +1683,9 @@ SCAN_KBD_DELAY_LOOP:
 ; bit in the keyboard 8255 port A. The column scanning is performed by reading the port B. If a bit
 ; is 0, then the button is pressed.
 ;
-; First stage of the algorithm is to detect the scan code (register B) which is essentially an index
-; of the pressed button, counting columns left to right, and buttons in the column from top to bottom.
+; Here is the keyboard matrix. The header row specifies the column selection bit sent to Port A.
+; The left column represent the code read via Port B. 
 ;
-; If a button is pressed, then the algorithm starts conversion the scan code (in the 0x00-0x37 range) 
-; to a char code. For most of the chars simple addition a 0x30 is enough. Some characters require
-; additional character codes remapping.
-;
-; Scan code to char code translation table
 ;      |   0xfe   |   0xfd   |   0xfb   |   0xf7   |   0xef   |   0xdf   |   0xbf   |     0x7f     |
 ; 0xfe | 0x30 '0' | 0x37 '7' | 0x2e '.' | 0x45 'E' | 0x4c 'L' | 0x53 'S' | 0x5a 'Z' | 0x18 right   |
 ; 0xfd | 0x31 '1' | 0x38 '8' | 0x2f '/' | 0x46 'F' | 0x4d 'M' | 0x54 'T' | 0x5b '[' | 0x08 left    |
@@ -1634,6 +1695,13 @@ SCAN_KBD_DELAY_LOOP:
 ; 0xdf | 0x35 '5' | 0x2c ',' | 0x43 'C' | 0x4a 'J' | 0x51 'Q' | 0x58 'X' | 0x5f '_' | 0x1f bkspace |
 ; 0xbf | 0x36 '6' | 0x2d '-' | 0x44 'D' | 0x4b 'K' | 0x52 'R' | 0x59 'Y' | 0x20 ' ' | 0x0c home    |
 ; 
+; First stage of the algorithm is to detect the scan code (register B) which is essentially an index
+; of the pressed button, counting columns left to right, and buttons in the column from top to bottom.
+;
+; If a button is pressed, then the algorithm starts conversion the scan code (in the 0x00-0x37 range) 
+; to a char code. For most of the chars simple addition a 0x30 is enough. Some characters require
+; additional character codes remapping.
+;
 ; The final stage of the algorithm is to apply alteration keys (by reading the port C):
 ; - RUS key - alters letters in the 0x40-0x5f range to russian letters in the 0x60-0x7f range
 ; - Symbol - alters numeric key and some symbol keys in order to enter another set of symbols (this
@@ -1817,14 +1885,17 @@ IS_BUTTON_PRESSED:
     fe74  f6 ff      ORI ff                     ; Return A=ff if a button is pressed
     fe76  c9         RET
 
-;
+
+; Unused function that loads a word at 0xf7d1
 ????:
     fe77  2a d1 f7   LHLD f7d1
     fe7a  c9         RET
     
+; Unused function that saves a word to 0xf7d1
 ?????:
     fe7b  22 d1 f7   SHLD f7d1
     fe7e  c9         RET
+
 
 PROMPT_STR:
     fe7f 0d 0a 18    db '\r\n', 0x18            ; Move to the next line, then step right
@@ -1855,6 +1926,7 @@ REGISTERS_STR:
 
 BACKSPACE_STR:
     feb7  08 20 08 00   db 0x08, ' ', 0x08, 0x00    ; Clear symbol left to the cursor, move cursor left
+
 
 ; Breakpoint handler
 ;
@@ -1944,6 +2016,7 @@ COMMAND_X_NO_INPUT:
     ff16  c9         RET
 
 
+; Just a continuation of the commands handling in the main command loop
 COMMAND_HANDLER_CONT:
     ff17  fe 42      CPI 42                     ; Handle command 'B'
     ff19  ca f3 ff   JZ COMMAND_B (fff3)
@@ -2051,7 +2124,7 @@ COMMAND_HANDLER_CONT_2:
     ff83  c3 6c f8   JMP ENTER_NEXT_COMMAND (f86c)  ; Invalid command
 
 
-; Calculate CRC for a range
+; Calculate CRC for a range and print result
 ;
 ; Arguments:
 ; - start address (HL)
@@ -2077,9 +2150,8 @@ COMMAND_K:
     ff9a  c3 6c f8   JMP ENTER_NEXT_COMMAND (f86c)
 
 
-; It is supposed that Monitor 0 ROM (0x0000-0x3fff) ROM is installed simultaneously 
-; with the Monitor F ROM (0xf800-0xffff). In this case Monitor 0 is responsible for
-; time interrupts, and stores time values at 0xc3fd-0xc3ff
+; If the Monitor 0 ROM (0x0000-0x3fff) is still installed in the system, it will be
+; responsible for time interrupts, and stores time values at 0xc3fd-0xc3ff
 ;
 ; The alternative configuration does not suppose using Monitor 0 ROM. Instead it uses
 ; only Monitor F, which is now responsible for time interrupt handling.
