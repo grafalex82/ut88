@@ -28,6 +28,18 @@ Keys:
   Alt-S     - Save a tape file
 """
 
+filetypes=((".PKI tape files", "*.pki *.gam"), 
+           (".RK Tape files", "*.rk"), 
+           ("All files", "*.*"))
+
+def open_pki():
+    return filedialog.askopenfilename(filetypes=filetypes)
+
+
+def save_pki():
+    return filedialog.asksaveasfilename(filetypes=filetypes, defaultextension="pki")
+
+
 def breakpoint():
     logging.disable(logging.NOTSET)
 
@@ -138,12 +150,9 @@ class BasicConfiguration(Configuration):
     def update(self, screen):
         alt_pressed = pygame.key.get_mods() & (pygame.KMOD_ALT | pygame.KMOD_META) 
         if pygame.key.get_pressed()[pygame.K_l] and alt_pressed:
-            filename = filedialog.askopenfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")))
-            self._recorder.load_from_file(filename)
+            self._recorder.load_from_file(open_pki())
         if pygame.key.get_pressed()[pygame.K_s] and alt_pressed:
-            filename = filedialog.asksaveasfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")),
-                                                    defaultextension="tape")
-            self._recorder.dump_to_file(filename)
+            self._recorder.dump_to_file(save_pki())
 
 
         self._lcd.update_screen(screen)
@@ -218,12 +227,9 @@ class VideoConfiguration(Configuration):
     def update(self, screen):
         alt_pressed = pygame.key.get_mods() & (pygame.KMOD_ALT | pygame.KMOD_META) 
         if pygame.key.get_pressed()[pygame.K_l] and alt_pressed:
-            filename = filedialog.askopenfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")))
-            self._recorder.load_from_file(filename)
+            self._recorder.load_from_file(open_pki())
         if pygame.key.get_pressed()[pygame.K_s] and alt_pressed:
-            filename = filedialog.asksaveasfilename(filetypes=(("Tape files", "*.tape"), ("All files", "*.*")),
-                                                    defaultextension="tape")
-            self._recorder.dump_to_file(filename)
+            self._recorder.dump_to_file(save_pki())
 
         self._display.update_screen(screen)
 
