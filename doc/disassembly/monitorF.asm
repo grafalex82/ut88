@@ -1,7 +1,102 @@
+; Monitor F ('F' since located at 0xf800-0xffff) is a primary firmware for the UT-88 
+; Video Module. 
 ;
+; The Monitor F provides the following general purpose routines:
+; - Initial set up of the computer and peripheral (can work instead of Monitor 0)
+; - Display routines (print a char, clear screen, cursor movement, display scroll)
+; - Keyboard routines (wait for a button press, convert keyboard matrix scan code
+;   to an ASCII symbol)
+; - Input and output data to a tape recorder
 ;
-; Important variables:
-; f7b0 - Current cursor position (offset from video memory start address)
+; General purpose routines are accessed through the predefined entry points, located
+; at the following addresses:
+; - f800    - Software reset
+; - f803    - Wait for a keyboard press, returns entered symbol in A
+; - f806    - Input a byte from the tape (A - number of bits to receive, or 0xff if
+;             synchronization is needed. Returns the received byte in A)
+; - f809    - Put a char to the display at cursor location (C - char to print)
+; - f80c    - Output a byte to the tape (C - byte to output)
+; - f80f    - Put a char to the display at cursor location (C - char to print)
+; - f812    - Check if any button is pressed on the keyboard (A=00 if no buttons pressed, 0xff otherwise)
+; - f815    - Print a byte in a 2-digit hexadecimal form (A - byte to print)
+; - f818    - print a NULL terminated string at cursor position (HL - pointer to the string)
+; - f81b    - Scan a keyboard, return when a stable scan code is read (returns scan code in A)
+; - f81e    - Get the current cursor position (offset from 0xe800 video memory start, return in HL)
+; - f821    - Get the character under cursor (return in A)
+; - f824    - Load a program from tape (HL - offset, returns CRC in BC)
+; - f827    - Output a program to the tape (HL - start address, DE - end address, BC - CRC)
+; - f82a    - Calculate CRC for a memory range (HL - start address, DE - end address, Result in BC)
+; - f830 and f833 - 2 unclear functions that get and set some variable, which is never used
+;
+; Character output function performs printing in a terminal mode, when the symbol is printed at the
+; cursor position, and cursor advances to the next position. If the cursor reaches the end of line, it
+; advances to the next line. If cursor reaches the bottom right position of the screen, the screen is
+; scrolled for one line.
+;
+; Character output function also support several control symbols for moving the cursor, or cleaning
+; up the screen. Please refer to PUT_CHAR_C function description for more details.
+;
+; Besides general purpose routines, the Monitor F also provides a basic command
+; console, that provide the User with possibilities to:
+; - View, modify, copy, fill memory data
+; - Input from and output programs to the tape recorder
+; - Run user programs with a breakpoint possibility
+; - Handle time interrupt and display current time
+;
+; The following commands are supported:
+; - Memory commands:
+;   - D <addr1>, <addr2>        - Dump the memory range in hex form
+;   - L <addr1>, <addr2>        - List the memory range in text form ('.' is printed for non-printable chars)
+;   - K <addr1>, <addr2>        - Calculate CRC for the memory range
+;   - F <addr1>, <addr2>, <val> - Fill the memory range with the provided constant
+;   - S <addr1>, <addr2>, <val> - Search the specified byte in the memory range
+;   - T <src1>, <src2>, <dst>   - Copy (Transfer) <src1>-<src2> memory range to <dst>
+;   - C <src1>, <src2>, <dst>   - Compare <src1>-<src2> memory range with range starting <dst>
+;   - M <addr>                  - View and edit memory starting <addr>
+; - Tape commands:
+;   - O <start>, <end>[, <spd>] - Save the memory range to the tape. Use speed constant if provided.
+;   - I <offset>[, <spd>]       - Load program from the tape, apply specified offset. Use speed constant.
+;   - V                         - Measure tape loading delay constant
+; - Program execution:
+;   - W                         - Start the program from 0xc000
+;   - U                         - Start the program from 0xf000
+;   - G <addr>[, <brk>]         - Start/Continue the program from <addr>, set breakpoint at <brk>
+;   - X                         - View/Modify CPU registers when breakpoint hit
+; - Time commands:
+;   - B                         - Display current time at CPU module LCD
+; - External ROM:
+;   - R <start>, <end>, <dst>   - Import <start>-<end> data range from external ROM
+;
+; The last command requires connection of an external ROM via additional i8255 interface, where
+; two ports output the address to the ROM, and 3rd ports input the data. Unfortunately this ROM
+; and its connection was never described in the magazine. Perhaps this part of the Monitor was
+; stolen from the Radio-86RK computer, that shares most of the schematics and software with UT-88.
+; Anyhow, the code in Monitor F does not look correct.
+;
+; As for the tape recording format. It uses the same 2-phase encoding as the Monitor 0 with a small
+; differences:
+; - The recording format is extended with CRC. The Monitor F can detect stored and calculated CRC
+;   mismatch, and report this to the User
+; - Speed can be adjusted, by specifying so called 'tape constant' (which is a delay between bits).
+;   This is done to unify the format and allow read tapes for Micro-80 and Radio-86RK computers. These
+;   computers may potentially use different crystals, and therefore write to the tape at different speed. 
+;
+; Tape recording format:
+; - 256 x 0x00  - pilot tone
+; - 0xe6        - Synchronization byte
+; - 2 byte      - start address (high byte first)
+; - 2 byte      - end address (high byte first)
+; - data bytes  - program data bytes
+; - 0x0000      - micro-pilot tone (2 bytes)        -+
+; - 0xe6        - Synchronization byte               | New fields, compared to Monitor0 format
+; - 2 byte      - Calculated CRC (high byte first)  -+
+; 
+;
+; Monitor F variables:
+; f6fd - Current seconds (if used time interrupts with Monitor F). Preserved on reset.
+; f6fe - Current minutes (if used time interrupts with Monitor F). Preserved on reset.
+; f6ff - Current hours (if used time interrupts with Monitor F). Preserved on reset.
+; f7b0 - Current cursor position (offset from 0xe800 video memory start address)
 ; f7b2 - Current cursor position (memory address)
 ; f7b4 - User program PC register (when stopping at breakpoint)
 ; f7b6 - User program HL register (when stopping at breakpoint)
@@ -9,13 +104,31 @@
 ; f7bA - User program DE register (when stopping at breakpoint)
 ; f7bc - User program SP register (when stopping at breakpoint)
 ; f7be - User program AF register (when stopping at breakpoint)
+; f7c0 - A temporary placeholder for the SP register in tape in/out routines
 ; f7c3 - Breakpoint address (when running user program with Command G)
 ; f7c5 - Original opcode under breakpoint address (see Command G description)
+; f7c6 - JMP instruction opcode. Use in Command G to jump to the address entered to f7c7
+; f7c7 - 1st argument of the executed command
+; f7c9 - 2nd argument of the executed command
+; f7cb - 3rd argument of the executed command
+; f7cd - flag indicating there is more than 1 argument (0xff - 2 or more arguments, 0x00 - 1 arg only)
 ; f7ce - Tape input polarity (0x00 if non-inverted, 0xff if inverted)
 ; f7cf - Tape delay constant when loading
 ; f7d0 - Tape delay constant when saving
-; f7d1 - ???
+; f7d1 - Unclear 2-byte variable, never used in Monitor F, get and set using f830 and f833 handlers
+; f7d3 - f7f2 - 32-byte command buffer
+; f7f3 - keyboard repeat counter
+; f7f4 - flag indicating that the button is pressed (used for key repeat functionality)
+; f7f5 - f7f7   - Unused
 ; f7f8 - Flag indicating that the next char will be cursor direct movement coordinate
+; f7f9 - f7ff   - Unused
+;
+; Notes:
+; - Some functions (such as loading and saving data to the tape) use an odd delay mechanism - they
+;   point SP to some random memory, and do stack reads. Perhaps this add some longer delay, compared
+;   to the NOP instruction. While when running on the hardware it should not make any harm, emulation
+;   of this approach may be a little complicated, as no memory may be installed at the read address.
+;
 VECTORS:                                        ; Jump vectors to real function implementations
     f800  c3 36 f8   JMP START (f836)
     f803  c3 57 fd   JMP KBD_INPUT (fd57)
@@ -30,7 +143,7 @@ VECTORS:                                        ; Jump vectors to real function 
     f81e  c3 72 fa   JMP GET_CURSOR_POS (fa72)
     f821  c3 76 fa   JMP GET_CHAR_AT_CURS (fa76)
     f824  c3 ad fa   JMP IN_PROGRAM (faad)
-    f827  c3 24 fb   JMP DO_OUT_MEMORY (fb24)
+    f827  c3 24 fb   JMP OUT_PROGRAM (fb24)
     f82a  c3 f6 fa   JMP CALC_CRC (faf6)
     f82d  c9 ff ff   RET
     f830  c3 77 fe   JMP fe77
@@ -633,10 +746,11 @@ GET_CURSOR_POS:
 ;
 ; Return: A - symbol under cursor
 ;
-; BUG: Memory value at f7b0 contains cursor position relative to the video memory start.
+; BUG: Memory value at f7b0 contains cursor position relative to the video memory start (0xe800).
 ; This is not an absolute byte address, so reading memory at this location will return 
-; garbage. Perhaps it needs to use f7b2 variable instead, which is absolute address of the
-; cursor.
+; garbage. Perhaps this is a bad port of Radio-86RK monitor, which has just a single variable
+; to store memory address of the cursor. Solution would be simple - just use f7b2 variable instead,
+; which is absolute address of the cursor.
 GET_CHAR_AT_CURS:
     fa76  e5         PUSH HL                    ; Get character under cursor
     fa77  2a b0 f7   LHLD f7b0
@@ -688,7 +802,18 @@ BAD_INPUT:
     faaa  c3 6c f8   JMP ENTER_NEXT_COMMAND (f86c)
 
 
-
+; Load a program from the tape
+;
+; Parameters:
+; - offset (HL)
+;
+; Return:
+; - stored CRC (BC)
+;
+; This function loads a program from the tape. The program typically contains synchronization
+; sequence, then start and end address of the program. User may apply an offset (passed in HL)
+; and load the program to a different memory area. After all data bytes are loaded, the function
+; reads the CRC which is also stored on the tape.
 IN_PROGRAM:
     faad  3e ff      MVI A, ff                  ; Receive start address to BC
     faaf  cd df fa   CALL IN_WORD_SYNC (fadf)
@@ -816,7 +941,23 @@ COMMAND_O_1:
     fb20  cd 51 fb   CALL PRINT_HEX_ADDR (fb51)
     fb23  e1         POP HL
 
-DO_OUT_MEMORY:
+; Output the program to the tape
+;
+; The function outputs the memory range to the tape in the following format:
+; - 256 x 0x00  - pilot tone
+; - 0xe6        - Synchronization byte
+; - 2 byte      - start address (high byte first)
+; - 2 byte      - end address (high byte first)
+; - data bytes  - program data bytes
+; - 0x0000      - micro-pilot tone (2 bytes)
+; - 0xe6        - Synchronization byte
+; - 2 byte      - Calculated CRC (high byte first)
+;
+; Arguments:
+; - Start address (HL)
+; - End address (DE)
+; - Calculated CRC (BC)
+OUT_PROGRAM:
     fb24  c5         PUSH BC
     fb25  01 00 00   LXI BC, 0000               ; Output 256 zeros
 
@@ -828,7 +969,7 @@ TAPE_SYNC_LOOP:
     fb2d  e3         XTHL
     fb2e  c2 28 fb   JNZ TAPE_SYNC_LOOP (fb28)
 
-    fb31  0e e6      MVI C, e6                  ; Output symchronization byte 0xe6
+    fb31  0e e6      MVI C, e6                  ; Output synchronization byte 0xe6
     fb33  cd ee fb   CALL OUT_BYTE (fbee)
 
     fb36  cd 69 fb   CALL OUT_WORD (fb69)       ; Write start address
@@ -844,7 +985,7 @@ TAPE_SYNC_LOOP:
     fb47  0e e6      MVI C, e6                  ; Output another sync byte
     fb49  cd ee fb   CALL OUT_BYTE (fbee)
     
-    fb4c  e1         POP HL
+    fb4c  e1         POP HL                     ; Output CRC
     fb4d  cd 69 fb   CALL OUT_WORD (fb69)
     
     fb50  c9         RET
@@ -1141,6 +1282,7 @@ PUT_CHAR_A:
 ;         0x1b, 'Y', 0x20+Y position, 0x20+X position
 ;
 ; Important variables:
+; f7b0 - Current cursor position (relative to 0xe800 video memory start)
 ; f7b2 - Current cursor position (memory address)
 ; f7f8 - cursor direct movement state
 ;        0 - normal mode, next symbol is a regular symbol
@@ -1153,7 +1295,7 @@ PUT_CHAR_C:
     fc45  d5         PUSH DE
     fc46  f5         PUSH PSW
 
-    fc47  2a b2 f7   LHLD f7b2                  ; Load current cursor location
+    fc47  2a b2 f7   LHLD f7b2                  ; Load current cursor location address
 
     fc4a  23         INX HL                     ; Remove highlight at the cursor location
     fc4b  7e         MOV A, M
@@ -1403,7 +1545,7 @@ KBD_INPUT_LOOP:
     fd62  fe ff      CPI ff                     ; Check if something was pressed
     fd64  c2 74 fd   JNZ KBD_INPUT_PRESS (fd74)
 
-    fd67  3e 00      MVI A, 00                  ; Nothing is pressed - rReset the repeat counter
+    fd67  3e 00      MVI A, 00                  ; Nothing is pressed - reset the repeat counter
     fd69  32 f3 f7   STA f7f3
     fd6c  3e 00      MVI A, 00                  ; ... and the pressed flag
     fd6e  32 f4 f7   STA f7f4
@@ -1462,7 +1604,7 @@ SCAN_KBD_DELAY_LOOP:
     fda8  b8         CMP B
     fda9  c2 9b fd   JNZ SCAN_KBD_LOOP (fd9b)
 
-    fdac  c1         POP BC                     ; Return the scan code
+    fdac  c1         POP BC                     ; Return the scan code in A
     fdad  c9         RET
 
 
