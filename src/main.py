@@ -42,7 +42,13 @@ class Configuration:
         self._emulator._cpu.enable_registers_logging(True)
 
         self._logger = NestedLogger()
-        self._emulator.add_breakpoint(0x0000, lambda: self._logger.reset())
+        self._emulator.add_breakpoint(self.get_start_address(), lambda: self._logger.reset())
+
+        self._emulator.set_start_addr(self.get_start_address())
+
+
+    def get_start_address(self):
+        return 0x0000
 
 
     def run(self):
@@ -138,9 +144,6 @@ class VideoConfiguration(Configuration):
     def __init__(self):
         Configuration.__init__(self)
 
-        # This configuration will start right from MonitorF, skipping the Monitor0 for convenience
-        self._emulator.set_start_addr(0xf800)
-
         # Create main RAM and ROMs
         self._machine.add_memory(RAM(0x3000, 0x3fff))
         self._machine.add_memory(RAM(0xc000, 0xc3ff))
@@ -189,6 +192,11 @@ class VideoConfiguration(Configuration):
         self._emulator.add_breakpoint(0xfb86, lambda: self._emulator._cpu.set_sp(0xc000))
 
         #self._emulator.add_breakpoint(0xff49, breakpoint) # ...
+
+
+    def get_start_address(self):
+        # This configuration will start right from MonitorF, skipping the Monitor0 for convenience
+        return 0xf800
 
 
     def get_screen_size(self):
