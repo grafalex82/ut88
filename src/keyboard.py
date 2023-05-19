@@ -259,6 +259,11 @@ class Keyboard(IODevice):
             if self._pressed_key[0] == self._port_a: 
                 self._port_c = self._pressed_key[2]
                 return self._pressed_key[1] & 0x7f  # MSB is unused, but for some reason checked in the code
+            
+            # Special case when Monitor F scans for any keyboard press
+            if self._port_a == 0x00:
+                return self._pressed_key[1] & 0x7f  # MSB is unused, but for some reason checked in the code
+
             return 0x7f
         
         if addr == 0x05:            # Port C
