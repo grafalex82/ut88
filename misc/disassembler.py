@@ -3,11 +3,9 @@ import struct
 import re
 
 class Disassembler:
-    def __init__(self, binfile, startaddr):
-        with open(binfile, mode='rb') as f:
-            self._data = f.read()
-
-        self._startaddr = int(startaddr, 16)
+    def __init__(self, data, startaddr):
+        self._data = data
+        self._startaddr = startaddr
         self._endaddr = self._startaddr + len(self._data)
 
         self._lines = {}
@@ -343,10 +341,28 @@ def main():
                     prog='i8080 disassembler',
                     description='i8080 simple disassembler')
     parser.add_argument('binfile')
-    parser.add_argument('startaddr')
+    parser.add_argument('-s', '--startaddr', help="Override start address")
     args = parser.parse_args()
 
-    dis = Disassembler(args.binfile, args.startaddr)
+    fname = args.binfile
+    with open(fname, mode='rb') as f:
+        data = f.read()
+        startaddr = int(args.startaddr, 16) if args.startaddr else 0x0000
+        size = len(data)
+
+    if fname.upper().endswith(".PKI") or fname.upper().endswith(".GAM"):
+        startaddr = (data[1] << 8) | data[2]
+        endaddr = (data[3] << 8) | data[4]
+        size = endaddr - startaddr + 1
+        data = data[5: 5 + size]
+
+    if fname.upper().endswith(".RK") or fname.upper().endswith(".RKU"):
+        startaddr = (data[0] << 8) | data[1]
+        endaddr = (data[2] << 8) | data[3]
+        size = endaddr - startaddr + 1
+        data = data[4: 4 + size]
+
+    dis = Disassembler(data, startaddr)
     dis.disassemble()
 
 if __name__ == '__main__':
