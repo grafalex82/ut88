@@ -18,6 +18,7 @@ from utils import NestedLogger
 
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
+tapes_dir = os.path.join(os.path.dirname(__file__), "../tapes")
 
 BASIC_CONFIGURATION_LEGEND = """
 Keys:
@@ -175,6 +176,8 @@ class VideoConfiguration(Configuration):
         self._machine.add_memory(RAM(0xf400, 0xf7ff))
         self._machine.add_memory(ROM(f"{resources_dir}/Monitor0.bin", 0x0000))
         self._machine.add_memory(ROM(f"{resources_dir}/MonitorF.bin", 0xf800))
+
+        self._emulator.load_memory(f"{tapes_dir}/TETR1.GAM")
 
         # Add peripherals
         self._recorder = TapeRecorder()
