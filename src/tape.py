@@ -85,10 +85,8 @@ class TapeRecorder(IODevice):
         self._reset_buffer()
         with open(fname, "rb") as f:
             if fname.upper().endswith(".PKI") or fname.upper().endswith(".GAM"):
-                self._buffer = bytearray(b'\x00' * 256)     # Pilot tone
                 self._buffer += bytearray(f.read())         # Sync byte shall be a part of the file
             elif fname.upper().endswith(".RK") or fname.upper().endswith(".RKU"):
-                self._buffer = bytearray(b'\x00' * 256)     # Pilot tone
                 self._buffer += bytearray(b'\xe6')          # Sync byte
                 self._buffer += bytearray(f.read())         # .RK file contains only data
             else:
