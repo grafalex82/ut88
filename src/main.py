@@ -170,7 +170,7 @@ class VideoConfiguration(Configuration):
         Configuration.__init__(self)
 
         # Create main RAM and ROMs
-        self._machine.add_memory(RAM(0x3000, 0x3fff))
+        self._machine.add_memory(RAM(0x0000, 0x3fff))
         self._machine.add_memory(RAM(0xc000, 0xc3ff))
         self._machine.add_memory(RAM(0xf400, 0xf7ff))
         self._machine.add_memory(ROM(f"{resources_dir}/Monitor0.bin", 0x0000))
