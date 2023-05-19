@@ -83,6 +83,10 @@ class Configuration:
             if pygame.key.get_pressed()[pygame.K_ESCAPE]:
                 self._emulator.reset()
 
+            alt_pressed = pygame.key.get_mods() & (pygame.KMOD_ALT | pygame.KMOD_META) 
+            if pygame.key.get_pressed()[pygame.K_m] and alt_pressed:
+                self._emulator.load_memory(open_pki())
+
             self._machine.update()
 
             self.update(self._screen)                

@@ -36,3 +36,26 @@ class Emulator:
         self._machine.reset()
         self._cpu._pc = self._startaddr
 
+
+    def load_memory(self, fname):
+        if not fname:
+            return
+        
+        with open(fname, "rb") as f:
+            data = f.read()
+
+        offset = 0      
+        if fname.upper().endswith(".PKI") or fname.upper().endswith(".GAM"):
+            offset += 1         # Skip the sync byte
+
+        addr = (data[offset] << 8) | data[offset + 1]
+        endaddr = (data[offset+2] << 8) | data[offset + 3]
+        offset += 4
+        
+        while addr <= endaddr:
+            self._machine.write_memory_byte(addr, data[offset])
+            addr += 1
+            offset += 1
+        
+
+
