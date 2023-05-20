@@ -7,7 +7,8 @@ from ram import *
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 
-CHAR_SIZE = 16
+CHAR_WIDTH = 12
+CHAR_HEIGHT = 16
 
 class Display(RAM):
     """
@@ -27,7 +28,7 @@ class Display(RAM):
     by user programs).
     
     Font generator is based on a 2 kb ROM, which is not connected to the data bus. Each symbol is
-    a 8x8 bit matrix (bits are inverted), stored in the ROM as 8 consecutive bytes.
+    a 6x8 bit matrix (bits are inverted), stored in the ROM as 8 consecutive bytes.
 
 
     Emulation notes:
@@ -42,7 +43,7 @@ class Display(RAM):
         with open(f"{resources_dir}/font.bin", mode='rb') as f:
             font = f.read()
 
-        self._display = pygame.Surface((CHAR_SIZE*64, CHAR_SIZE*28))
+        self._display = pygame.Surface((CHAR_WIDTH*64, CHAR_HEIGHT*28))
 
         self._chars = [self._create_char(font[(c*8):((c+1)*8)], False) for c in range(128)]
         self._chars.extend([self._create_char(font[(c*8):((c+1)*8)], True) for c in range(128)])
@@ -50,11 +51,11 @@ class Display(RAM):
     
     def _create_char(self, font, invert):
         white = (255, 255, 255)
-        char = pygame.Surface((CHAR_SIZE, CHAR_SIZE))
+        char = pygame.Surface((CHAR_WIDTH, CHAR_HEIGHT))
 
         for row in range(8):
-            for col in range(8):
-                bitvalue = font[row] & (0x80 >> col) != 0
+            for col in range(6):
+                bitvalue = font[row] & (0x20 >> col) != 0
 
                 if invert:
                     bitvalue = not bitvalue
@@ -76,7 +77,7 @@ class Display(RAM):
         ch = self._ram[addr]
         col = addr % 0x40
         row = addr // 0x40
-        self._display.blit(self._chars[ch], (col*CHAR_SIZE, row*CHAR_SIZE))
+        self._display.blit(self._chars[ch], (col*CHAR_WIDTH, row*CHAR_HEIGHT))
 
 
     def update_screen(self, screen):

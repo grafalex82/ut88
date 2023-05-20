@@ -228,7 +228,7 @@ class VideoConfiguration(Configuration):
 
 
     def get_screen_size(self):
-        return (64*16, 28*16)
+        return (64*12, 28*16)
 
 
     def update(self, screen):
