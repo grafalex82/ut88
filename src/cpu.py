@@ -194,6 +194,10 @@ class CPU:
         self._c = value & 0xff
 
 
+    def set_bc(self, value):    # Sometimes need a function, not a property
+        self.bc = value
+
+
     @property
     def de(self):
         return (self._d << 8) | self._e
@@ -206,6 +210,10 @@ class CPU:
         self._e = value & 0xff
 
 
+    def set_de(self, value):    # Sometimes need a function, not a property
+        self.de = value
+
+
     @property
     def hl(self):
         return (self._h << 8) | self._l
@@ -216,6 +224,10 @@ class CPU:
         assert value >= 0x00 and value <= 0xffff
         self._h = value >> 8
         self._l = value & 0xff
+
+
+    def set_hl(self, value):    # Sometimes need a function, not a property
+        self.hl = value
 
 
     @property
