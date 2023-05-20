@@ -1465,7 +1465,7 @@ CLEAR_SCREEN:
 
 HOME_SCREEN:
     fcd1  21 00 e8   LXI HL, e800               ; Move cursor to the top left position
-    fcd5  c4         RET
+    fcd4  c4         RET
 
 
 DO_CLEAR_SCREEN:
