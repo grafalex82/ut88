@@ -34,6 +34,15 @@
 ; 0x3678 - completed lines counter
 ; 0x367a - Bypass drawing, only calculations (0x01 - draw, 0x00 - bypass)
 ; 0x367f - Game buffer (64x25)
+;
+; Port notes:
+; This game port uses Monitor's routines to draw chars. Althrough this is good for portability
+; reasons, the performance sucks. Most of the block draws simply put 1 or 2 chars at the specified
+; location. The program has to calculate the offset in screen coordinates, convert this to the 4 char
+; escape sequence, in order to position the cursor. The printing function does plenty of calculations,
+; handles special characters, escape sequence, and many more. It would be much faster and visually better
+; if blocks were drawn with either direct writes to the video memory, or at least with a simpler function
+; that takes X and Y screen coordinate and a symbol to print.
 INIT:
     3000  3e 01      MVI A, 01                  ; Draw as usual (no draw bypass)
     3002  32 7a 36   STA 367a
