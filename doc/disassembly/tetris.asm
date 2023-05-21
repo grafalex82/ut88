@@ -1,10 +1,19 @@
 ; Tetris game
 ;
+; Figure format TBD ????
 ;
 ; Variables:
-; 0x3659 - ????
+; 0x3659 - Flag indicating the figure has landed (0xff landed, 0x00 - falling)
+; 0x365d - currently falling figure address (2 bytes)
+; 0x365f - currengly falling figure buffer (6 bytes)
+; 0x3665 - next figure (6 bytes)
+; 0x365a - current falling figure coordinates
+; 0x365c - ????
+; 0x3671 - ???? Difficulty delay ????
 ; 0x3672 - difficulty level (delay)
-; 0x3673 - random sees
+; 0x3673 - random seed
+; 0x3676 - ??? some coordinate
+; 0x3677 - ??? some coordinate
 ; 0x3678 - completed lines counter ????
 ; 0x367a - ?
 INIT:
@@ -19,7 +28,7 @@ INIT:
     300c  00         NOP
     300d  00         NOP
 
-????:
+GAME_RESTART:
     300e  0e 1b      MVI C, 1b                  ; Print Esc-E sequence, but this is not supported by UT-88.
     3010  cd 5d 32   CALL PUT_CHAR (325d)       ; Moreover it does not match to any modern standards to guess
     3013  0e 45      MVI C, 45                  ; what it supposed to do. Most probably this should erase the 
@@ -126,8 +135,8 @@ RANDOM_SEED_LOOP:
     30a1  af         XRA A                      ; Store 0 in lines counter ????? 0x3678
     30a2  32 78 36   STA 3678
 
-    30a5  3d         DCR A                      ; ?????
-    30a6  32 59 36   STA 3659
+    30a5  3d         DCR A                      ; Set figure landed flag (it will go through landing
+    30a6  32 59 36   STA 3659                   ; procedure immediately)
     
     30a9  21 ce 35   LXI HL, LINES_COUNT_STR (35ce)
     30ac  cd 52 32   CALL PUT_STRING (3252)
@@ -135,31 +144,41 @@ RANDOM_SEED_LOOP:
 
 
 
-????:
-30b2  af         XRA A
-30b3  32 59 36   STA 3659
-30b6  3a 72 36   LDA 3672
-30b9  32 71 36   STA 3671
-30bc  21 11 0c   LXI HL, 0c11
-30bf  06 14      MVI B, 14
-????:
-30c1  3e ff      MVI A, ff
-30c3  32 79 36   STA 3679
-30c6  0e 0a      MVI C, 0a
-????:
-30c8  cd 35 34   CALL GET_CELL (3435)
-30cb  fe 5b      CPI A, 5b
-30cd  ca d4 30   JZ 30d4
-30d0  af         XRA A
-30d1  32 79 36   STA 3679
-????:
-30d4  2c         INR L
-30d5  0d         DCR C
-30d6  c2 c8 30   JNZ 30c8
-30d9  2e 11      MVI L, 11
-30db  3a 79 36   LDA 3679
-30de  b7         ORA A
-30df  f2 4f 31   JP 314f
+; Collapse all filled lines, prepare for the next figure
+COLLAPSE_LINES:
+    30b2  af         XRA A                      ; Reset the figure landed flag
+    30b3  32 59 36   STA 3659
+
+    30b6  3a 72 36   LDA 3672                   ; Prepare delay loop based on difficulty level
+    30b9  32 71 36   STA 3671
+
+    30bc  21 11 0c   LXI HL, 0c11               ; Check 20 lines starting from the bottom one
+    30bf  06 14      MVI B, 14
+
+CHECK_NEXT_LINE:
+    30c1  3e ff      MVI A, ff                  ; Flag indicating that the line is full
+    30c3  32 79 36   STA 3679
+
+    30c6  0e 0a      MVI C, 0a                  ; Number of cells in the line
+
+CHECK_LINE_LOOP:
+    30c8  cd 35 34   CALL GET_CELL (3435)       ; Check if the cell is filled
+    30cb  fe 5b      CPI A, 5b
+    30cd  ca d4 30   JZ COLLAPSE_LINE_1 (30d4)
+
+    30d0  af         XRA A                      ; If not - reset the 'Line full' flag
+    30d1  32 79 36   STA 3679
+
+COLLAPSE_LINE_1:
+    30d4  2c         INR L                      ; Advance to the next cell in the line
+    30d5  0d         DCR C
+    30d6  c2 c8 30   JNZ CHECK_LINE_LOOP (30c8)
+
+    30d9  2e 11      MVI L, 11                  ; Check if the line is indeed full
+    30db  3a 79 36   LDA 3679
+    30de  b7         ORA A
+    30df  f2 4f 31   JP ADVANCE_TO_NEXT_LINE (314f) ; If not - get to the next line
+
 30e2  3a 72 36   LDA 3672
 30e5  d6 01      SUI A, 01
 30e7  2f         CMA
@@ -226,74 +245,93 @@ RANDOM_SEED_LOOP:
 314a  c2 45 31   JNZ 3145
 314d  e1         POP HL
 314e  25         DCR H
-????:
-314f  24         INR H
-3150  05         DCR B
-3151  c2 c1 30   JNZ 30c1
-3154  06 06      MVI B, 06
-3156  21 5f 36   LXI HL, 365f
-3159  22 5d 36   SHLD 365d
-315c  eb         XCHG
-315d  21 65 36   LXI HL, 3665
-????:
-3160  7e         MOV A, M
-3161  12         STAX DE
-3162  23         INX HL
-3163  13         INX DE
-3164  05         DCR B
-3165  c2 60 31   JNZ 3160
+
+ADVANCE_TO_NEXT_LINE:
+    314f  24         INR H                      ; Repeat for the next line
+    3150  05         DCR B
+    3151  c2 c1 30   JNZ CHECK_NEXT_LINE (30c1)
+
+    3154  06 06      MVI B, 06                  ; Copy next figure from preview buffer (0x3665) to
+    3156  21 5f 36   LXI HL, 365f               ; the main buffer (0x365f) ????
+    3159  22 5d 36   SHLD 365d
+    315c  eb         XCHG
+
+    315d  21 65 36   LXI HL, 3665
+COPY_FIGURE_LOOP:
+    3160  7e         MOV A, M
+    3161  12         STAX DE
+    3162  23         INX HL
+    3163  13         INX DE
+    3164  05         DCR B
+    3165  c2 60 31   JNZ COPY_FIGURE_LOOP (3160)
+
 
 ; Game loop
 GAME_LOOP:
-    3168  21 47 34   LXI HL, 3447
-    316b  11 18 00   LXI DE, 0018
-    316e  cd aa 32   CALL 32aa
+    3168  21 47 34   LXI HL, 3447                   ; Base address of the figures (actual figures start 345F)
+    316b  11 18 00   LXI DE, 0018                   ; Size of a figure (4 records 6 bytes each)
 
-????:
-3171  19         DAD DE
-3172  3d         DCR A
-3173  c2 71 31   JNZ 3171
-3176  06 06      MVI B, 06
-3178  11 65 36   LXI DE, 3665
-317b  d5         PUSH DE
-????:
-317c  7e         MOV A, M
-317d  12         STAX DE
-317e  23         INX HL
-317f  13         INX DE
-3180  05         DCR B
-3181  c2 7c 31   JNZ 317c
-3184  d1         POP DE
-3185  21 06 0f   LXI HL, 0f06
-????:
-3188  3e 20      MVI A, 20
-318a  cd f4 33   CALL DRAW_BLOCK (33f4)
-318d  0e 20      MVI C, 20
-318f  cd 5d 32   CALL PUT_CHAR (325d)
-3192  2c         INR L
-3193  7d         MOV A, L
-3194  fe 0c      CPI A, 0c
-3196  c2 88 31   JNZ 3188
-3199  2e 06      MVI L, 06
-319b  24         INR H
-319c  7c         MOV A, H
-319d  fe 11      CPI A, 11
-319f  c2 88 31   JNZ 3188
-31a2  21 07 10   LXI HL, 1007
-31a5  0e 5b      MVI C, 5b
-31a7  cd 91 32   CALL 3291
-31aa  3a 59 36   LDA 3659
-31ad  b7         ORA A
-31ae  c2 b2 30   JNZ 30b2
-31b1  32 5c 36   STA 365c
-31b4  21 15 1f   LXI HL, 1f15
-31b7  22 5a 36   SHLD 365a
-31ba  32 76 36   STA 3676
-31bd  32 77 36   STA 3677
-31c0  cd 15 33   CALL 3315
-31c3  da 14 32   JC 3214
-31c6  0e 5b      MVI C, 5b
-31c8  cd 8c 32   CALL 328c
+    316e  cd aa 32   CALL GEN_RANDOM_VALUE (32aa)   ; Generate next figure (random value) in A
+
+GET_FIGURE_ADDR_LOOP:
+    3171  19         DAD DE                         ; Calculate new figure base address
+    3172  3d         DCR A
+    3173  c2 71 31   JNZ GET_FIGURE_ADDR_LOOP (3171)
+
+    3176  06 06      MVI B, 06                      ; figure record size (6 bytes)
+    3178  11 65 36   LXI DE, 3665
+    317b  d5         PUSH DE
+
+COPY_NEXT_FIGURE_LOOP:
+    317c  7e         MOV A, M                       ; Copy next figure to 0x3665
+    317d  12         STAX DE
+    317e  23         INX HL
+    317f  13         INX DE
+    3180  05         DCR B
+    3181  c2 7c 31   JNZ COPY_NEXT_FIGURE_LOOP (317c)
+
+    3184  d1         POP DE
+
+    3185  21 06 0f   LXI HL, 0f06               ; Clear 2 lines by 6 cells starting 0x0f06 coordinate
+
+CLEAR_NEXT_FIGURE_LOOP:
+    3188  3e 20      MVI A, 20                  ; Clear single cell
+    318a  cd f4 33   CALL DRAW_BLOCK (33f4)
+    318d  0e 20      MVI C, 20
+    318f  cd 5d 32   CALL PUT_CHAR (325d)
+
+    3192  2c         INR L                      ; Advance to the next cell horiontally
+    3193  7d         MOV A, L
+    3194  fe 0c      CPI A, 0c
+    3196  c2 88 31   JNZ CLEAR_NEXT_FIGURE_LOOP (3188)
+
+    3199  2e 06      MVI L, 06                  ; Advance to the next line vertically
+    319b  24         INR H
+    319c  7c         MOV A, H
+    319d  fe 11      CPI A, 11
+    319f  c2 88 31   JNZ CLEAR_NEXT_FIGURE_LOOP (3188)
+
+    31a2  21 07 10   LXI HL, 1007               ; Draw the next figure
+    31a5  0e 5b      MVI C, 5b
+    31a7  cd 91 32   CALL DRAW_FIGURE (3291)
+
+    31aa  3a 59 36   LDA 3659                   ; Check figure landed flag
+    31ad  b7         ORA A
+    31ae  c2 b2 30   JNZ COLLAPSE_LINES (30b2)  ; If landed - collapse all filled lines, and get next figure
+
+    31b1  32 5c 36   STA 365c                   ; ?????
+
+    31b4  21 15 1f   LXI HL, 1f15
+    31b7  22 5a 36   SHLD 365a                  ; Place new figure at the top line
+
+    31ba  32 76 36   STA 3676                   ; Reset figure offset
+    31bd  32 77 36   STA 3677
+
+    31c0  cd 15 33   CALL CHECK_COLLISION (3315); Check if newly placed figure fits the game buffer
+    31c3  da 14 32   JC GAME_OVER (3214)
+
+    31c6  0e 5b      MVI C, 5b
+    31c8  cd 8c 32   CALL 328c
 ????:
 31cb  3a 71 36   LDA 3671
 31ce  47         MOV B, A
@@ -311,7 +349,7 @@ GAME_LOOP:
 31e7  fe 39      CPI A, 39
 31e9  ca 7b 33   JZ 337b
 31ec  fe 03      CPI A, 03
-31ee  ca 14 32   JZ 3214
+31ee  ca 14 32   JZ GAME_OVER (3214)
 31f1  fe 53      CPI A, 53
 31f3  ca 2f 32   JZ 322f
 31f6  11 71 36   LXI DE, 3671
@@ -327,15 +365,25 @@ GAME_LOOP:
 3208  32 77 36   STA 3677
 320b  cd eb 32   CALL 32eb
 320e  d2 cb 31   JNC 31cb
-3211  c3 b2 30   JMP 30b2
-????:
-3214  21 eb 35   LXI HL, 35eb
-3217  cd 52 32   CALL PUT_STRING (3252)
-321a  cd 73 32   CALL WAIT_KEY (3273)
-321d  fe 59      CPI A, 59
-321f  ca 0e 30   JZ 300e
-3222  fe 4e      CPI A, 4e
-3224  ca 00 f8   JZ f800
+3211  c3 b2 30   JMP COLLAPSE_LINES (30b2)
+
+; The game over screen
+;
+; Shows the game over message, and ask if the User wants to restart the game
+GAME_OVER:
+    3214  21 eb 35   LXI HL, GAME_OVER_STR (35eb)   ; Print the game over string
+    3217  cd 52 32   CALL PUT_STRING (3252)
+    
+    321a  cd 73 32   CALL WAIT_KEY (3273)       ; And wait for the answer
+
+    321d  fe 59      CPI A, 59                  ; If yes - restart the game
+    321f  ca 0e 30   JZ GAME_RESTART (300e)
+
+    3222  fe 4e      CPI A, 4e                  ; If no - reset to the monitor
+    3224  ca 00 f8   JZ f800
+
+
+
 3227  00         NOP
 3228  00         NOP
 3229  00         NOP
@@ -441,37 +489,63 @@ GET_KEY_IF_PRESSED:
 3287  0e 2e      MVI C, 2e
 ????:
 3289  2a 5a 36   LHLD 365a
-????:
-328c  eb         XCHG
-328d  2a 5d 36   LHLD 365d
-3290  eb         XCHG
-????:
-3291  79         MOV A, C
-3292  cd f4 33   CALL DRAW_BLOCK (33f4)
-3295  e5         PUSH HL
-3296  06 03      MVI B, 03
-????:
-3298  1a         LDAX DE
-3299  13         INX DE
-329a  85         ADD L
-329b  6f         MOV L, A
-329c  1a         LDAX DE
-329d  13         INX DE
-329e  84         ADD H
-329f  67         MOV H, A
-32a0  79         MOV A, C
-32a1  cd f4 33   CALL DRAW_BLOCK (33f4)
-32a4  05         DCR B
-32a5  c2 98 32   JNZ 3298
-32a8  e1         POP HL
-32a9  c9         RET
 
-????:
-    32aa  3a 74 36   LDA 3674
+
+; Draw current figure
+;
+; Draw the currently falling figure at HL logic coordinates. 
+; The function uses 0x365d currently falling figure buffer
+; C - symbol to draw the figure with
+DRAW_CURRENT_FIGURE:
+    328c  eb         XCHG
+    328d  2a 5d 36   LHLD 365d
+    3290  eb         XCHG
+
+
+; Draw the figure
+;
+; Arguments:
+; HL - logic coordinates of the figure
+; DE - address of the figure buffer
+; C - symbol to draw the figure with
+DRAW_FIGURE:
+    3291  79         MOV A, C                   ; Draw the central block at HL logic coordinates
+    3292  cd f4 33   CALL DRAW_BLOCK (33f4)
+
+    3295  e5         PUSH HL
+    3296  06 03      MVI B, 03                  ; Will draw 3 additional blocks
+
+DRAW_FIGURE_LOOP:
+    3298  1a         LDAX DE                    ; Apply next block X offset
+    3299  13         INX DE
+    329a  85         ADD L
+    329b  6f         MOV L, A
+
+    329c  1a         LDAX DE                    ; Apply nexy block Y offset
+    329d  13         INX DE
+    329e  84         ADD H
+    329f  67         MOV H, A
+
+    32a0  79         MOV A, C                   ; Draw the block
+    32a1  cd f4 33   CALL DRAW_BLOCK (33f4)
+
+    32a4  05         DCR B                      ; Repeat for all 3 additional blocks
+    32a5  c2 98 32   JNZ DRAW_FIGURE_LOOP (3298)
+
+    32a8  e1         POP HL
+    32a9  c9         RET
+
+; Generate next random value in range 1-7. 
+; New value stored in 3674
+; Return new value in A
+GEN_RANDOM_VALUE:
+    32aa  3a 74 36   LDA 3674                   ; Copy 0x3674 to 0x3675
     32ad  32 75 36   STA 3675
-    32b0  3a 73 36   LDA 3673
+
+    32b0  3a 73 36   LDA 3673                   ; Advance 0x3673 by 0xbb
     32b3  c6 bb      ADI A, bb
     32b5  32 73 36   STA 3673
+
     32b8  c5         PUSH BC
     32b9  47         MOV B, A
     32ba  0f         RRC
@@ -479,10 +553,13 @@ GET_KEY_IF_PRESSED:
     32bc  0f         RRC
     32bd  a8         XRA B
     32be  c1         POP BC
+
     32bf  e6 07      ANI A, 07
-    32c1  ca aa 32   JZ 32aa
-    32c4  32 74 36   STA 3674
+    32c1  ca aa 32   JZ GEN_RANDOM_VALUE (32aa)
+
+    32c4  32 74 36   STA 3674                   ; Save calculated value in 0x3674
     32c7  c9         RET
+
 
 ????:
 32c8  f5         PUSH PSW
@@ -532,53 +609,78 @@ GET_KEY_IF_PRESSED:
 3311  c9         RET
 ????:
 3312  cd 87 32   CALL 3287
-????:
-3315  3a 76 36   LDA 3676
-3318  2a 5a 36   LHLD 365a
-331b  85         ADD L
-331c  6f         MOV L, A
-331d  3a 77 36   LDA 3677
-3320  84         ADD H
-3321  67         MOV H, A
-3322  e5         PUSH HL
-3323  cd 35 34   CALL GET_CELL (3435)
-3326  fe 2e      CPI A, 2e
-3328  c2 49 33   JNZ 3349
-332b  06 03      MVI B, 03
-332d  eb         XCHG
-332e  2a 5d 36   LHLD 365d
-3331  eb         XCHG
-????:
-3332  1a         LDAX DE
-3333  13         INX DE
-3334  85         ADD L
-3335  6f         MOV L, A
-3336  1a         LDAX DE
-3337  13         INX DE
-3338  84         ADD H
-3339  67         MOV H, A
-333a  cd 35 34   CALL GET_CELL (3435)
-333d  fe 2e      CPI A, 2e
-333f  c2 49 33   JNZ 3349
-3342  05         DCR B
-3343  c2 32 33   JNZ 3332
-3346  e1         POP HL
-3347  b7         ORA A
-3348  c9         RET
-????:
-3349  e1         POP HL
-334a  3a 76 36   LDA 3676
-334d  2f         CMA
-334e  3c         INR A
-334f  85         ADD L
-3350  6f         MOV L, A
-3351  3a 77 36   LDA 3677
-3354  2f         CMA
-3355  3c         INR A
-3356  84         ADD H
-3357  67         MOV H, A
-3358  37         STC
-3359  c9         RET
+
+
+; Check the falling figure collisions
+;
+; The function uses current figure coordinate (0x365a), applies proposed offset in 0x3676-0x3677, 
+; and checks if all blocks of the figure match empty cells of the game buffer. The pointer at 0x365d
+; points to the currently falling figure at current rotation (6-byte)
+; 
+; Return: 
+; Carry flag set if a collision is detected
+CHECK_COLLISION:
+    3315  3a 76 36   LDA 3676                   ; Add coordinate in 365a with offset in 3676-3677 ??????
+    3318  2a 5a 36   LHLD 365a                  ; Get falling figure coordinate
+    331b  85         ADD L
+    331c  6f         MOV L, A
+
+    331d  3a 77 36   LDA 3677
+    3320  84         ADD H
+    3321  67         MOV H, A
+
+    3322  e5         PUSH HL                    ; Check if the cell is occupied
+    3323  cd 35 34   CALL GET_CELL (3435)
+    3326  fe 2e      CPI A, 2e
+    3328  c2 49 33   JNZ COLLISION_DETECTED (3349)
+
+    332b  06 03      MVI B, 03                  ; If not - repeat for other 3 blocks in the figure
+    332d  eb         XCHG
+    332e  2a 5d 36   LHLD 365d                  ; Load currently falling figure address
+    3331  eb         XCHG
+
+CHECK_COLLISION_LOOP:
+    3332  1a         LDAX DE                    ; Calculate next block X coordinate
+    3333  13         INX DE
+    3334  85         ADD L
+    3335  6f         MOV L, A
+
+    3336  1a         LDAX DE                    ; Calculate next block Y coordinate
+    3337  13         INX DE
+    3338  84         ADD H
+    3339  67         MOV H, A
+
+    333a  cd 35 34   CALL GET_CELL (3435)       ; Check if the calculated cell is occupied
+    333d  fe 2e      CPI A, 2e
+    333f  c2 49 33   JNZ COLLISION_DETECTED (3349)
+
+    3342  05         DCR B                      ; Repeat for other blocks in the figure
+    3343  c2 32 33   JNZ CHECK_COLLISION_LOOP (3332)
+
+    3346  e1         POP HL                     ; If all blocks of the figure fit the game without
+    3347  b7         ORA A                      ; collisions - clear C flag and return
+    3348  c9         RET
+
+COLLISION_DETECTED:
+    3349  e1         POP HL
+
+    334a  3a 76 36   LDA 3676                   ; Subtrack offset back from the X coordinate
+    334d  2f         CMA
+    334e  3c         INR A
+    334f  85         ADD L
+    3350  6f         MOV L, A
+
+    3351  3a 77 36   LDA 3677                   ; Subtrack offset back from the Y coordinate
+    3354  2f         CMA
+    3355  3c         INR A
+    3356  84         ADD H
+    3357  67         MOV H, A
+
+    3358  37         STC                        ; Set Carry flag indicating there is a collision
+    3359  c9         RET
+
+
+
 ????:
 335a  3e ff      MVI A, ff
 ????:
@@ -638,7 +740,7 @@ GET_KEY_IF_PRESSED:
 33b8  af         XRA A
 33b9  32 76 36   STA 3676
 33bc  32 77 36   STA 3677
-33bf  cd 15 33   CALL 3315
+33bf  cd 15 33   CALL CHECK_COLLISION (3315)
 33c2  21 5f 36   LXI HL, 365f
 33c5  22 5d 36   SHLD 365d
 33c8  d2 d7 33   JNC 33d7
@@ -793,113 +895,122 @@ CALC_BLOCK_ADDR:
     345d  c1         POP BC
     345e  c9         RET
 
-345f  ff         RST 7
-3460  00         NOP
-3461  02         STAX BC
-3462  00         NOP
-3463  01 00 00   LXI BC, 0000
-3466  ff         RST 7
-3467  00         NOP
-3468  02         STAX BC
-3469  00         NOP
-346a  01 ff 00   LXI BC, 00ff
-346d  02         STAX BC
-346e  00         NOP
-346f  01 00 00   LXI BC, 0000
-3472  ff         RST 7
-3473  00         NOP
-3474  02         STAX BC
-3475  00         NOP
-3476  01 ff 00   LXI BC, 00ff
-3479  02         STAX BC
-347a  00         NOP
-347b  00         NOP
-347c  ff         RST 7
-347d  00         NOP
-347e  ff         RST 7
-347f  00         NOP
-3480  02         STAX BC
-3481  01 00 01   LXI BC, 0100
-3484  00         NOP
-3485  fe 00      CPI A, 00
-3487  00         NOP
-3488  01 00 01   LXI BC, 0100
-348b  00         NOP
-348c  fe ff      CPI A, ff
-348e  00         NOP
-348f  01 00 fe   LXI BC, fe00
-3492  00         NOP
-3493  00         NOP
-3494  ff         RST 7
-3495  00         NOP
-3496  01 00 fe   LXI BC, fe00
-3499  01 00 ff   LXI BC, ff00
-349c  00         NOP
-349d  02         STAX BC
-349e  00         NOP
-349f  00         NOP
-34a0  01 00 ff   LXI BC, ff00
-34a3  00         NOP
-34a4  02         STAX BC
-34a5  ff         RST 7
-34a6  00         NOP
-34a7  01 00 ff   LXI BC, ff00
-34aa  ff         RST 7
-34ab  ff         RST 7
-34ac  00         NOP
-34ad  00         NOP
-34ae  01 01 ff   LXI BC, ff01
-34b1  00         NOP
-34b2  ff         RST 7
-34b3  01 00 ff   LXI BC, ff00
-34b6  ff         RST 7
-34b7  ff         RST 7
-34b8  00         NOP
-34b9  00         NOP
-34ba  01 01 ff   LXI BC, ff01
-34bd  00         NOP
-34be  ff         RST 7
-34bf  ff         RST 7
-34c0  00         NOP
-34c1  01 ff 01   LXI BC, 01ff
-34c4  00         NOP
-34c5  00         NOP
-34c6  01 ff ff   LXI BC, ffff
-34c9  00         NOP
-34ca  ff         RST 7
-34cb  ff         RST 7
-34cc  00         NOP
-34cd  01 ff 01   LXI BC, 01ff
-34d0  00         NOP
-34d1  00         NOP
-34d2  01 ff ff   LXI BC, ffff
-34d5  00         NOP
-34d6  ff         RST 7
-34d7  ff         RST 7
-34d8  00         NOP
-34d9  02         STAX BC
-34da  00         NOP
-34db  ff         RST 7
-34dc  ff         RST 7
-34dd  00         NOP
-34de  ff         RST 7
-34df  00         NOP
-34e0  02         STAX BC
-34e1  01 ff 01   LXI BC, 01ff
-34e4  00         NOP
-34e5  fe 00      CPI A, 00
-34e7  01 01 00   LXI BC, 0001
-34ea  01 00 fe   LXI BC, fe00
-34ed  ff         RST 7
-34ee  01 00 ff   LXI BC, ff00
-34f1  01 00 00   LXI BC, 0000
-34f4  01 00 ff   LXI BC, ff00
-34f7  01 00 00   LXI BC, 0000
-34fa  01 00 ff   LXI BC, ff00
-34fd  01 00 00   LXI BC, 0000
-3500  01 00 ff   LXI BC, ff00
-    3503  01 00 00   LXI BC, 0000
-3506  01 
+
+; The following bytes represent figures and their rotations.
+; 
+; Format is the following
+; - One block of the figure is implicit and exist in all rotations
+; - The 6-byte record represent 3 pairs of bytes, describing locations of 3 additional blocks.
+;   Each pair is X offset + Y offset (offset from the previous block).
+; - Each figure is represented as 4 rotations, each is a 6-byte record described above.
+;
+; In the comments below:
+; - @ - is a primary (implicit) block
+; - X - additional blocks calculated with offsets
+
+FIGURE_I:
+    345f  FF 00 02 00 01 00     ; X@XX
+
+    3465  00 FF 00 02 00 01     ; X
+                                ; @
+                                ; X 
+                                ; X 
+
+    346B  FF 00 02 00 01 00     ; X@XX
+
+    3471  00 FF 00 02 00 01     ; X
+                                ; @
+                                ; X 
+                                ; X
+
+FIGURE_L:
+    3477  FF 00 02 00 00 FF     ;   X
+                                ; X@X
+
+    347D  00 FF 00 02 01 00     ; X
+                                ; @
+                                ; XX
+
+    3483  01 00 FE 00 00 01     ; X@X
+                                ; X
+
+    3489  00 01 00 FE FF 00     ; XX
+                                ;  @
+                                ;  X
+
+FIGURE_J:
+    348F  01 00 FE 00 00 FF     ; X
+                                ; X@X 
+
+    3495  00 01 00 FE 01 00     ; XX
+                                ; @
+                                ; X
+
+    349B  FF 00 02 00 00 01     ; X@X
+                                ;   X
+
+    34A1  00 FF 00 02 FF 00     ;  X
+                                ;  @
+                                ; XX
+
+FIGURE_Z:
+    34A7  01 00 FF FF FF 00     ; XX
+                                ;  @X
+                                 
+    34AD  00 01 01 FF 00 FF     ;  X
+                                ; @X
+                                ; X
+
+    34B3  01 00 FF FF FF 00     ; XX
+                                ;  @X
+     
+    34B9  00 01 01 FF 00 FF     ;  X
+                                ; @X
+                                ; X
+
+FIGURE_S:
+    34BF  FF 00 01 FF 01 00     ;  XX
+                                ; X@
+ 
+    34C5  00 01 FF FF 00 FF     ; X
+                                ; X@
+                                ;  X
+
+    34CB  FF 00 01 FF 01 00     ;  XX
+                                ; X@
+ 
+    34D1  00 01 FF FF 00 FF     ; X
+                                ; X@
+                                ;  X
+
+FIGURE_T:      
+    34D7  FF 00 02 00 FF ff     ;  X
+                                ; X@X
+
+    34DD  00 FF 00 02 01 FF     ; X
+                                ; @X
+                                ; X
+
+    34E3  01 00 FE 00 01 01     ; X@X
+                                ;  X
+
+    34E9  00 01 00 FE FF 01     ;  X
+                                ; X@
+                                ;  X
+
+FIGURE_O:
+    34EF  00 FF 01 00 00 01     ; XX
+                                ; @X
+
+    34F5  00 FF 01 00 00 01     ; XX
+                                ; @X
+
+    34FB  00 FF 01 00 00 01     ; XX
+                                ; @X
+
+    3501  00 FF 01 00 00 01     ; XX
+                                ; @X
+
 
 LEGEND_STR:
     3507  1b 59 24 20 0e 2e 2e 37  db 0x1b, 0x59, 0x24, 0x20, 0x0e, "..7"   ; Move cursor to 0:4
@@ -939,52 +1050,14 @@ LINES_COUNT_STR:
     35de  20 73 74 72 6f 6b 20 20  db " СТРОК  "
     35e6  20 30 30 0d 00           db " 00", 0x0d, 0x00
 
-????:
-35eb  1b         DCX DE
-35ec  59         MOV E, C
-35ed  36 28      MVI M, 28
-35ef  69         MOV L, C
-35f0  67         MOV H, A
-35f1  72         MOV M, D
-35f2  61         MOV H, C
-35f3  20         db 20
-35f4  7a         MOV A, D
-35f5  61         MOV H, C
-35f6  6b         MOV L, E
-35f7  6f         MOV L, A
-35f8  6e         MOV L, M
-35f9  7e         MOV A, M
-35fa  65         MOV H, L
-35fb  6e         MOV L, M
-35fc  61         MOV H, C
-35fd  2c         INR L
-35fe  20         db 20
-35ff  76         HLT
-3600  65         MOV H, L
-3601  6c         MOV L, H
-3602  61         MOV H, C
-3603  65         MOV H, L
-3604  74         MOV M, H
-3605  65         MOV H, L
-3606  20         db 20
-3607  70         MOV M, B
-3608  6f         MOV L, A
-3609  77         MOV M, A
-360a  74         MOV M, H
-360b  6f         MOV L, A
-360c  72         MOV M, D
-360d  69         MOV L, C
-360e  74         MOV M, H
-360f  78         MOV A, B
-3610  3f         CMC
-3611  0f         RRC
-3612  20         db 20
-3613  28         db 28
-3614  59         MOV E, C
-3615  2f         CMA
-3616  4e         MOV C, M
-3617  29         DAD HL
-3618  00         NOP
+GAME_OVER_STR:
+    35eb  1b 59 36 28 69 67 72 61  db 0x1b, 'Y', 0x36, 0x28, "ИГРА"
+    35f3  20 7a 61 6b 6f 6e 7e 65  db " ЗАКОНЧЕ"
+    35fb  6e 61 2c 20 76 65 6c 61  db "НА, ЖЕЛА"
+    3603  65 74 65 20 70 6f 77 74  db "ЕТЕ ПОВТ"
+    360b  6f 72 69 74 78 3f 0f 20  db "ОРИТЬ?  "
+    3613  28 59 2f 4e 29 00        db "(Y/N)", 0x00
+
 ????:
 3619  1b         DCX DE
 361a  59         MOV E, C
