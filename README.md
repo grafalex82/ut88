@@ -284,6 +284,7 @@ I/O address space map:
 - `0xfb`  - (Optional) external ROM i8255 Control register
 - `0xa1`  - tape recorder
 
+From the software perspective the Video Module makes the UT-88 a classical computer with a keyboard and monitor, and typical terminal-type routines that expected from this kind of computer. It is claimed the UT-88 has partial compatibility with other computers in the same class (particularly Micro-80 and Radio-86RK), but this is true only partially. Programs that communicate with keyboard and display using the Monitor F functions will work as expected. Unfortunately most of the Radio-86RK programs write directly to the video buffer (which is located at different address range), or even re-configure i8275 video controller used in 86RK for a different screen resolution. This makes almost all 86RK games pretty much incompatible, without a quick possibility to port them for UT-88. The only program published with the UT-88 video module is [Tetris game](tapes/TETR1.GAM) ([Disassembly](doc/disassembly/tetris.asm))
 
 Video module schematics can be found here: [part 1](doc/scans/UT22.djvu), [part 2](doc/scans/UT24.djvu).
 
