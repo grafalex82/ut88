@@ -101,12 +101,33 @@ class Configuration:
 
 
     def enable_logging(self, enable):
+        class LoggerEnterFunctor:
+            def __init__(self, logger, msg):
+                self._logger = logger
+                self._msg = msg
+
+            def __call__(self):
+                #print(f"Entering nested logger: {self._msg}")
+                self._logger.enter(self._msg)
+
+        class LoggerExitFunctor:
+            def __init__(self, logger, msg):
+                self._logger = logger
+                self._msg = msg
+
+            def __call__(self):
+                #print(f"Exiting nested logger: {self._msg}")
+                self._logger.exit()
+
         if enable:
             logging.basicConfig(level=logging.DEBUG)
 
             for startaddr, endaddr, msg in self._suppressed_logs:
-                self._emulator.add_breakpoint(startaddr, lambda: self._logger.enter(msg))
-                self._emulator.add_breakpoint(endaddr, lambda: self._logger.exit())
+                enter = LoggerEnterFunctor(self._logger, msg)
+                self._emulator.add_breakpoint(startaddr, enter)
+
+                exit = LoggerExitFunctor(self._logger, msg)
+                self._emulator.add_breakpoint(endaddr, exit)
 
 
     def handle_event(self, event):
