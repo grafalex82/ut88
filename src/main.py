@@ -207,7 +207,7 @@ class VideoConfiguration(Configuration):
         self._machine.add_memory(self._display)
 
         # Suppress logging for some functions in this configuration
-        self.suppress_logging(0xfcce, 0xfcd4, "Clear Screen")
+        #self.suppress_logging(0xfcce, 0xfcd4, "Clear Screen")
         self.suppress_logging(0xf849, 0xf84c, "Initial memset")
         self.suppress_logging(0xfd92, 0xfd95, "Beep")
         self.suppress_logging(0xfd57, 0xfd99, "Keyboard input")
