@@ -7,14 +7,14 @@ class IODevice:
     read_io() and/or write_io() functions according to the provided functionality
     """
     def __init__(self, startaddr, endaddr):
-        self._startaddr = startaddr
-        self._endaddr = endaddr
+        self._iostartaddr = startaddr
+        self._ioendaddr = endaddr
 
     def get_addr_space(self):
-        return self._startaddr, self._endaddr
+        return self._iostartaddr, self._ioendaddr
 
     def validate_addr(self, addr):
-        if addr < self._startaddr or addr > self._endaddr:
+        if addr < self._iostartaddr or addr > self._ioendaddr:
             raise IOError(f"Incorrect IO address {addr:x}")
 
     def read_io(self, addr):
@@ -80,15 +80,15 @@ class StackDevice:
     The actual device shall reimplement read_stack() and/or write_stack() functions.
     """
     def __init__(self, startaddr, endaddr):
-        self._startaddr = startaddr
-        self._endaddr = endaddr
+        self._stackstartaddr = startaddr
+        self._stackendaddr = endaddr
 
     def get_addr_space(self):
-        return self._startaddr, self._endaddr
+        return self._stackstartaddr, self._stackendaddr
 
     def validate_addr(self, addr):
-        if addr < self._startaddr or addr > self._endaddr:
-            raise MemoryError(f"Address 0x{addr:04x} is out of stack memory range 0x{self._startaddr:04x}-0x{self._endaddr:04x}")
+        if addr < self._stackstartaddr or addr > self._stackendaddr:
+            raise MemoryError(f"Address 0x{addr:04x} is out of stack memory range 0x{self._stackstartaddr:04x}-0x{self._stackendaddr:04x}")
 
     def write_stack(self, ptr, value):
         self.validate_addr(addr)
