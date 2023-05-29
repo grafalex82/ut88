@@ -53,6 +53,6 @@ class HexKeyboard(IODevice):
 
 
     def read_io(self, addr):
-        self.validate_addr(addr)
+        self.validate_io_addr(addr)
         return self._pressed_key
 

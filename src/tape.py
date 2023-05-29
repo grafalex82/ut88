@@ -94,7 +94,7 @@ class TapeRecorder(IODevice):
 
 
     def read_io(self, addr):
-        self.validate_addr(addr)
+        self.validate_io_addr(addr)
 
         if len(self._buffer) == 0:
             logger.debug("No more data in the tape buffer")
@@ -130,7 +130,7 @@ class TapeRecorder(IODevice):
     
 
     def write_io(self, addr, value):
-        self.validate_addr(addr)
+        self.validate_io_addr(addr)
 
         self._bits += 1
         if self._bits % 2:

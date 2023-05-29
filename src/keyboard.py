@@ -273,7 +273,7 @@ class Keyboard(IODevice):
     
 
     def write_io(self, addr, value):
-        self.validate_addr(addr)
+        self.validate_io_addr(addr)
 
         # Address bits are inverted comparing to i8255 addresses
         if addr == 0x04:            # Configuration register

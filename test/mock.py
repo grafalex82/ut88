@@ -10,9 +10,9 @@ class MockIO(IODevice):
         self._value = 0
 
     def read_io(self, addr):
-        self.validate_addr(addr)
+        self.validate_io_addr(addr)
         return self._value
 
     def write_io(self, addr, value):
-        self.validate_addr(addr)
+        self.validate_io_addr(addr)
         self._value = value

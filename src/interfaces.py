@@ -13,16 +13,16 @@ class IODevice:
     def get_addr_space(self):
         return self._iostartaddr, self._ioendaddr
 
-    def validate_addr(self, addr):
+    def validate_io_addr(self, addr):
         if addr < self._iostartaddr or addr > self._ioendaddr:
             raise IOError(f"Incorrect IO address {addr:x}")
 
     def read_io(self, addr):
-        self.validate_addr(addr)
+        self.validate_io_addr(addr)
         raise IOError(f"Reading IO {addr:x} is not supported")
 
     def write_io(self, addr, value):
-        self.validate_addr(addr)
+        self.validate_io_addr(addr)
         raise IOError(f"Writing IO {addr:x} is not supported")
     
     def update(self):
@@ -86,16 +86,16 @@ class StackDevice:
     def get_addr_space(self):
         return self._stackstartaddr, self._stackendaddr
 
-    def validate_addr(self, addr):
+    def validate_stack_addr(self, addr):
         if addr < self._stackstartaddr or addr > self._stackendaddr:
             raise MemoryError(f"Address 0x{addr:04x} is out of stack memory range 0x{self._stackstartaddr:04x}-0x{self._stackendaddr:04x}")
 
     def write_stack(self, ptr, value):
-        self.validate_addr(addr)
+        self.validate_stack_addr(addr)
         raise MemoryError(f"Writing stack address 0x{addr:04x} is not supported")
 
     def read_stack(self, ptr):
-        self.validate_addr(addr)
+        self.validate_stack_addr(addr)
         raise MemoryError(f"Reading stack address 0x{addr:04x} is not supported")
 
     def update(self):
