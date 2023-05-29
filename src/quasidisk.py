@@ -1,3 +1,5 @@
+import os
+
 from interfaces import *
 
 class QuasiDisk(IODevice, StackDevice):
@@ -9,9 +11,12 @@ class QuasiDisk(IODevice, StackDevice):
         self._fname = fname
         self._changed = False
 
-        with open(fname, "rb") as f:
-            self._data = bytearray(f.read())
-            assert len(self._data) == 256*1024
+        if os.path.exists(fname):
+            with open(fname, "rb") as f:
+                self._data = bytearray(f.read())
+                assert len(self._data) == 256*1024
+        else:
+            self._data = bytearray(256*1024)
 
 
     def write_io(self, addr, value):
@@ -59,7 +64,7 @@ class QuasiDisk(IODevice, StackDevice):
             return
         
         with open(self._fname, "w+b") as f:
-            self._data = f.write(self._data)
+            f.write(self._data)
         
         self._changed = False
 

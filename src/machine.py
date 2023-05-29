@@ -181,3 +181,9 @@ class UT88Machine(Machine):
             return self._quasi_disk.read_stack(addr)
         else:
             return Machine.read_stack(self, addr)
+
+    def update(self):
+        Machine.update(self)
+
+        if self._quasi_disk:
+            self._quasi_disk.update()
