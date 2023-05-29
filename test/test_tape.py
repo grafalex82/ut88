@@ -49,7 +49,7 @@ def test_write_bytes(tmp_path):
     recorder.write_io(0xa1, 0)
 
     testfile = tmp_path / "test.bin"
-    recorder.dump_to_file(testfile)
+    recorder.dump_to_file(str(testfile))
     assert testfile.read_bytes() == b"\x5a\xd2"
 
 def test_read_bytes(tmp_path):
@@ -58,7 +58,7 @@ def test_read_bytes(tmp_path):
     testfile = tmp_path / "test.bin"
     testfile.write_bytes(b"\x5a\xd2")
 
-    recorder.load_from_file(testfile)
+    recorder.load_from_file(str(testfile))
 
     # Byte 1    
     assert recorder.read_io(0xa1) == 1  # Inverted bit
