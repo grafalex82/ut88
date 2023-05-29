@@ -211,6 +211,7 @@ class VideoConfiguration(Configuration):
         self.suppress_logging(0xf849, 0xf84c, "Initial memset")
         self.suppress_logging(0xfd92, 0xfd95, "Beep")
         self.suppress_logging(0xfd57, 0xfd99, "Keyboard input")
+        self.suppress_logging(0xfd9a, 0xfdad, "Scan keyboard")
         self.suppress_logging(0xfc43, 0xfccd, "Put char")
         self.suppress_logging(0xfbee, 0xfc2d, "Out byte")
         self.suppress_logging(0xfb71, 0xfc2d, "Input byte")
