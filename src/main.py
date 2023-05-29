@@ -5,7 +5,7 @@ import argparse
 from tkinter import filedialog
 
 from emulator import Emulator
-from machine import Machine
+from machine import UT88Machine
 from ram import RAM
 from rom import ROM
 from lcd import LCD
@@ -15,7 +15,7 @@ from tape import TapeRecorder
 from keyboard import Keyboard
 from display import Display
 from utils import NestedLogger
-
+from quasidisk import QuasiDisk
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 tapes_dir = os.path.join(os.path.dirname(__file__), "../tapes")
@@ -49,18 +49,34 @@ class Configuration:
         self._screen = pygame.display.set_mode(self.get_screen_size())
         self._clock = pygame.time.Clock()
 
-        self._machine = Machine()
+        self._machine = UT88Machine()
         self._emulator = Emulator(self._machine)
+
+        self._emulator.set_start_addr(self.get_start_address())
+
+        self.create_memories()
+        self.create_peripherals()
+
 
         self._emulator._cpu.enable_registers_logging(True)
 
         self._logger = NestedLogger()
         self._emulator.add_breakpoint(self.get_start_address(), lambda: self._logger.reset())
-
         self._suppressed_logs = []
 
-        self._emulator.set_start_addr(self.get_start_address())
+        self.configure_logging()
 
+
+    def create_memories(self):
+        pass
+
+
+    def create_peripherals(self):
+        pass
+
+
+    def configure_logging(self):
+        pass
 
 
     def get_start_address(self):
@@ -144,12 +160,14 @@ class BasicConfiguration(Configuration):
         self._legendtext = font.render(BASIC_CONFIGURATION_LEGEND, True, green)
         self._legendrect = self._legendtext.get_rect().move(0, 80)
 
-        # Create main RAM and ROMs
+
+    def create_memories(self):
         self._machine.add_memory(RAM(0xc000, 0xc3ff))
         self._machine.add_memory(ROM(f"{resources_dir}/Monitor0.bin", 0x0000))
         self._machine.add_memory(ROM(f"{resources_dir}/calculator.bin", 0x0800))
 
-        # Add peripherals
+
+    def create_peripherals(self):
         self._lcd = LCD()
         self._machine.add_memory(self._lcd)
         self._kbd = HexKeyboard()
@@ -159,7 +177,8 @@ class BasicConfiguration(Configuration):
         self._recorder = TapeRecorder()
         self._machine.add_io(self._recorder)
 
-        # Suppress logging for some functions in this configuration
+
+    def configure_logging(self):
         self.suppress_logging(0x0008, 0x0120, "RST 1: Out byte")
         self.suppress_logging(0x0018, 0x005e, "RST 3: Wait 1s")
         self.suppress_logging(0x0021, 0x006d, "RST 4: Wait a button")
@@ -170,9 +189,11 @@ class BasicConfiguration(Configuration):
         self.suppress_logging(0x0a6f, 0x0a8b, "DIV")
         self.suppress_logging(0x09ec, 0x09f8, "MULT")
 
+
     def get_screen_size(self):
         return (450, 294)
-    
+
+
     def update(self, screen):
         alt_pressed = pygame.key.get_mods() & (pygame.KMOD_ALT | pygame.KMOD_META) 
         if pygame.key.get_pressed()[pygame.K_l] and alt_pressed:
@@ -191,14 +212,15 @@ class VideoConfiguration(Configuration):
     def __init__(self):
         Configuration.__init__(self)
 
-        # Create main RAM and ROMs
+
+    def create_memories(self):
         self._machine.add_memory(RAM(0x0000, 0x7fff))
         self._machine.add_memory(RAM(0xc000, 0xc3ff))
         self._machine.add_memory(RAM(0xf400, 0xf7ff))
-        self._machine.add_memory(ROM(f"{resources_dir}/Monitor0.bin", 0x0000))
         self._machine.add_memory(ROM(f"{resources_dir}/MonitorF.bin", 0xf800))
 
-        # Add peripherals
+
+    def create_peripherals(self):
         self._recorder = TapeRecorder()
         self._machine.add_io(self._recorder)
         self._keyboard = Keyboard()
@@ -206,8 +228,8 @@ class VideoConfiguration(Configuration):
         self._display = Display()
         self._machine.add_memory(self._display)
 
-        # Suppress logging for some functions in this configuration
-        #self.suppress_logging(0xfcce, 0xfcd4, "Clear Screen")
+
+    def configure_logging(self):
         self.suppress_logging(0xf849, 0xf84c, "Initial memset")
         self.suppress_logging(0xfd92, 0xfd95, "Beep")
         self.suppress_logging(0xfd57, 0xfd99, "Keyboard input")
@@ -239,8 +261,6 @@ class VideoConfiguration(Configuration):
         self._emulator.add_breakpoint(0xfb7c, lambda: self._emulator._cpu.set_sp(0xc000))
         self._emulator.add_breakpoint(0xfb86, lambda: self._emulator._cpu.set_sp(0xc000))
 
-        #self._emulator.add_breakpoint(0xff49, breakpoint) # ...
-
 
     def get_start_address(self):
         # This configuration will start right from MonitorF, skipping the Monitor0 for convenience
@@ -265,12 +285,33 @@ class VideoConfiguration(Configuration):
         self._keyboard.handle_key_event(event)
 
 
+
+class QuasiDiskConfiguration(VideoConfiguration):
+    def __init__(self):
+        VideoConfiguration.__init__(self)
+
+
+    def create_memories(self):
+        self._machine.add_memory(RAM(0x0000, 0xe000))
+        self._machine.add_memory(RAM(0xf400, 0xf7ff))
+        self._machine.add_memory(ROM(f"{resources_dir}/MonitorF.bin", 0xf800))
+
+        self._emulator.load_memory(f"{tapes_dir}/CPM64.RKU")
+
+
+    def create_peripherals(self):
+        VideoConfiguration.create_peripherals(self)
+
+        self._quasidisk = QuasiDisk("QuasiDisk.bin")
+        self._machine.set_quasi_disk(self._quasidisk)
+
+
 def main():
     parser = argparse.ArgumentParser(
                     prog='UT-88 Emulator',
                     description='UT-88 DIY i8080-based computer emulator')
     
-    parser.add_argument('configuration', choices=["basic", "video"])
+    parser.add_argument('configuration', choices=["basic", "video", "cpm64"])
     parser.add_argument('-d', '--debug', help="enable CPU instructions logging", action='store_true')
     args = parser.parse_args()
 
@@ -281,6 +322,8 @@ def main():
         configuration = BasicConfiguration()
     if args.configuration == "video":
         configuration = VideoConfiguration()
+    if args.configuration == "cpm64":
+        configuration = QuasiDiskConfiguration()
     
     configuration.enable_logging(args.debug)
 
