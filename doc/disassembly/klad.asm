@@ -1,14 +1,20 @@
-; 
+; The Treasure (Russian: КЛАД) game
+;
+; The goal if the game is to find exit of each map. The Player has to find a way through the labyrinth
+; of blocks, doors, and ladders, and not to fall into the water. Some doors are blocked, and require a
+; treasure box to be found first. Most of the treasure boxes are empty, and Player has to find the one
+; with a treasure. Enemies want to catch the Player, which makes the game quite challenging.
+;
 ; Variables:
-; 019e      - Block symbol (just passing symbol between 2 functions. Not used in the game)
+; 019e      - Block symbol (Local variable, just passing symbol between 2 functions. Not used in the game)
 ; 0240      - Current map number
 ; 0241      - currently parsed map record ptr (2 bytes)
 ; 0243-0882 - game buffer (25 lines by 64 chars each)
 ; 0883      - pointer to the game buffer
-; 0885-0889 - currently parsed map record (block type, Y1, Y2, X1, X2)
-; 088a      - calculated block top-left address in the game buffer
-; 088c      - block height counter
-; 088d      - block width counter
+; 0885-0889 - currently parsed map record (block type, Y1, Y2, X1, X2). Local variable, not used in the game
+; 088a      - calculated block top-left address in the game buffer (local variable)
+; 088c      - block height counter (local variable)
+; 088d      - block width counter (local variable)
 ; 08b1      - Player start position Y             --+
 ; 08b2      - Player start position X               |
 ; 08b3      - Enemy 1 start position (Y,X)          |
@@ -44,283 +50,63 @@
 ; 159f      - Arrow flying right position
 ;
 ; Game blocks:
-; 01    - outer walls
-; 02    - ladders
-; 03    - ????
-; 05    - water
-; 06    - rope / thin floor
-; 07    - treasure
-; 08    - ??? treasure
-; 0b    - floors
-; 0c
-; 0d
-; 0e 
+; 0x00  (symbol ' ')    - empty cell, free movement over this cell
+; 0x01  (symbol 'X')    - outer walls. Not breakable with arrows
+; 0x02  (symbol '#')    - ladders, allow player and enemies climb up and down
+; 0x03  (symbol ']')    - left door (player can open the door when approaching from the left)
+; 0x04  (symbol '[')    - right door (player can open the door when approaching from the right)
+; 0x05  (symbol '^')    - water. Player and enemies die when get into the water
+; 0x06  (symbol '-')    - rope / thin floor. Player and enemies can walk over the thin floor, but 
+;                         fall through when falling from above
+; 0x07  (symbol '▄')    - empty treasure box (becomes empty cells when Player goes over)
+; 0x08  (symbol '▄')    - real treasure box (becomes an SP symbol when Player goes over)
+; 0x09  (symbol ']')    - left door (opens when approaching from the left, only if treasure has been found)
+; 0x0a  (symbol '[')    - right door (opens when approaching from the right, only if treasure has been found)
+; 0x0b  (symbol '%')    - Wood/brick. A wall that can be broken with arrow.
+; 0x0c  (symbol ':')    - Partially broken Wood/brick. Still block moves
+; 0x0d  (symbol '.')    - Almost broken Wood/brick. Still block moves
+; 0x0e  (symbol ' ')    - Destroyed Wood/brick block. Free to move
+; 0x0f  (symbol '.')    - Partially restored Wood/brick block. Free to move
+; 0x10  (symbol ':')    - Almost restored Wood/brick block. Still free to move
+; 0x11  (symbol '|')    - Opened door. Free to move from any side
+; 0x12  (symbol '$')    - Found treasure. Uses SP special symbol specific for Radio-86RK only
+; 0x13  (player symbol) - A symbol representing a player
+; 0x14  (enemy symbol)  - A symbol representing an enemy
+; 0x15  (symbol '-')    - Flying arrow
+; 0x16-0x1d (symbols 'Q', '@', '&', '*', '=', '+', '<', '>') - Various symbols to beautify the game.
+;                         Considered as empty blocks
 ; 
+
+
 START:
     0000  31 ff 00   LXI SP, 00ff               ; Set the stack pointer
     0003  c3 05 16   JMP REAL_START (1605)      ; And jump to the real start
 
-0006  00         NOP
-0007  00         NOP
-????:
-0008  00         NOP
-0009  00         NOP
-000a  00         NOP
-????:
-000b  00         NOP
-000c  00         NOP
-000d  00         NOP
-000e  00         NOP
-000f  00         NOP
-0010  00         NOP
-0011  00         NOP
-0012  00         NOP
-0013  00         NOP
-0014  00         NOP
-0015  00         NOP
-0016  00         NOP
-????:
-0017  00         NOP
-0018  00         NOP
-0019  00         NOP
-001a  00         NOP
-001b  00         NOP
-001c  00         NOP
-001d  00         NOP
-001e  00         NOP
-001f  00         NOP
-0020  00         NOP
-0021  00         NOP
-0022  00         NOP
-0023  00         NOP
-0024  00         NOP
-0025  00         NOP
-0026  00         NOP
-0027  00         NOP
-0028  00         NOP
-0029  00         NOP
-002a  00         NOP
-002b  00         NOP
-002c  00         NOP
-002d  00         NOP
-????:
-002e  00         NOP
-002f  00         NOP
-0030  00         NOP
-0031  00         NOP
-0032  00         NOP
-0033  00         NOP
-????:
-0034  00         NOP
-????:
-0035  00         NOP
-0036  00         NOP
-0037  00         NOP
-0038  00         NOP
-????:
-0039  00         NOP
-????:
-003a  00         NOP
-????:
-003b  00         NOP
-????:
-003c  00         NOP
-003d  00         NOP
-003e  00         NOP
-003f  00         NOP
-????:
-0040  00         NOP
-0041  00         NOP
-0042  00         NOP
-0043  00         NOP
-0044  00         NOP
-0045  00         NOP
-0046  00         NOP
-0047  00         NOP
-0048  00         NOP
-0049  00         NOP
-004a  00         NOP
-004b  00         NOP
-004c  00         NOP
-004d  00         NOP
-004e  00         NOP
-004f  00         NOP
-0050  00         NOP
-0051  00         NOP
-0052  00         NOP
-0053  00         NOP
-0054  00         NOP
-0055  00         NOP
-0056  00         NOP
-0057  00         NOP
-0058  00         NOP
-0059  00         NOP
-005a  00         NOP
-005b  00         NOP
-005c  00         NOP
-005d  00         NOP
-005e  00         NOP
-005f  00         NOP
-0060  00         NOP
-0061  00         NOP
-0062  00         NOP
-0063  00         NOP
-0064  00         NOP
-0065  00         NOP
-0066  00         NOP
-0067  00         NOP
-0068  00         NOP
-0069  00         NOP
-006a  00         NOP
-006b  00         NOP
-006c  00         NOP
-006d  00         NOP
-006e  00         NOP
-006f  00         NOP
-0070  00         NOP
-0071  00         NOP
-0072  00         NOP
-0073  00         NOP
-0074  00         NOP
-0075  00         NOP
-0076  00         NOP
-0077  00         NOP
-0078  00         NOP
-0079  00         NOP
-007a  00         NOP
-007b  00         NOP
-007c  00         NOP
-007d  00         NOP
-007e  00         NOP
-007f  00         NOP
-0080  00         NOP
-0081  00         NOP
-0082  00         NOP
-0083  00         NOP
-0084  00         NOP
-0085  00         NOP
-0086  00         NOP
-0087  00         NOP
-0088  00         NOP
-0089  00         NOP
-008a  00         NOP
-008b  00         NOP
-008c  00         NOP
-008d  00         NOP
-008e  00         NOP
-008f  00         NOP
-0090  00         NOP
-0091  00         NOP
-0092  00         NOP
-0093  00         NOP
-0094  00         NOP
-0095  00         NOP
-0096  00         NOP
-0097  00         NOP
-0098  00         NOP
-0099  00         NOP
-009a  00         NOP
-009b  00         NOP
-009c  00         NOP
-009d  00         NOP
-009e  00         NOP
-009f  00         NOP
-00a0  00         NOP
-00a1  00         NOP
-00a2  00         NOP
-00a3  00         NOP
-00a4  00         NOP
-00a5  00         NOP
-00a6  00         NOP
-00a7  00         NOP
-00a8  00         NOP
-00a9  00         NOP
-00aa  00         NOP
-00ab  00         NOP
-00ac  00         NOP
-00ad  00         NOP
-00ae  00         NOP
-00af  00         NOP
-00b0  00         NOP
-00b1  00         NOP
-00b2  00         NOP
-00b3  00         NOP
-00b4  00         NOP
-00b5  00         NOP
-00b6  00         NOP
-00b7  00         NOP
-00b8  00         NOP
-00b9  00         NOP
-00ba  00         NOP
-00bb  00         NOP
-00bc  00         NOP
-00bd  00         NOP
-00be  00         NOP
-00bf  00         NOP
-00c0  00         NOP
-00c1  00         NOP
-00c2  00         NOP
-00c3  00         NOP
-00c4  00         NOP
-00c5  00         NOP
-00c6  00         NOP
-00c7  00         NOP
-00c8  00         NOP
-00c9  00         NOP
-00ca  00         NOP
-00cb  00         NOP
-00cc  00         NOP
-00cd  00         NOP
-00ce  00         NOP
-00cf  00         NOP
-00d0  00         NOP
-00d1  00         NOP
-00d2  00         NOP
-00d3  00         NOP
-00d4  00         NOP
-00d5  00         NOP
-00d6  00         NOP
-00d7  00         NOP
-00d8  00         NOP
-00d9  00         NOP
-00da  00         NOP
-00db  00         NOP
-00dc  00         NOP
-00dd  00         NOP
-00de  00         NOP
-00df  00         NOP
-00e0  00         NOP
-00e1  00         NOP
-00e2  00         NOP
-00e3  00         NOP
-00e4  00         NOP
-00e5  00         NOP
-00e6  00         NOP
-00e7  ff         RST 7
-00e8  14         INR D
-00e9  0d         DCR C
-00ea  c4 08 00   CNZ 0008
-00ed  15         DCR D
-00ee  08         db 08
-00ef  9b         SBB E
-00f0  13         INX DE
-00f1  56         MOV D, M
-00f2  13         INX DE
-00f3  ca 11 9b   JZ 9b11
-00f6  13         INX DE
-00f7  15         DCR D
-00f8  08         db 08
-00f9  56         MOV D, M
-00fa  13         INX DE
-00fb  7e         MOV A, M
-00fc  15         DCR D
-00fd  14         INR D
-00fe  0b         DCX BC
-????:
-00ff  00         NOP
 
 
+    0006  250 * 0x00    db 0x00                 ; Garbage
 
+
+; Draw/Parse the map
+;
+; Function that loads the map, parses it, and draws on the screen and in the game buffer.
+;
+; Stored map format:
+; - Arbitrary number of 5-byte records that fills a (X1,Y1)-(X2,Y2) rectangle with a specified symbol.
+;   Record format:
+;     - 1 byte - Symbol to draw (shall be non-zero)
+;     - 1 byte - Y1
+;     - 1 byte - Y2
+;     - 1 byte - X1
+;     - 1 byte - X2
+; - 0x00 - marker that no more records on the map
+; - Player start coordinate (Y, X), 2 bytes
+; - Enemy 1 start coordinate (Y, X), 2 bytes
+; - Enemy 2 start coordinate (Y, X), 2 bytes
+; - Enemy 3 start coordinate (Y, X), 2 bytes
+; - Enemy 4 start coordinate (Y, X), 2 bytes
+; - Number of enemies (1 byte). If Zero - 1 enemy on the map
+; - Map exit coordinate (Y, X), 2 bytes
 DRAW_MAP:
     0100  0e 1f      MVI C, 1f                  ; Clear screen
     0102  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
@@ -341,7 +127,7 @@ DRAW_MAP:
     0117  32 42 02   STA MAP_RECORD_ADDR+1 (0242)
 
     011a  21 43 02   LXI HL, GAME_BUF (0243)    ; Store the pointer to the game buffer at 0883
-    011d  22 83 08   SHLD 0883
+    011d  22 83 08   SHLD GAME_BUF_PTR (0883)
 
 DRAW_MAP_NEXT_RECORD:
     0120  2a 41 02   LHLD MAP_RECORD_ADDR (0241)   ; Load next record address
@@ -352,58 +138,59 @@ DRAW_MAP_NEXT_RECORD:
 
     0126  cd a0 01   CALL GAME_SYMB_LOOKUP (01a0)
 
-    0129  32 85 08   STA 0885                   ; Save map record byte #1 to 0885 (block type)
+    0129  32 85 08   STA RECORD_BLOCK_TYPE (0885)   ; Save map record byte #1 to 0885 (block type)
 
     012c  23         INX HL                     ; Copy map record byte #2 (Y1)
     012d  7e         MOV A, M
-    012e  32 86 08   STA BLOCK_TOP_LINE (0886)
+    012e  32 86 08   STA RECORD_BLOCK_Y1 (0886)
 
     0131  23         INX HL                     ; Copy map record byte #3 (Y2)
     0132  7e         MOV A, M
-    0133  32 87 08   STA 0887
+    0133  32 87 08   STA RECORD_BLOCK_Y2 (0887)
 
     0136  23         INX HL                     ; Copy map record byte #4 (X1)
     0137  7e         MOV A, M
-    0138  32 88 08   STA 0888
+    0138  32 88 08   STA RECORD_BLOCK_X1 (0888)
 
     013b  23         INX HL                     ; Copy map record byte #5 (X2)
     013c  7e         MOV A, M
-    013d  32 89 08   STA 0889
+    013d  32 89 08   STA RECORD_BLOCK_X2 (0889)
 
     0140  23         INX HL                     ; Save next record address
     0141  22 41 02   SHLD MAP_RECORD_ADDR (0241)
 
+
 DRAW_MAP_NEXT_LINE:
-    0144  3a 86 08   LDA BLOCK_TOP_LINE (0886)  ; Load block top-left coordinate to BC
+    0144  3a 86 08   LDA RECORD_BLOCK_Y1 (0886) ; Load block top-left coordinate to BC
     0147  47         MOV B, A
-    0148  3a 88 08   LDA 0888
+    0148  3a 88 08   LDA RECORD_BLOCK_X1 (0888)
     014b  4f         MOV C, A
 
     014c  cd be 08   CALL CALC_BLOCK_PTR (08be) ; Calculate top-left corner address in the game buffer
     014f  22 8a 08   SHLD BLOCK_TOP_LEFT_ADDR (088a)
 
-    0152  3a 86 08   LDA BLOCK_TOP_LINE (0886)  ; Calculate Y2-Y1 difference (block height)
+    0152  3a 86 08   LDA RECORD_BLOCK_Y1 (0886) ; Calculate Y2-Y1 difference (block height)
     0155  57         MOV D, A
-    0156  3a 87 08   LDA 0887
+    0156  3a 87 08   LDA RECORD_BLOCK_Y2 (0887)
     0159  92         SUB D
     015a  32 8c 08   STA BLOCK_HEIGHT_COUNTER (088c); And store to 088c
 
-    015d  3a 88 08   LDA 0888                   ; Calculate X2-X1 difference (block width)
+    015d  3a 88 08   LDA RECORD_BLOCK_X1 (0888) ; Calculate X2-X1 difference (block width)
     0160  57         MOV D, A
-    0161  3a 89 08   LDA 0889
+    0161  3a 89 08   LDA RECORD_BLOCK_X2 (0889)
     0164  92         SUB D
     0165  32 8d 08   STA BLOCK_WIDTH_COUNTER (088d) ; And store to 088d
 
     0168  2a 8a 08   LHLD BLOCK_TOP_LEFT_ADDR (088a); Load top-left address (in the game buffer) to DE
     016b  eb         XCHG
 
-    016c  3a 88 08   LDA 0888                   ; Load top-left block screen coordinates to BC
+    016c  3a 88 08   LDA RECORD_BLOCK_X1 (0888) ; Load top-left block screen coordinates to BC
     016f  4f         MOV C, A
-    0170  3a 86 08   LDA BLOCK_TOP_LINE (0886)
+    0170  3a 86 08   LDA RECORD_BLOCK_Y1 (0886)
     0173  47         MOV B, A
 
 DRAW_MAP_NEXT_COLUMN:
-    0174  3a 85 08   LDA 0885                   ; Store the symbol type in the game buffer
+    0174  3a 85 08   LDA RECORD_BLOCK_TYPE (0885); Store the symbol type in the game buffer
     0177  12         STAX DE
 
     0178  cd c4 11   CALL DRAW_BLOCK (11c4)     ; Draw the block on the screen as well
@@ -422,25 +209,21 @@ DRAW_MAP_NEXT_COLUMN:
     018c  b7         ORA A
     018d  ca 20 01   JZ DRAW_MAP_NEXT_RECORD (0120)
 
-    0190  3a 86 08   LDA BLOCK_TOP_LINE (0886)  ; Bump Y coordinate
+    0190  3a 86 08   LDA RECORD_BLOCK_Y1 (0886)  ; Bump Y coordinate
     0193  3c         INR A
-    0194  32 86 08   STA BLOCK_TOP_LINE (0886)
+    0194  32 86 08   STA RECORD_BLOCK_Y1 (0886)
 
     0197  c3 44 01   JMP DRAW_MAP_NEXT_LINE (0144)
 
 
 
-???;
-019a  1b         DCX DE
-019b  59         MOV E, C
-019c  00         NOP
-019d  00         NOP
+    019a  4 * 0x00  db 0x00                     ; Garbage
+
 
 BLOCK_SYMBOL:
-    019e  09         dw 00
+    019e  09         db 00
 
-?????
-019f  00         NOP
+    019f  00         db 00                      ; Garbage
 
 
 
@@ -471,36 +254,38 @@ SYMBOLS_LOOKUP:
     01b2  20         db ' '                     ; 0x00 -> ' '  Space
     01b3  68         db 'X'                     ; 0x01 -> 'X'  Outer walls
     01b4  23         db '#'                     ; 0x02 -> '#'  Ladders
-    01b5  5d         db ']'                     ; 0x03 -> ']'  door
-    01b6  5b         db '['                     ; 0x04 -> '['  door
+    01b5  5d         db ']'                     ; 0x03 -> ']'  Left door
+    01b6  5b         db '['                     ; 0x04 -> '['  Right door
     01b7  5e         db '^'                     ; 0x05 -> '^'  Water
     01b8  1c         db '-'                     ; 0x06 -> '-'  Rope / Thin floor
-    01b9  14         db 'm'                     ; 0x07 -> 'm'  Treasure
-    01ba  14         db 'm'                     ; 0x08 -> 'm'  Treasure ?????
-    01bb  5d         db ']'                     ; 0x09 -> ']'  ???
-    01bc  5b         db '['                     ; 0x0a -> '['  ???
-    01bd  25         db '%'                     ; 0x0b -> '%'  Floor / brick
+    01b9  14         db 'm'                     ; 0x07 -> '▄'  Empty Treasure Box
+    01ba  14         db 'm'                     ; 0x08 -> '▄'  Real Treasure Box
+    01bb  5d         db ']'                     ; 0x09 -> ']'  locked left door
+    01bc  5b         db '['                     ; 0x0a -> '['  locked right door
+    01bd  25         db '%'                     ; 0x0b -> '%'  Wood / brick
     01be  3a         db ':'                     ; 0x0c -> ':'  Partially broken block
     01bf  2e         db '.'                     ; 0x0d -> '.'  Even more broken block
-    01c0  20         db ' '                     ; 0x0e -> ' '  ???
-    01c1  2e         db '.'                     ; 0x0f -> '.'  ???
-    01c2  3a         db ':'                     ; 0x10 -> ':'  ???
-    01c3  11         db '| ' ???                ; 0x11 -> '| '  opened door
-    01c4  1e         db 'SP' ???                ; 0x12 -> 'SP'  ??? treasure
-    01c5  09         db ???                     ; 0x13 -> ' '  Player symbol ???
-    01c6  0b         db ???                     ; 0x14 -> ' '  Enemy symbol ???
-    01c7  2d         db '-'                     ; 0x15 -> '-'  ???
-    01c8  51         db 'Q'                     ; 0x16 -> 'Q'  ???
-    01c9  40         db '@'                     ; 0x17 -> '@'  ???
-    01ca  26         db '&'                     ; 0x18 -> '&'  ???
-    01cb  2a         db '*'                     ; 0x19 -> '*'  ???
-    01cc  3d         db '='                     ; 0x1a -> '='  ???
-    01cd  2b         db '+'                     ; 0x1b -> '+'  ???
-    01ce  3e         db '>'                     ; 0x1c -> '>'  ???
-    01cf  3c         db '<'                     ; 0x1d -> '<'  ???
+    01c0  20         db ' '                     ; 0x0e -> ' '  Broken block (does not block the movement)
+    01c1  2e         db '.'                     ; 0x0f -> '.'  Partially restored block (does not block movement)
+    01c2  3a         db ':'                     ; 0x10 -> ':'  Almost restored block (does not block movement)
+    01c3  11         db '|'                     ; 0x11 -> '|'  opened door
+    01c4  1e         db 'SP'                    ; 0x12 -> 'SP' Found treasure
+    01c5  09         db ???                     ; 0x13 ->      Player symbol
+    01c6  0b         db ???                     ; 0x14 ->      Enemy symbol
+    01c7  2d         db '-'                     ; 0x15 -> '-'  Flying arrow
+    01c8  51         db 'Q'                     ; 0x16 -> 'Q'  Empty block
+    01c9  40         db '@'                     ; 0x17 -> '@'  Empty block
+    01ca  26         db '&'                     ; 0x18 -> '&'  Empty block
+    01cb  2a         db '*'                     ; 0x19 -> '*'  Empty block
+    01cc  3d         db '='                     ; 0x1a -> '='  Empty block
+    01cd  2b         db '+'                     ; 0x1b -> '+'  Empty block
+    01ce  3e         db '>'                     ; 0x1c -> '>'  Empty block
+    01cf  3c         db '<'                     ; 0x1d -> '<'  Empty block
 
 
-MAP_ADDR_TABLE:   ; Map offsets 
+
+; Map offsets 
+MAP_ADDR_TABLE:   
     01d0  b0 18      dw MAP_01 (18b0)
     01d2  35 0b      dw MAP_02 (0b35)
     01d4  87 19      dw MAP_03 (1987)
@@ -521,95 +306,9 @@ MAP_ADDR_TABLE:   ; Map offsets
     01f2  b0 2f      dw MAP_18 (2fb0)
     01f4  50 32      dw MAP_19 (3250)
     
-01f6  00 00
-01f8  00         NOP
-01f9  00         NOP
-01fa  00         NOP
-01fb  00         NOP
-01fc  00         NOP
-01fd  00         NOP
-01fe  00         NOP
-01ff  00         NOP
-0200  00         NOP
 
-????:
-0201  00         NOP
-????:
-0202  00         NOP
-0203  00         NOP
-0204  00         NOP
-0205  00         NOP
-0206  00         NOP
-0207  00         NOP
-0208  00         NOP
-0209  00         NOP
-020a  00         NOP
-????:
-020b  00         NOP
-020c  00         NOP
-020d  00         NOP
-020e  00         NOP
-020f  00         NOP
-0210  00         NOP
-????:
-0211  00         NOP
-0212  00         NOP
-0213  00         NOP
-0214  00         NOP
-0215  00         NOP
-0216  00         NOP
-0217  00         NOP
-0218  00         NOP
-0219  00         NOP
-021a  00         NOP
-021b  00         NOP
-021c  00         NOP
-021d  00         NOP
-021e  00         NOP
-021f  00         NOP
-0220  00         NOP
-0221  00         NOP
-0222  00         NOP
-????:
-0223  00         NOP
-0224  00         NOP
-0225  00         NOP
-0226  00         NOP
-0227  00         NOP
-0228  00         NOP
-0229  00         NOP
-????:
-022a  00         NOP
-????:
-022b  00         NOP
-022c  00         NOP
-????:
-022d  00         NOP
-022e  00         NOP
-????:
-022f  00         NOP
-0230  00         NOP
-????:
-0231  00         NOP
-0232  00         NOP
-????:
-0233  00         NOP
-0234  00         NOP
-0235  00         NOP
-0236  00         NOP
-????:
-0237  00         NOP
-0238  00         NOP
-????:
-0239  00         NOP
-????:
-023a  00         NOP
-????:
-023b  00         NOP
-023c  00         NOP
-023d  00         NOP
-023e  00         NOP
-023f  00         NOP
+    01f6  74 * 0x00  db 74 * 0x00               ; Garbage
+
 
 CURRENT_MAP:
     0240  00        db 0x00
@@ -617,28 +316,25 @@ CURRENT_MAP:
 MAP_RECORD_ADDR:
     0241  78 19     dw 1978 
 
-
 GAME_BUF:
     0243  0x640 * 0x00     ; 25 lines by 64 symbols each
 
 GAME_BUF_PTR:
     0883  43 02     db GAME_BUF (0243)
 
-????:
-0885  02         STAX BC
-
-BLOCK_TOP_LINE:
-    0886  05        db 0x05
-????:
-0887  05         DCR B
-????:
-0888  0a         LDAX BC
-????:
-0889  0b         DCX BC
-????:
+RECORD_BLOCK_TYPE:
+    0885  02        db 0x00
+RECORD_BLOCK_Y1:
+    0886  05        db 0x00
+RECORD_BLOCK_Y2:
+    0887  05        db 0x00
+RECORD_BLOCK_X1:
+    0888  0a        db 0x00
+RECORD_BLOCK_X2:
+    0889  0b        db 0x00
 
 BLOCK_TOP_LEFT_ADDR:
-    088a  8d 03     db 038d
+    088a  8d 03     dw 0x0000
 
 BLOCK_HEIGHT_COUNTER:
     088c  00        db 0x00
@@ -667,21 +363,24 @@ ZERO_GAME_BUF_LOOP:
     089e  c9         RET
 
 
-
-????:
+; Load map metadata
+;
+; Copy 13 bytes of the map metadata (player/enemy start position, exit location) to appropriate
+; game variables
+LOAD_MAP_METADATA:
     089f  2a 41 02   LHLD MAP_RECORD_ADDR (0241)   ; Load the last record
     08a2  23         INX HL
 
-    08a3  11 b1 08   LXI DE, MAP_MOBS (08b1)    ; Copy 13 bytes to 08b1 buffer ????
+    08a3  11 b1 08   LXI DE, MAP_MOBS (08b1)    ; Copy 13 bytes to variables at 08b1
     08a6  06 0d      MVI B, 0d
 
-????:
+LOAD_MAP_METADATA_LOOP:
     08a8  7e         MOV A, M
     08a9  12         STAX DE
     08aa  23         INX HL
     08ab  13         INX DE
     08ac  05         DCR B
-    08ad  c2 a8 08   JNZ 08a8
+    08ad  c2 a8 08   JNZ LOAD_MAP_METADATA_LOOP (08a8)
 
     08b0  c9         RET
 
@@ -701,8 +400,8 @@ ENEMY_3_START_POS:
 ENEMY_4_START_POS:
     08b9  00 00
 
-????:
-08bb  00         NOP
+NUM_ENEMIES:
+    08bb  00        db  0x00                    ; Number of enemies (1-4) or 0x00 for 1 enemy
 
 MAP_EXIT_POS:
     08bc  01 35 
@@ -902,7 +601,6 @@ PLAYER_ON_SURFACE:
     0979  ca 94 0a   JZ PLAYER_MOVE_DOWN (0a94)
 
     097c  c3 d3 0a   JMP PLAYER_MOVE_EXIT (0ad3)
-
 
 
 
@@ -1153,9 +851,9 @@ PLAYER_MOVE_EXIT:
 
 PLAYER_POS:
 PLAYER_POS_Y:
-    0ad4  15        db 0x15
+    0ad4  15        db 0x00
 PLAYER_POS_X:
-    0ad5  08        db 0x08
+    0ad5  08        db 0x00
 
 FALLING_CYCLE:
     0ad6  01        db 0x00
@@ -1164,21 +862,27 @@ PLAYER_IS_FALLING:
     0ad7  00        db 0x00
 
 PRESSED_KEY:
-    0ad8    3a      db 0x3a
+    0ad8    3a      db 0x00
 
 TREASURES_COUNT:
     0ad9  00        db 00
 
 
 
-
+; Game entry point (also used for loading a new level, or restarting the current one)
+;
+; Prepares the game for work:
+; - Zero needed buffers, reset variables
+; - Parse/load the map
+; - Initialize player position
+; - Initialize enemies
 GAME_START:
     0ada  af         XRA A                      ; Reset treasures counter
     0adb  32 d9 0a   STA TREASURES_COUNT (0ad9)
 
     0ade  cd 8e 08   CALL ZERO_GAME_BUF (088e)
     0ae1  cd 00 01   CALL DRAW_MAP (0100)
-    0ae4  cd 9f 08   CALL 089f                  ; ???? Copy 13 bytes from the map data to some block
+    0ae4  cd 9f 08   CALL LOAD_MAP_METADATA (089f)  ; Copy map metadata to game variables
 
     0ae7  3a b1 08   LDA PLAYER_START_Y (08b1)  ; Set initial player coordinates Y
     0aea  32 d4 0a   STA PLAYER_POS_Y (0ad4)
@@ -1189,6 +893,15 @@ GAME_START:
     0af3  cd 86 15   CALL RESET_BROKEN_BRICKS (1586); Zero the array of broken bricks
     0af6  cd 68 11   CALL INIT_ENEMY_POS (1168) ; Initialize enemies
 
+; Main game loop
+;
+; Runs all the main calculation for every game tick:
+; - Scans the keyboard for key presses
+; - Handle player and enemy moves (and falling)
+; - Handles game delay (speed)
+; - Handles arrows
+; - Handles blocks restoration
+; - Handles enemy and player death conditions
 GAME_LOOP:
     0af9  cd 1b f8   CALL MONITOR_SCAN_KBD (f81b)   ; Check if there is a keyboard press, store in 0ad8
     0afc  32 d8 0a   STA PRESSED_KEY (0ad8)
@@ -1512,10 +1225,10 @@ ENEMY_ON_SURFACE:
     0ed2  c3 eb 0e   JMP ENEMY_MOVE_RIGHT (0eeb)
 
 ENEMY_MOVE_LEFT_1:
-    0ed5  3a ad 0f   LDA 0fad                   ; Enemy will move in 3 of every 4 game ticks.
+    0ed5  3a ad 0f   LDA ENEMY_CYCLE (0fad)     ; Enemy will move in 3 of every 4 game ticks.
     0ed8  3c         INR A
     0ed9  e6 03      ANI A, 03
-    0edb  32 ad 0f   STA 0fad
+    0edb  32 ad 0f   STA ENEMY_CYCLE (0fad)
     0ede  c2 e2 0e   JNZ ENEMY_MOVE_STORE_POSITION (0ee2)
 
     0ee1  0c         INR C                      ; Enemy will not move every 4th tick
@@ -1562,10 +1275,10 @@ ENEMY_MOVE_RIGHT:
     0f18  c3 2b 0f   JMP ENEMY_MOVE_UP (0f2b)
 
 ENEMY_MOVE_RIGHT_1:
-    0f1b  3a ad 0f   LDA 0fad                   ; Enemy will move 3 of 4 game ticks
+    0f1b  3a ad 0f   LDA ENEMY_CYCLE (0fad)     ; Enemy will move 3 of 4 game ticks
     0f1e  3c         INR A
     0f1f  e6 03      ANI A, 03
-    0f21  32 ad 0f   STA 0fad
+    0f21  32 ad 0f   STA ENEMY_CYCLE (0fad)
     0f24  c2 e2 0e   JNZ ENEMY_MOVE_STORE_POSITION (0ee2)
 
     0f27  0d         DCR C                      ; Every 4th tick the enemy will not move
@@ -1609,10 +1322,10 @@ ENEMY_MOVE_UP:
     0f5c  c3 6f 0f   JMP ENEMY_MOVE_DOWN (0f6f)
 
 ENEMY_MOVE_UP_1:
-    0f5f  3a ad 0f   LDA 0fad                   ; Enemy can move 3 of 4 game ticks
+    0f5f  3a ad 0f   LDA ENEMY_CYCLE (0fad)     ; Enemy can move 3 of 4 game ticks
     0f62  3c         INR A
     0f63  e6 03      ANI A, 03
-    0f65  32 ad 0f   STA 0fad
+    0f65  32 ad 0f   STA ENEMY_CYCLE (0fad)
     0f68  c2 e2 0e   JNZ ENEMY_MOVE_STORE_POSITION (0ee2)
 
     0f6b  04         INR B                      ; Every 4th game tick the enemy is not moving
@@ -1649,10 +1362,10 @@ ENEMY_MOVE_DOWN:
     0f97  c3 a7 0f   JMP ENEMY_MOVE_EXIT (0fa7)
 
 ENEMY_MOVE_DOWN_1:
-    0f9a  3a ad 0f   LDA 0fad                   ; Enemy will move 3 of 4 game ticks
+    0f9a  3a ad 0f   LDA ENEMY_CYCLE (0fad)     ; Enemy will move 3 of 4 game ticks
     0f9d  3c         INR A
     0f9e  e6 03      ANI A, 03
-    0fa0  32 ad 0f   STA 0fad
+    0fa0  32 ad 0f   STA ENEMY_CYCLE (0fad)
     0fa3  c2 e2 0e   JNZ ENEMY_MOVE_STORE_POSITION (0ee2)
 
     0fa6  05         DCR B                      ; The enemy will stay every 4th game tick
@@ -1668,39 +1381,35 @@ PREV_ENEMY_POS:
 ENEMY_IS_FALLING:
     0fac  00        db 0x00
     
-????:
-0fad  02         STAX BC
-
+ENEMY_CYCLE:
+    0fad  02        db 0x00
 
 NEW_ENEMY_POS:
     0fae  05 08     dw 0x0000
 
 ENEMY_1_CUR_POS:
-    0fb0  05 00
+    0fb0  05 00     dw 0x0000
 
 ?????:
-    0fb2  00 02
+    0fb2  00 02     dw 0x0000
 
 ENEMY_2_CUR_POS:
-    0fb4  00 00
+    0fb4  00 00     dw 0x0000
 
 ????:
-0fb6  00
-0fb7  01
+    0fb6  00 01     dw 0x0000
 
 ENEMY_3_CUR_POS:
-    0fb8  00 00
+    0fb8  00 00     dw 0x0000
 
 ????:
-0fba  00         NOP
-0fbb  00         NOP
+    0fba  00 00     dw 0x0000
 
 ENEMY_4_CUR_POS:
-    0fbc  00 00
+    0fbc  00 00     dw 0x0000
 
 ????:
-0fbe  00         NOP
-0fbf  00         NOP
+    0fbe  00 00     dw 0x0000
 
 
 ; Disallow having several enemies at the same position
@@ -1818,7 +1527,12 @@ CHECK_ENEMY_SUNK_1:
     1038  c9         RET
 
 
-
+; Handle all enemies action
+;
+; The function runs the following actions for each enemy
+; - Enemy movement
+; - Check if enemy has died
+; - Enemy respawn handling
 HANDLE_ENEMIES:
     1039  2a b0 0f   LHLD ENEMY_1_CUR_POS (0fb0); Start with enemy 1, copy its position to prev/new pos vars
     103c  22 aa 0f   SHLD PREV_ENEMY_POS (0faa)
@@ -1855,12 +1569,12 @@ ENEMY_1_ALIVE:
     1073  2a ae 0f   LHLD NEW_ENEMY_POS (0fae)
     1076  22 b0 0f   SHLD ENEMY_1_CUR_POS (0fb0)
 
-    1079  2a ac 0f   LHLD 0fac
+    1079  2a ac 0f   LHLD 0fac                  ; ?????
     107c  22 b2 0f   SHLD ????????? (0fb2)
 
 
 HANDLE_ENEMY_2:
-    107f  3a bb 08   LDA 08bb                   ; Check if we have enemy #2 on the map
+    107f  3a bb 08   LDA NUM_ENEMIES (08bb)         ; Check if we have enemy #2 on the map
     1082  fe 02      CPI A, 02
     1084  d8         RC
 
@@ -1904,7 +1618,7 @@ ENEMY_2_ALIVE:
     10c8  22 b6 0f   SHLD 0fb6
 
 HANDLE_ENEMY_3:
-    10cb  3a bb 08   LDA 08bb                   ; Check if enemy #3 exists on the map
+    10cb  3a bb 08   LDA NUM_ENEMIES (08bb)     ; Check if enemy #3 exists on the map
     10ce  fe 03      CPI A, 03
     10d0  d8         RC
 
@@ -1948,7 +1662,7 @@ ENEMY_3_ALIVE:
     1114  22 ba 0f   SHLD 0fba
 
 HANDLE_ENEMY_4:
-    1117  3a bb 08   LDA 08bb                   ; Check if there is Enemy #4 on the map
+    1117  3a bb 08   LDA NUM_ENEMIES (08bb)     ; Check if there is Enemy #4 on the map
     111a  fe 04      CPI A, 04
     111c  d8         RC
 
@@ -1966,7 +1680,7 @@ HANDLE_ENEMY_4:
     1133  3c         INR A                      ; Increment the enemy #4 respawn timer
     1134  32 67 11   STA ENEMY_4_RESPAWN_TIMER (1167)
 
-    1137  c3 63 11   JMP 1163
+    1137  c3 63 11   JMP HANDLE_ENEMIES_EXIT (1163)
 
 ENEMY_4_DO_ACTIONS:
     113a  cd 4a 0e   CALL HANDLE_ENEMY_MOVE (0e4a)  ; Do the enemy stuff
@@ -1982,7 +1696,7 @@ ENEMY_4_DO_ACTIONS:
     114e  2a b9 08   LHLD ENEMY_4_START_POS (08b9)  ; Prepare enemy #4 position after respawn
     1151  22 bc 0f   SHLD ENEMY_4_CUR_POS (0fbc)
 
-    1154  c3 63 11   JMP 1163
+    1154  c3 63 11   JMP HANDLE_ENEMIES_EXIT (1163)
 
 ENEMY_4_ALIVE:
     1157  2a ae 0f   LHLD NEW_ENEMY_POS (0fae)  ; Store the new position
@@ -1991,7 +1705,7 @@ ENEMY_4_ALIVE:
     115d  2a ac 0f   LHLD 0fac                  ; ????
     1160  22 be 0f   SHLD 0fbe
 
-????:
+HANDLE_ENEMIES_EXIT:
     1163  c9         RET
 
 
@@ -2006,7 +1720,7 @@ ENEMY_4_RESPAWN_TIMER:
     1167  00        db 00
 
 
-
+; Init enemies positions based on the map data
 INIT_ENEMY_POS:
     1168  2a b3 08   LHLD ENEMY_1_START_POS (08b3)  ; Initialize 1st enemy coordinate
     116b  22 b0 0f   SHLD ENEMY_1_CUR_POS (0fb0)
@@ -2023,6 +1737,7 @@ INIT_ENEMY_POS:
     1180  c9         RET
 
 
+; Compare player's position with every enemy position in order to detect player's death
 CHECK_PLAYER_MEETS_ENEMY:
     1181  2a d4 0a   LHLD PLAYER_POS (0ad4)         ; Compare player's position and enemy 1 position
     1184  eb         XCHG
@@ -2043,7 +1758,7 @@ CHECK_PLAYER_MEETS_ENEMY_1:
     119b  95         SUB L
     119c  ca be 11   JZ PLAYER_CAUGHT_BY_ENEMY (11be)
 
-CHECK_PLAYER_MEETS_ENEMY_2:
+CHECK_PLAYER_MEETS_ENEMY_2:                         ; Check for enemy 3
     119f  2a b8 0f   LHLD ENEMY_3_CUR_POS (0fb8)
     11a2  7a         MOV A, D
     11a3  94         SUB H
@@ -2053,7 +1768,7 @@ CHECK_PLAYER_MEETS_ENEMY_2:
     11a9  ca be 11   JZ PLAYER_CAUGHT_BY_ENEMY (11be)
 
 CHECK_PLAYER_MEETS_ENEMY_3:
-    11ac  2a bc 0f   LHLD ENEMY_4_CUR_POS (0fbc)
+    11ac  2a bc 0f   LHLD ENEMY_4_CUR_POS (0fbc)    ; Check for enemy 4
     11af  7a         MOV A, D
     11b0  94         SUB H
     11b1  c2 b9 11   JNZ CHECK_PLAYER_MEETS_ENEMY_4 (11b9)
@@ -2163,21 +1878,28 @@ BRICK_SLOT_INDEX:
 
 
 BROKEN_BRICKS_ARRAY:
-    120f  400 * 0x00                            ; An array of 4-byte records, for tracking broken bricks    
+    120f  400 * 0x00                            ; An array of 4-byte records, for tracking broken bricks
+                                                ; Format of every record:
+                                                ; 1 byte - flag that slot is busy
+                                                ; 1 byte - remaining ticks until the block is restored
+                                                ; 2 byte - block screen coordinate  
 
 
 
-139f  00         NOP
-13a0  00         NOP
-13a1  00         NOP
-13a2  00         NOP
+    139f  4 * 00     db 0x00                     ; Garbage/spacer
+
 
 FLYING_ARROW_COUNTER:
-    13a3  00         NOP
+    13a3  00         db 0x00                    ; Tick counter to slightly slow down arrow speed
 
 
-
-
+; Restore broken blocks over time
+;
+; This function iterates over the broken blocks list and processes each record as follows:
+; - If the block was damaged with an arrow, but not destroyed, restoration happens using
+;   0x0d->0x0c->0x0b block types (these blocking moves)
+; - If the block was totally destroyed, the block restoration path is 0x0e->0x0f->0x10->0x0b
+;   (partially restored bricks are non blocking, and allow moves through them)
 UPDATE_BRICKS:
     13a4  af         XRA A                      ; Iterate over broken bricks array
     13a5  32 0e 12   STA BRICK_SLOT_INDEX (120e)
@@ -2212,20 +1934,20 @@ UPDATE_SINGLE_BRICK:
     13cb  3d         DCR A                      ; Decrement the counter
     13cc  47         MOV B, A
 
-    13cd  3a a3 13   LDA FLYING_ARROW_COUNTER (13a3)
+    13cd  3a a3 13   LDA FLYING_ARROW_COUNTER (13a3); Slow down block restoration if an error is flying???
     13d0  e6 07      ANI A, 07
     13d2  78         MOV A, B
-    13d3  ca d7 13   JZ 13d7
+    13d3  ca d7 13   JZ UPDATE_SINGLE_BRICK_1 (13d7)
 
-    13d6  3c         INR A
+    13d6  3c         INR A                      ; Revert the counter change
 
-????:
+UPDATE_SINGLE_BRICK_1:
     13d7  77         MOV M, A
 
     13d8  b7         ORA A
-    13d9  fa 31 14   JM 1431
+    13d9  fa 31 14   JM RESTORE_BRICK_4 (1431)
 
-    13dc  c2 f4 13   JNZ 13f4
+    13dc  c2 f4 13   JNZ RESTORE_BRICK_1 (13f4)
 
 
 RESTORE_BRICK:
@@ -2247,9 +1969,9 @@ RESTORE_BRICK:
     13f1  c3 b0 13   JMP UPDATE_BRICKS_NEXT (13b0)
 
 
-????:
+RESTORE_BRICK_1:
     13f4  fe 1e      CPI A, 1e
-    13f6  d2 09 14   JNC 1409
+    13f6  d2 09 14   JNC RESTORE_BRICK_2 (1409)
 
     13f9  23         INX HL                     ; Load the brick coordinate to BC
     13fa  46         MOV B, M
@@ -2264,9 +1986,9 @@ RESTORE_BRICK:
     1406  c3 b0 13   JMP UPDATE_BRICKS_NEXT (13b0)
 
 
-????:
+RESTORE_BRICK_2:
     1409  fe 3c      CPI A, 3c
-    140b  d2 1e 14   JNC 141e
+    140b  d2 1e 14   JNC RESTORE_BRICK_3 (141e)
 
     140e  23         INX HL                     ; Load the brick coordinate to BC
     140f  46         MOV B, M
@@ -2281,7 +2003,7 @@ RESTORE_BRICK:
     141b  c3 b0 13   JMP UPDATE_BRICKS_NEXT (13b0)  ; Move to the next record
 
 
-????:
+RESTORE_BRICK_3:
     141e  f6 80      ORI A, 80                  ; Block is destroyed. Set the MSB to indicate it will be
     1420  77         MOV M, A                   ; restored over time
 
@@ -2297,12 +2019,12 @@ RESTORE_BRICK:
 
     142e  c3 b0 13   JMP UPDATE_BRICKS_NEXT (13b0)  ; Move to the next slot
 
-????:
+RESTORE_BRICK_4:
     1431  e6 7f      ANI A, 7f                  ; Check if the block restoration timer is completed
     1433  ca df 13   JZ RESTORE_BRICK (13df)
 
-    1436  fe 1e      CPI A, 1e                  ; ?????
-    1438  d2 4b 14   JNC 144b
+    1436  fe 1e      CPI A, 1e                  ; 30 game ticks for block restoration
+    1438  d2 4b 14   JNC RESTORE_BRICK_5 (144b)
 
     143b  23         INX HL                     ; Get the block coordinate to BC
     143c  46         MOV B, M
@@ -2316,9 +2038,9 @@ RESTORE_BRICK:
 
     1448  c3 b0 13   JMP UPDATE_BRICKS_NEXT (13b0)
 
-????:
-    144b  fe 3c      CPI A, 3c
-    144d  d2 1e 14   JNC 141e
+RESTORE_BRICK_5:
+    144b  fe 3c      CPI A, 3c                  ; 30 game ticks until the block is partially restored
+    144d  d2 1e 14   JNC RESTORE_BRICK_3 (141e)
 
     1450  23         INX HL                     ; Load the brick coordinate to BC
     1451  46         MOV B, M
@@ -2342,20 +2064,22 @@ RESTORE_BRICK:
 ;
 ; Found slot indes is returned at BRICK_SLOT_INDEX (0x120e)
 ;
-; A = 0
-; while A < 100:
-;     if arr[A].f1 != 0:
-;         if arr[A].ptr == BC:
-;             return
-;     A++
+; The function algorithm is
 ;
-;  A = 0       
-;  while A < 100:
-;      if arr[A].f1 == 0:
-;          arr[A].f1 += 1
-;          arr[A].ptr = BC
-;          return
-;      A++
+; i = 0     
+; while i < 100:
+;     if blocks_array[i].occupied:
+;         if blocks_array[i].ptr == BC:
+;             return i
+;     i++
+;
+;  i = 0       
+;  while i < 100:
+;      if not blocks_array[A].occupied:
+;          blocks_array[A].occupied = True
+;          blocks_array[A].ptr = BC
+;          return i
+;      i++
 ;
 SEARCH_BRICK_SLOT:
     1460  f5         PUSH PSW
@@ -2442,9 +2166,11 @@ ACQUIRE_BRICK_SLOT:
 
 
 
-
-
-
+; Handle flying arrows
+;
+; The functions moves the flying arrow left or right until it reaches a concrete, or a brick.
+; In case of the brick the function partially damages the brick, by increasing its restoration
+; counter (which in turn will be drawn differently by the UPDATE_BRICKS function)
 HANDLE_ARROW_MOVE:
     14b1  3a 9c 15   LDA ARROW_FLYING_LEFT (159c)   ; Check if an arrow is flying left
     14b4  b7         ORA A
@@ -2503,11 +2229,11 @@ HANDLE_ARROW_BRICK:
     14fe  23         INX HL
     14ff  7e         MOV A, M
 
-    1500  c6 1e      ADI A, 1e                      ; Increase the hit counter ?????
+    1500  c6 1e      ADI A, 1e                      ; Increase the block restoration counter
     1502  fe 3b      CPI A, 3b
     1504  da 09 15   JC HANDLE_ARROW_BRICK_1 (1509)
 
-    1507  3e 7f      MVI A, 7f
+    1507  3e 7f      MVI A, 7f                      ; If the hit count is too bit - destroy the block completely
 
 HANDLE_ARROW_BRICK_1:
     1509  77         MOV M, A                       ; Store the brick record counter
@@ -2558,7 +2284,9 @@ HANDLE_RIGHT_ARROW_BRICK_1:
 
 
 
-
+; Handle arrow throws
+;
+; This function generate a flying arrows when the User presses Q or ^ keys.
 HANDLE_ARROWS:
     1546  3a d8 0a   LDA PRESSED_KEY (0ad8)
 
@@ -2592,7 +2320,7 @@ HANDLE_ARROWS_1:
 
 HANDLE_ARROWS_2:
     1578  cd b1 14   CALL HANDLE_ARROW_MOVE (14b1)
-157b  cd a4 13   CALL 13a4
+    157b  cd a4 13   CALL UPDATE_BRICKS (13a4)
 
     157e  3a a3 13   LDA FLYING_ARROW_COUNTER (13a3); Increment the flying arrow counter
     1581  3c         INR A
@@ -2601,7 +2329,7 @@ HANDLE_ARROWS_2:
     1585  c9         RET
 
 
-
+; Reset the brocken bricks array
 RESET_BROKEN_BRICKS:
     1586  af         XRA A                      ; Reset "arrow is flying" flags
     1587  32 9b 15   STA ARROW_FLYING_RIGHT (159b)
@@ -2634,6 +2362,10 @@ ARROW_RIGHT_POS:
     159f 0b 14       dw 0000                     
 
 
+; Just a game delay
+;
+; Executed after the each game tick, and used to manage the speed of the game.
+; This function also handles 0-9 keys to modify the game speed.
 GAME_DELAY:
     15a1  3a d8 0a   LDA PRESSED_KEY (0ad8)     ; Check if the user has changed the speed (pressed 0-9 btns)
     
@@ -2667,7 +2399,12 @@ GAME_DELAY_VALUE:
     15c6  29         DAD HL
 
 
-
+; Check the map exit conditions:
+; 
+; Conditions are:
+; - User has pressed '.' key to bump the map index
+; - User has pressed ':' key to exit the game
+; - Player has reached the end of the map
 CHECK_MAP_EXIT:
     15c7  3a d8 0a   LDA PRESSED_KEY (0ad8)
 
@@ -2714,7 +2451,9 @@ GO_NEXT_MAP_1:
     1604  c9         RET
 
 
-
+; Game entry function
+;
+; The function displays the welcome message, and runs the first map
 REAL_START:
     1605  01 da 0a   LXI BC, GAME_START (0ada)  ; Set the return address where to go after the welcome screen
     1608  c5         PUSH BC
@@ -2786,19 +2525,10 @@ HANDLE_TREASURE:
     18a6  c9         RET
 
 
+    18a7  9 * 00        db 00                   ; Spacer
 
 
 
-
-18a7  00         NOP
-18a8  00         NOP
-18a9  00         NOP
-18aa  00         NOP
-18ab  00         NOP
-18ac  00         NOP
-18ad  00         NOP
-18ae  00         NOP
-18af  00         NOP
 
 ; Format:
 ;
@@ -2860,8 +2590,8 @@ MAP_01:
     1973  02 03 05 0a 0b 
     1978  00                            ; Marker
     
-    1979  0f 04                         ; Player start address (Y,X)
-    197b  01 2e                         ; Enemy 1 start address (Y,X)
+    1979  0f 04                         ; Player start position (Y,X)
+    197b  01 2e                         ; Enemy 1 start position (Y,X)
     197d  00 00                         ; No enemy 2
     197f  00 00                         ; No enemy 3
     1981  00 00                         ; No enemy 4
@@ -2942,9 +2672,8 @@ MAP_03:
     1ab9  02                                    ; Number of enemies
     1aba  01 3a                                 ; Exit location
 
-1abc  00
-1abd  00         NOP
-1abe  00         NOP
+
+    2abc  3 * 00        db 00                   ; Spacer
 
 
 MAP_04:
@@ -3004,11 +2733,11 @@ MAP_04:
     1bc8  07 15 15 36 39
     1bcd  02 01 15 3a 3a
     1bd2  00
-    1bd3  15 06                                 
-    1bd5  01 0a
-    1bd7  01 34
-    1bd9  00 00
-    1bdb  00 00
+    1bd3  15 06                                 ; Player start position                                 
+    1bd5  01 0a                                 ; Enemy 1 start position
+    1bd7  01 34                                 ; Enemy 2 start position
+    1bd9  00 00                                 ; No enemy 3
+    1bdb  00 00                                 ; No enemy 4
     1bdd  02                                    ; Number of enemies 
     1bde  01 3a                                 ; Exit location
 
@@ -3117,11 +2846,11 @@ MAP_05:
     1dd4  01 04 05 32 33
     1dd9  0e 07 07 34 35
     1dde  00
-    1ddf  15 04
-    1de1  04 16
-    1de3  07 34
-    1de5  00 00
-    1de7  00 00
+    1ddf  15 04                                 ; Player start position
+    1de1  04 16                                 ; Enemy 1 start position
+    1de3  07 34                                 ; Enemy 2 start position
+    1de5  00 00                                 ; No Enemy 3
+    1de7  00 00                                 ; No Enemy 4
     1de9  02                                    ; Number of enemies 
     1dea  01 3a                                 ; Exit location
 
@@ -3222,11 +2951,11 @@ MAP_06:
     1fb8  02 13 13 3a 3b
     1fbd  02 15 15 3a 3b
     1fc2  00
-    1fc3  15 04
-    1fc5  00 07
-    1fc7  00 38
-    1fc9  00 00
-    1fcb  00 00
+    1fc3  15 04                                 ; Player start position
+    1fc5  00 07                                 ; Enemy 1 start position
+    1fc7  00 38                                 ; Enemy 2 start position
+    1fc9  00 00                                 ; No enemy 3
+    1fcb  00 00                                 ; No enemy 4
     1fcd  02                                    ; Number of enemies 
     1fce  01 20                                 ; Exit location
 
@@ -3322,62 +3051,18 @@ MAP_07:
     2183  0a 15 15 3a 3a
     2188  02 01 15 3c 3c
     218d  00
-    218e  05 04
-    2190  00 11
-    2192  00 2e
-    2194  00 00
-    2196  00 00
+    218e  05 04                                 ; Player start position
+    2190  00 11                                 ; Enemy 1 start position
+    2192  00 2e                                 ; Enemy 2 start position
+    2194  00 00                                 ; No enemy 3
+    2196  00 00                                 ; No enemy 4
     2198  02                                    ; Number of enemies 
     219a  01 3c                                 ; Exit location
 
 
 
+    219b  45 * 00       db 00                   ; Spacer
 
-219b  00
-219c  00         NOP
-219d  00         NOP
-219e  00         NOP
-219f  00         NOP
-21a0  00         NOP
-21a1  00         NOP
-21a2  00         NOP
-21a3  00         NOP
-21a4  00         NOP
-21a5  00         NOP
-21a6  00         NOP
-21a7  00         NOP
-21a8  00         NOP
-21a9  00         NOP
-21aa  00         NOP
-21ab  00         NOP
-21ac  00         NOP
-21ad  00         NOP
-21ae  00         NOP
-21af  00         NOP
-21b0  00         NOP
-21b1  00         NOP
-21b2  00         NOP
-21b3  00         NOP
-21b4  00         NOP
-21b5  00         NOP
-21b6  00         NOP
-21b7  00         NOP
-21b8  00         NOP
-21b9  00         NOP
-21ba  00         NOP
-21bb  00         NOP
-21bc  00         NOP
-21bd  00         NOP
-21be  00         NOP
-21bf  00         NOP
-21c0  00         NOP
-21c1  00         NOP
-21c2  00         NOP
-21c3  00         NOP
-21c4  00         NOP
-21c5  00         NOP
-21c6  00         NOP
-21c7  00         NOP
 
 
 MAP_08:
@@ -3411,11 +3096,11 @@ MAP_08:
     224f  02 01 10 3c 3c
     2254  06 0a 0a 2e 33
     2259  00
-    225a  15 16
-    225c  00 14
-    225e  00 2d
-    2260  00 00
-    2262  00 00
+    225a  15 16                                 ; Player start position
+    225c  00 14                                 ; Enemy 1 start position
+    225e  00 2d                                 ; Enemy 2 start position
+    2260  00 00                                 ; No enemy 3
+    2262  00 00                                 ; No enemy 4
     2264  02                                    ; Number of enemies 
     2265  01 3c                                 ; Exit location
 
@@ -3524,11 +3209,11 @@ MAP_09:
     245b  0b 13 13 32 33
     2460  0b 10 10 26 27
     2465  00
-    2466  15 04
-    2468  07 25
-    246a  14 1e
-    246c  00 00
-    246e  00 00
+    2466  15 04                                 ; Player start position
+    2468  07 25                                 ; Enemy 1 start position
+    246a  14 1e                                 ; Enemy 2 start position
+    246c  00 00                                 ; No enemy 3
+    246e  00 00                                 ; No enemy 4
     2470  02                                    ; Number of enemies 
     2471  01 3a                                 ; Exit location
 
@@ -3610,23 +3295,16 @@ MAP_10:
     25e0  18 11 11 32 35
     25e5  18 12 12 34 37
     25ea  00
-    25eb  15 06
-    25ed  00 1a
-    25ef  00 28
-    25f1  00 00
-    25f3  00 00
+    25eb  15 06                                 ; Player start position
+    25ed  00 1a                                 ; Enemy 1 start position
+    25ef  00 28                                 ; Enemy 2 start position
+    25f1  00 00                                 ; No enemy 3
+    25f3  00 00                                 ; No enemy 4
     25f5  02                                    ; Number of enemies 
     25f6  01 39                                 ; Exit location
 
 
-25f8  00
-25f9  00         NOP
-25fa  00         NOP
-25fb  00         NOP
-25fc  00         NOP
-25fd  00         NOP
-25fe  00         NOP
-25ff  00         NOP
+    25f8  8 * 00        db 00                   ; Spacer
 
 
 MAP_11:
@@ -3731,29 +3409,17 @@ MAP_11:
     27ea  07 04 04 3a 3b
     27ef  08 04 04 16 16
     27f4  00
-    27f5  01 04
-    27f7  01 1e
-    27f9  00 00
-    27fb  00 00
-    27fd  00 00
+    27f5  01 04                                 ; Player start position
+    27f7  01 1e                                 ; Enemy 1 start position
+    27f9  00 00                                 ; No enemy 2
+    27fb  00 00                                 ; No enemy 3
+    27fd  00 00                                 ; No enemy 4
     27ff  01                                    ; Number of enemies 
     2800  00 39                                 ; Exit location
 
 
-2802  00         NOP
-2803  00         NOP
-2804  00         NOP
-2805  00         NOP
-2806  00         NOP
-2807  00         NOP
-2808  00         NOP
-2809  00         NOP
-280a  00         NOP
-280b  00         NOP
-280c  00         NOP
-280d  00         NOP
-280e  00         NOP
-280f  00         NOP
+
+    2802  14 * 00       db 00                   ; Spacer
 
 
 MAP_12:
@@ -3843,25 +3509,17 @@ MAP_12:
     29af  07 02 02 1c 1d
     29b4  08 09 09 09 09
     29b9  00
-    29ba  10 04
-    29bc  01 0b
-    29be  00 00
-    29c0  00 00
-    29c2  00 00
+    29ba  10 04                                 ; Player start position
+    29bc  01 0b                                 ; Enemy 1 start position
+    29be  00 00                                 ; No enemy 2
+    29c0  00 00                                 ; No enemy 3
+    29c2  00 00                                 ; No enemy 4
     29c4  01                                    ; Number of enemies 
     29c5  00 09                                 ; Exit location
 
 
+    29c7  9 * 00        db 00                   ; Spacer
 
-29c7  00         NOP
-29c8  00         NOP
-29c9  00         NOP
-29ca  00         NOP
-29cb  00         NOP
-29cc  00         NOP
-29cd  00         NOP
-29ce  00         NOP
-29cf  00         NOP
 
 
 MAP_13:
@@ -3907,20 +3565,16 @@ MAP_13:
     2a93  02 08 14 1e 1f
     2a98  08 14 14 1c 1c
     2a9d  00
-    2a9e  14 07
-    2aa0  12 1c
-    2aa2  12 21
-    2aa4  00 00
-    2aa6  00 00
+    2a9e  14 07                                 ; Player start position
+    2aa0  12 1c                                 ; Enemy 1 start position
+    2aa2  12 21                                 ; Enemy 2 start position
+    2aa4  00 00                                 ; No enemy 3
+    2aa6  00 00                                 ; No enemy 4
     2aa8  02                                    ; Number of enemies 
     2aa9  00 39                                 ; Exit location
 
 
-2aab  00         NOP
-2aac  00         NOP
-2aad  00         NOP
-2aae  00         NOP
-2aaf  00         NOP
+    2aab  5 * 00        db 00                   ; Spacer
 
 
 MAP_14:
@@ -4001,21 +3655,16 @@ MAP_14:
     2c22  03 0f 0f 16 16
     2c27  04 0f 0f 2b 2b
     2c2c  00
-    2c2d  14 04
-    2c2f  01 14
-    2c31  01 2d
-    2c33  00 00
-    2c35  00 00
+    2c2d  14 04                                 ; Player start position
+    2c2f  01 14                                 ; Enemy 1 start position
+    2c31  01 2d                                 ; Enemy 2 start position
+    2c33  00 00                                 ; No enemy 3
+    2c35  00 00                                 ; No enemy 4
     2c37  02                                    ; Number of enemies 
     2c38  00 3b                                 ; Exit location
 
 
-2c3a  00         NOP
-2c3b  00         NOP
-2c3c  00         NOP
-2c3d  00         NOP
-2c3e  00         NOP
-2c3f  00         NOP
+    2c3a  6 * 00        db 00                   ; Spacer
 
 
 
@@ -4065,22 +3714,17 @@ MAP_15:
     2d12  0e 05 05 20 21
     2d17  08 09 09 23 23
     2d1c  00
-    2d1d  14 04
-    2d1f  01 1c
-    2d21  01 25
-    2d23  00 00
-    2d25  00 00
+    2d1d  14 04                                 ; Player start position
+    2d1f  01 1c                                 ; Enemy 1 start position
+    2d21  01 25                                 ; Enemy 2 start position
+    2d23  00 00                                 ; No enemy 3
+    2d25  00 00                                 ; No enemy 4
     2d27  02                                    ; Number of enemies 
     2d28  00 3b                                 ; Exit location
 
 
 
-2d2a  00         NOP
-2d2b  00         NOP
-2d2c  00         NOP
-2d2d  00         NOP
-2d2e  00         NOP
-2d2f  00         NOP
+    2d2a  6 * 00        db 00                   ; Spacer
 
 
 
@@ -4140,20 +3784,17 @@ MAP_16:
     2e34  01 01 01 20 21
     2e39  01 01 01 24 3a
     2e3e  00
-    2e3f  02 02
-    2e41  01 1f
-    2e43  01 22
-    2e45  00 00
-    2e47  00 00
+    2e3f  02 02                                 ; Player start position
+    2e41  01 1f                                 ; Enemy 1 start position
+    2e43  01 22                                 ; Enemy 2 start position
+    2e45  00 00                                 ; No enemy 3
+    2e47  00 00                                 ; No enemy 4
     2e49  02                                    ; Number of enemies 
     2e4a  00 3d                                 ; Exit location
 
 
 
-2e4c  00         NOP
-2e4d  00         NOP
-2e4e  00         NOP
-2e4f  00         NOP
+    2e4c  4 * 00        db 0x00                 ; Spacer
 
 
 
@@ -4224,30 +3865,17 @@ MAP_17:
     2f8b  07 13 13 22 23
     2f90  08 11 11 1e 1e
     2f95  00
-    2f96  15 04
-    2f98  01 1a
-    2f9a  01 27
-    2f9c  00 00
-    2f9e  00 00
+    2f96  15 04                                 ; Player start position
+    2f98  01 1a                                 ; Enemy 1 start position
+    2f9a  01 27                                 ; Enemy 2 start position
+    2f9c  00 00                                 ; No enemy 3
+    2f9e  00 00                                 ; No enemy 4
     2fa0  02                                    ; Number of enemies 
     2fa1  00 3b                                 ; Exit location
 
 
 
-2fa3  00         NOP
-2fa4  00         NOP
-2fa5  00         NOP
-2fa6  00         NOP
-2fa7  00         NOP
-2fa8  00         NOP
-2fa9  00         NOP
-2faa  00         NOP
-2fab  00         NOP
-2fac  00         NOP
-2fad  00         NOP
-2fae  00         NOP
-2faf  00         NOP
-
+    2fa3  13 * 00       db 0x00                 ; Spacer
 
 
 MAP_18:
@@ -4382,23 +4010,16 @@ MAP_18:
     3230  03 12 12 32 33
     3235  09 02 02 33 33
     323a  00
-    323b  15 06
-    323d  00 11
-    323f  00 34
-    3241  00 00
-    3243  00 00
+    323b  15 06                                 ; Player start position
+    323d  00 11                                 ; Enemy 1 start position
+    323f  00 34                                 ; Enemy 2 start position
+    3241  00 00                                 ; No enemy 3
+    3243  00 00                                 ; No enemy 4
     3245  02                                    ; Number of enemies 
     3246  00 0e                                 ; Exit location
 
 
-3248  00
-3249  00         NOP
-324a  00         NOP
-324b  00         NOP
-324c  00         NOP
-324d  00         NOP
-324e  00         NOP
-324f  00         NOP
+    3248  8 * 00        db 0x00                 ; Spacer
 
 
 MAP_19:
@@ -4449,24 +4070,13 @@ MAP_19:
     332c  01 01 01 06 1f
     3331  01 01 01 21 3b
     3336  00
-    3337  15 20
-    3339  02 18
-    333b  02 29
-    333d  00 00
-    333f  00 00
+    3337  15 20                                 ; Player start position
+    3339  02 18                                 ; Enemy 1 start position
+    333b  02 29                                 ; Enemy 2 start position
+    333d  00 00                                 ; No enemy 3
+    333f  00 00                                 ; No enemy 4
     3341  02                                    ; Number of enemies 
     3342  00 20                                 ; Exit location
 
 
-3344  00         NOP
-3345  00         NOP
-3346  00         NOP
-3347  00         NOP
-3348  00         NOP
-3349  00         NOP
-334a  00         NOP
-334b  00         NOP
-334c  00         NOP
-334d  00         NOP
-334e  00         NOP
-334f  00         NOP
+    3344  12 * 00         db 00                 ; Spacer
