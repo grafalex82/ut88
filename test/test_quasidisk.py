@@ -6,10 +6,10 @@ import sys
 
 sys.path.append('../src')
 
-from machine import Machine
+from machine import UT88Machine
 from utils import *
 from quasidisk import QuasiDisk
-
+from ram import RAM
 
 @pytest.fixture
 def diskfile(tmp_path):
@@ -134,3 +134,41 @@ def test_read_data(diskfile):
     assert data[64*1024  + 0x2345] == 0x34
     assert data[128*1024 + 0x3456] == 0x56
     assert data[192*1024 + 0x4567] == 0x78
+
+
+@pytest.fixture
+def ut88(quasidisk):
+    machine = UT88Machine()
+    machine.set_quasi_disk(quasidisk)
+    machine.set_strict_validation(True)
+    return machine
+
+def test_read_write_via_machine(ut88):
+    # Enable quasi disk
+    ut88.write_io(0x40, 0xfe)
+    ut88.write_stack(0xbeef, 0x42)
+
+    assert ut88.read_stack(0xbeef) == 0x42
+
+
+def test_machine_disk_not_selected(ut88):
+    # Quasidisk is not selected via port 0x40
+
+    with pytest.raises(MemoryError):
+        ut88.write_stack(0xbeef, 0x42)
+
+    with pytest.raises(MemoryError):
+        ut88.read_stack(0xbeef)
+
+def test_select_between_disk_and_memory(ut88):
+    ut88.add_memory(RAM(0x0000, 0xffff))
+
+    # Write RAM, read QuasiDisk
+    ut88.write_io(0x40, 0xff)
+    ut88.write_stack(0xbeef, 0x1234)            # RAM write
+    ut88.write_io(0x40, 0xfe)
+    ut88.write_stack(0xbeef, 0x4321)            # Quasi Disk write
+
+    assert ut88.read_stack(0xbeef) == 0x4321    # Quasi disk read
+    ut88.write_io(0x40, 0xff)
+    assert ut88.read_stack(0xbeef) == 0x1234    # RAM read
