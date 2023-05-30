@@ -106,3 +106,18 @@ def test_put_char_new_line(cpm):
     put_char(cpm, 0x0a)
     assert cpm.get_word(0xf7b2) == 0xe840
 
+def test_put_char_cursor_movements(cpm):
+    # Start at the top-left position
+    assert cpm.get_word(0xf7b2) == 0xe800
+
+    print_string(cpm, "\x1bB")  # Esc-B - move cursor down
+    assert cpm.get_word(0xf7b2) == 0xe840
+
+    print_string(cpm, "\x1bC")  # Esc-C - move cursor right
+    assert cpm.get_word(0xf7b2) == 0xe841
+
+    print_string(cpm, "\x1bA")  # Esc-A - move cursor up
+    assert cpm.get_word(0xf7b2) == 0xe801
+
+    print_string(cpm, "\x1bD")  # Esc-D - move cursor left
+    assert cpm.get_word(0xf7b2) == 0xe800
