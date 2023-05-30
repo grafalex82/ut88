@@ -1,14 +1,24 @@
-    da00  c3 80 da   JMP da80
-????:
-    da03  c3 9e da   JMP da9e
+; CP/M-64 Basic Input/Output System (BIOS)
+;
+; This code is loaded to the 0xda00-0xdbff by CP/M initial bootloader, and initially is located at
+; 0x4a00-0x4bff address range of the CP/M binary.
+;
+; Important variables:
+; 0x0003    - ????
+; 0x0004    - ????
+; 0xdbf1    - Current disk number
+
+ENTRY_POINTS:
+    da00  c3 80 da   JMP COLD_BOOT (da80)           # Cold boot
+    da03  c3 9e da   JMP WARM_BOOT (da9e)           # Warm boot
     da06  c3 12 f8   JMP f812
     da09  c3 03 f8   JMP f803
     da0c  c3 00 f5   JMP f500
-    da0f  c3 09 f8   JMP f809
+    da0f  c3 09 f8   JMP MONITOR_PUT_CHAR (f809)    # Console output
     da12  c3 0c f8   JMP f80c
     da15  c3 06 f8   JMP f806
     da18  c3 0c db   JMP db0c
-    da1b  c3 11 db   JMP db11
+    da1b  c3 11 db   JMP SELECT_DISK (db11)         # Select current disk
     da1e  c3 2a db   JMP db2a
     da21  c3 5e db   JMP db5e
     da24  c3 6d db   JMP db6d
@@ -16,7 +26,8 @@
     da2a  c3 9e db   JMP db9e
     da2d  c3 09 db   JMP db09
     da30  c3 63 db   JMP db63
-????:
+
+DISK_DESCRIPTION:
     da33  43         MOV B, E
     da34  da 00 00   JC 0000
     da37  00         NOP
@@ -47,60 +58,46 @@
     da56  08         db 08
     da57  00         NOP
     da58  06 00      MVI B, 00
-????:
-    da5a  1f         RAR
-    da5b  0a         LDAX BC
-    da5c  20         db 20
-    da5d  43         MOV B, E
-    da5e  50         MOV D, B
-    da5f  4d         MOV C, L
-    da60  20         db 20
-    da61  56         MOV D, M
-    da62  20         db 20
-    da63  2d         DCR L
-    da64  20         db 20
-    da65  32 2e 32   STA 322e
-    da68  20         db 20
-    da69  20         db 20
-    da6a  44         MOV B, H
-    da6b  49         MOV C, C
-    da6c  53         MOV D, E
-    da6d  4b         MOV C, E
-    da6e  20         db 20
-    da6f  52         MOV D, D
-    da70  41         MOV B, C
-    da71  4d         MOV C, L
-    da72  20         db 20
-    da73  2d         DCR L
-    da74  20         db 20
-    da75  32 35 36   STA 3635
-    da78  4b         MOV C, E
-    da79  2e 0a      MVI L, 0a
-    da7b  00         NOP
-    da7c  00         NOP
-    da7d  00         NOP
-    da7e  00         NOP
-    da7f  00         NOP
-????:
-    da80  31 00 01   LXI SP, 0100
-    da83  21 5a da   LXI HL, da5a
-    da86  cd 93 da   CALL da93
-    da89  af         XRA A
+
+WELCOME_STR:
+    da5a  1f 0a 20 43 50 4d 20 56   db 0x1f, 0x0a, " CPM V"
+    da62  20 2d 20 32 2e 32 20 20   db " - 2.2  "
+    da6a  44 49 53 4b 20 52 41 4d   db "DISK RAM"
+    da72  20 2d 20 32 35 36 4b 2e   db " - 256K."
+    da7a  0a 00                     db 0x0a, 0x00
+
+COLD_BOOT:
+    da80  31 00 01   LXI SP, 0100               ; Initialize the stack pointer
+
+    da83  21 5a da   LXI HL, WELCOME_STR (da5a) ; Print the welcome message
+    da86  cd 93 da   CALL PRINT_STR (da93)
+
+    da89  af         XRA A                      ; ?????
     da8a  32 04 00   STA 0004
     da8d  32 03 00   STA 0003
+
     da90  c3 e7 da   JMP dae7
-????:
-    da93  7e         MOV A, M
+
+
+; Print a string pointed by HL to the console
+PRINT_STR:
+    da93  7e         MOV A, M                   ; Print characters one by one, until zero is reached
     da94  b7         ORA A
     da95  c8         RZ
-    da96  4f         MOV C, A
-    da97  cd 09 f8   CALL f809
-    da9a  23         INX HL
-    da9b  c3 93 da   JMP da93
-????:
-    da9e  31 80 00   LXI SP, 0080
+
+    da96  4f         MOV C, A                   ; Print the caracter using Monitor's routine
+    da97  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
+
+    da9a  23         INX HL                     ; Advance to the next character in the string
+    da9b  c3 93 da   JMP PRINT_STR (da93)
+
+
+WARM_BOOT:
+    da9e  31 80 00   LXI SP, 0080               ; Initialize stack pointer (why 0x80? Cold boot uses 0x100)
+    
     daa1  0e 00      MVI C, 00
-    daa3  cd 11 db   CALL db11
+    daa3  cd 11 db   CALL SELECT_DISK (db11)
+
     daa6  cd 0c db   CALL db0c
     daa9  06 2c      MVI B, 2c
     daab  0e 00      MVI C, 00
@@ -139,6 +136,7 @@
     dae2  d1         POP DE
     dae3  c1         POP BC
     dae4  c3 b2 da   JMP dab2
+
 ????:
     dae7  f3         DI
     dae8  21 03 da   LXI HL, da03
@@ -159,22 +157,38 @@
 ????:
     db0c  0e 00      MVI C, 00
     db0e  c3 2a db   JMP db2a
-????:
+
+; Select current disk
+;
+; Arguments:
+; C - disk number (zero based)
+;
+; Returns:
+; HL - pointer to ???, or 0x0000 in case of error
+SELECT_DISK:
     db11  21 00 00   LXI HL, 0000
-    db14  79         MOV A, C
-    db15  32 f1 db   STA dbf1
-    db18  fe 01      CPI A, 01
+
+    db14  79         MOV A, C                   ; Save the disk number
+    db15  32 f1 db   STA CUR_DISK_NO (dbf1)
+
+    db18  fe 01      CPI A, 01                  ; We have just 1 disk, otherwise return an error
     db1a  d0         RNC
-    db1b  3a f1 db   LDA dbf1
-    db1e  6f         MOV L, A
+
+    db1b  3a f1 db   LDA CUR_DISK_NO (dbf1)
+
+    db1e  6f         MOV L, A                   ; HL = A << 4
     db1f  26 00      MVI H, 00
     db21  29         DAD HL
     db22  29         DAD HL
     db23  29         DAD HL
     db24  29         DAD HL
-    db25  11 33 da   LXI DE, da33
+
+    db25  11 33 da   LXI DE, DISK_DESCRIPTION (da33); Return the entry in disk description table
     db28  19         DAD DE
+
     db29  c9         RET
+
+
 ????:
     db2a  3e fe      MVI A, fe
     db2c  32 ec db   STA dbec
@@ -291,3 +305,7 @@
 ????:
     dbe8  22 f2 db   SHLD dbf2
     dbeb  c9         RET
+
+
+CUR_DISK_NO:
+    dbf1  00         db 00

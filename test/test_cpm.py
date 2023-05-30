@@ -36,6 +36,7 @@ class CPM:
         self._machine.add_memory(ROM(f"{resources_dir}/MonitorF.bin", 0xf800))
 
         self._emulator = Emulator(self._machine)
+        self._emulator.load_memory(f"{tapes_dir}/cpm64_bios.rku")
         self._emulator.load_memory(f"{tapes_dir}/cpm64_monitorf_addon.rku")
 
         self._emulator._cpu.enable_registers_logging(True)
@@ -44,6 +45,9 @@ class CPM:
         # and particularly set cursor to the top-left corner
         self.set_word(0xf7b2, 0xe800)
 
+    @property
+    def cpu(self):
+        return self._emulator._cpu
 
     def set_byte(self, addr, value):
         self._machine.write_memory_byte(addr, value)
@@ -87,7 +91,7 @@ def cpm():
 
 
 def put_char(cpm, c):
-    cpm._emulator._cpu._c = c
+    cpm.cpu._c = c
     cpm.run_function(0xf500)    
 
 def print_string(cpm, string):
@@ -201,3 +205,16 @@ def test_put_char_clear_line_after_cursor(cpm):
     assert cpm.get_byte(0xe800 + 0x40*27 + 63) == 0x42  # Still 'B' at the end of the screen
 
     assert cpm.get_word(0xf7b2) == 0xe800 + 0x40*10 + 32 # check that cursor not moved
+
+
+def test_bios_select_disk(cpm):
+    cpm.cpu._c = 0x00
+    cpm.run_function(0xda1b)    
+
+    assert cpm.cpu.hl == 0xda33
+
+def test_bios_select_incorrect_disk(cpm):
+    cpm.cpu._c = 0x01
+    cpm.run_function(0xda1b)    
+
+    assert cpm.cpu.hl == 0x0000
