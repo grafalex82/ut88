@@ -209,12 +209,39 @@ def test_put_char_clear_line_after_cursor(cpm):
 
 def test_bios_select_disk(cpm):
     cpm.cpu._c = 0x00
-    cpm.run_function(0xda1b)    
+    cpm.run_function(0xda1b)
 
     assert cpm.cpu.hl == 0xda33
 
 def test_bios_select_incorrect_disk(cpm):
     cpm.cpu._c = 0x01
-    cpm.run_function(0xda1b)    
+    cpm.run_function(0xda1b)
 
     assert cpm.cpu.hl == 0x0000
+
+
+def test_bios_select_track(cpm):
+    cpm.cpu._c = 0x05
+    cpm.run_function(0xdb2a)
+
+    assert cpm.get_byte(0xdbec) == 0xfe  # Page 0
+    assert cpm.get_byte(0xdbed) == 0x05  # Track 5
+
+    cpm.cpu._c = 0x98
+    cpm.run_function(0xdb2a)
+
+    assert cpm.get_byte(0xdbec) == 0xfb  # Page 2
+    assert cpm.get_byte(0xdbed) == 0x18  # Track 0x18
+
+    cpm.cpu._c = 0xff
+    cpm.run_function(0xdb2a)
+
+    assert cpm.get_byte(0xdbec) == 0xf7  # Page 2
+    assert cpm.get_byte(0xdbed) == 0x3f  # Track 0x3f
+
+
+def test_bios_select_track_zero(cpm):
+    cpm.run_function(0xdb0c)
+
+    assert cpm.get_byte(0xdbec) == 0xfe  # Page 0
+    assert cpm.get_byte(0xdbed) == 0x00  # Track 0

@@ -3,9 +3,15 @@
 ; This code is loaded to the 0xda00-0xdbff by CP/M initial bootloader, and initially is located at
 ; 0x4a00-0x4bff address range of the CP/M binary.
 ;
+; Quasi Disk Configuration: ????? TBD
+; - 256 tracks
+; - ????
+;
 ; Important variables:
 ; 0x0003    - ????
 ; 0x0004    - ????
+; 0xdbec    - Quasi disk page that matches selected track
+; 0xdbed    - Selected track number (within selected Quasi disk page)
 ; 0xdbf1    - Current disk number
 
 ENTRY_POINTS:
@@ -17,9 +23,9 @@ ENTRY_POINTS:
     da0f  c3 09 f8   JMP MONITOR_PUT_CHAR (f809)    # Console output
     da12  c3 0c f8   JMP f80c
     da15  c3 06 f8   JMP f806
-    da18  c3 0c db   JMP db0c
+    da18  c3 0c db   JMP TRACK_ZERO (db0c)          # Move to track 0 on the current disk
     da1b  c3 11 db   JMP SELECT_DISK (db11)         # Select current disk
-    da1e  c3 2a db   JMP db2a
+    da1e  c3 2a db   JMP SELECT_TRACK (db2a)        # Select track on the current disk
     da21  c3 5e db   JMP db5e
     da24  c3 6d db   JMP db6d
     da27  c3 73 db   JMP db73
@@ -28,17 +34,11 @@ ENTRY_POINTS:
     da30  c3 63 db   JMP db63
 
 DISK_DESCRIPTION:
-    da33  43         MOV B, E
-    da34  da 00 00   JC 0000
-    da37  00         NOP
-    da38  00         NOP
-    da39  00         NOP
-    da3a  00         NOP
-    da3b  f6 db      ORI A, db
-    da3d  4b         MOV C, E
-    da3e  da 95 dc   JC dc95
-    da41  76         HLT
-    da42  dc 01 02   CC 0201
+    da33  43 da 00 00 00 00 00 00
+    da3b  f6 db 4b da 95 dc 76 dc
+    
+????:
+    da43  01 02   CC 0201
     da45  03         INX BC
     da46  04         INR B
     da47  05         DCR B
@@ -98,7 +98,7 @@ WARM_BOOT:
     daa1  0e 00      MVI C, 00
     daa3  cd 11 db   CALL SELECT_DISK (db11)
 
-    daa6  cd 0c db   CALL db0c
+    daa6  cd 0c db   CALL TRACK_ZERO (db0c)
     daa9  06 2c      MVI B, 2c
     daab  0e 00      MVI C, 00
     daad  16 01      MVI D, 01
@@ -131,7 +131,7 @@ WARM_BOOT:
     dadb  c5         PUSH BC
     dadc  d5         PUSH DE
     dadd  e5         PUSH HL
-    dade  cd 2a db   CALL db2a
+    dade  cd 2a db   CALL SELECT_TRACK (db2a)
     dae1  e1         POP HL
     dae2  d1         POP DE
     dae3  c1         POP BC
@@ -154,9 +154,10 @@ WARM_BOOT:
 ????:
     db09  3e ff      MVI A, ff
     db0b  c9         RET
-????:
+
+TRACK_ZERO:
     db0c  0e 00      MVI C, 00
-    db0e  c3 2a db   JMP db2a
+    db0e  c3 2a db   JMP SELECT_TRACK (db2a)
 
 ; Select current disk
 ;
@@ -188,39 +189,52 @@ SELECT_DISK:
 
     db29  c9         RET
 
+; Select track of the current disk
+;
+; Arguments:
+; C - track number
+SELECT_TRACK:
+    db2a  3e fe      MVI A, fe                  ; Select Page 0 for tracks under 0x40
+    db2c  32 ec db   STA QUASI_DISK_PAGE (dbec)
 
-????:
-    db2a  3e fe      MVI A, fe
-    db2c  32 ec db   STA dbec
     db2f  79         MOV A, C
     db30  fe 40      CPI A, 40
-    db32  da 59 db   JC db59
-    db35  d6 40      SUI A, 40
+    db32  da 59 db   JC SELECT_TRACK_EXIT (db59)
+
+    db35  d6 40      SUI A, 40                  ; Select Page 1 for next 0x40 tracks
     db37  4f         MOV C, A
     db38  3e fd      MVI A, fd
-    db3a  32 ec db   STA dbec
+    db3a  32 ec db   STA QUASI_DISK_PAGE (dbec)
+
     db3d  79         MOV A, C
     db3e  fe 40      CPI A, 40
-    db40  da 59 db   JC db59
-    db43  d6 40      SUI A, 40
+    db40  da 59 db   JC SELECT_TRACK_EXIT (db59)
+
+    db43  d6 40      SUI A, 40                  ; Select Page 2 for next 0x40 tracks
     db45  4f         MOV C, A
     db46  3e fb      MVI A, fb
-    db48  32 ec db   STA dbec
+    db48  32 ec db   STA QUASI_DISK_PAGE (dbec)
+
     db4b  79         MOV A, C
     db4c  fe 40      CPI A, 40
-    db4e  da 59 db   JC db59
-    db51  d6 40      SUI A, 40
+    db4e  da 59 db   JC SELECT_TRACK_EXIT (db59)
+
+    db51  d6 40      SUI A, 40                  ; Select Page 3 for next 0x40 tracks
     db53  4f         MOV C, A
     db54  3e f7      MVI A, f7
-    db56  32 ec db   STA dbec
-????:
-    db59  21 ed db   LXI HL, dbed
+    db56  32 ec db   STA QUASI_DISK_PAGE (dbec)
+
+SELECT_TRACK_EXIT:
+    db59  21 ed db   LXI HL, TRACK_NUMBER (dbed); Save the track number on selected page
     db5c  71         MOV M, C
     db5d  c9         RET
+
+
 ????:
     db5e  21 ee db   LXI HL, dbee
     db61  71         MOV M, C
     db62  c9         RET
+
 ????:
     db63  06 00      MVI B, 00
     db65  eb         XCHG
@@ -243,7 +257,7 @@ SELECT_DISK:
     db80  f9         SPHL
     db81  2a ef db   LHLD dbef
     db84  06 40      MVI B, 40
-    db86  3a ec db   LDA dbec
+    db86  3a ec db   LDA QUASI_DISK_PAGE (dbec)
     db89  d3 40      OUT 40
 ????:
     db8b  d1         POP DE
@@ -273,7 +287,7 @@ SELECT_DISK:
     dbb3  19         DAD DE
     dbb4  2b         DCX HL
     dbb5  06 40      MVI B, 40
-    dbb7  3a ec db   LDA dbec
+    dbb7  3a ec db   LDA QUASI_DISK_PAGE (dbec)
     dbba  d3 40      OUT 40
 ????:
     dbbc  56         MOV D, M
@@ -287,7 +301,7 @@ SELECT_DISK:
 ????:
     dbc8  21 00 00   LXI HL, 0000
     dbcb  11 00 04   LXI DE, 0400
-    dbce  3a ed db   LDA dbed
+    dbce  3a ed db   LDA TRACK_NUMBER (dbed)
     dbd1  b7         ORA A
     dbd2  ca da db   JZ dbda
 ????:
@@ -306,6 +320,12 @@ SELECT_DISK:
     dbe8  22 f2 db   SHLD dbf2
     dbeb  c9         RET
 
+
+QUASI_DISK_PAGE:
+    dbec  00         db 00
+
+TRACK_NUMBER:
+    dbed  00         db 00
 
 CUR_DISK_NO:
     dbf1  00         db 00
