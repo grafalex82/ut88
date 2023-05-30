@@ -147,3 +147,57 @@ def test_put_char_clear_screen(cpm):
     assert cpm.get_byte(0xe802) == 0x20
     assert cpm.get_byte(0xe803) == 0x20
 
+
+def test_put_char_move_cursor_to(cpm):
+    # Move cursor to row 1 (0x21-0x20) and column 3 (0x23-0x20)
+    print_string(cpm, "\x1bY!#")
+
+    assert cpm.get_word(0xf7b2) == 0xe843
+
+
+def test_put_char_clear_screen_after_cursor(cpm):
+    # Fill screen with 'B' symbol (0x42)
+    for i in range(28*64):
+        cpm.set_byte(0xe800 + i, 0x42)
+    
+    # Move cursor to row 10 (0x2A-0x20 = 10) and column 32 (0x40-0x20 = 32)
+    print_string(cpm, "\x1bY*@")
+
+    # Print Esc-J sequence, to clear screen starting the cursor position
+    print_string(cpm, "\x1bJ")
+
+    # Check that it is cleared
+    assert cpm.get_byte(0xe800 + 0x40*0 + 0) == 0x42     # Still 'B' at the beginning of the screen
+    assert cpm.get_byte(0xe800 + 0x40*10 + 31) == 0x42  # Still 'B' before cursor
+    assert cpm.get_byte(0xe800 + 0x40*10 + 32) == 0x20  # ' ' at cursor position
+    assert cpm.get_byte(0xe800 + 0x40*10 + 33) == 0x20  # ' ' after the cursor
+    assert cpm.get_byte(0xe800 + 0x40*10 + 63) == 0x20  # ' ' at the end of the line
+    assert cpm.get_byte(0xe800 + 0x40*11 + 63) == 0x20  # ' ' on the next line as well
+    assert cpm.get_byte(0xe800 + 0x40*27 + 63) == 0x20  # ' ' at the end of the screen
+
+    assert cpm.get_word(0xf7b2) == 0xe800 + 0x40*10 + 32 # check that cursor not moved
+
+
+def test_put_char_clear_line_after_cursor(cpm):
+    # Fill screen with 'B' symbol (0x42)
+    for i in range(28*64):
+        cpm.set_byte(0xe800 + i, 0x42)
+    
+    # Move cursor to row 10 (0x2A-0x20 = 10) and column 32 (0x40-0x20 = 32)
+    print_string(cpm, "\x1bY*@")
+
+    # Print Esc-K sequence, to clear line starting the cursor position up to the end of line
+    print_string(cpm, "\x1bK")
+
+    # Check that it is cleared
+    assert cpm.get_byte(0xe800 + 0x40*0 + 0) == 0x42    # Still 'B' at the beginning of the screen
+    assert cpm.get_byte(0xe800 + 0x40*10 + 31) == 0x42  # Still 'B' before cursor
+    assert cpm.get_byte(0xe800 + 0x40*10 + 32) == 0x20  # ' ' at cursor position
+    assert cpm.get_byte(0xe800 + 0x40*10 + 33) == 0x20  # ' ' after the cursor
+    assert cpm.get_byte(0xe800 + 0x40*10 + 63) == 0x20  # ' ' at the end of the line
+    assert cpm.get_byte(0xe800 + 0x40*11 + 0) == 0x42   # Still 'B' on the next line
+    assert cpm.get_byte(0xe800 + 0x40*11 + 32) == 0x42  # Still 'B' on the next line
+    assert cpm.get_byte(0xe800 + 0x40*11 + 63) == 0x42  # Still 'B' on the next line
+    assert cpm.get_byte(0xe800 + 0x40*27 + 63) == 0x42  # Still 'B' at the end of the screen
+
+    assert cpm.get_word(0xf7b2) == 0xe800 + 0x40*10 + 32 # check that cursor not moved
