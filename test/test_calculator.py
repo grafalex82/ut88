@@ -8,10 +8,13 @@
 
 import pytest
 import sys
+import os
 import logging
 
 sys.path.append('../misc')
 sys.path.append('../src')
+
+resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 
 from float import *
 
@@ -31,8 +34,8 @@ class Calculator:
     def __init__(self):
         self._machine = Machine()
         self._machine.add_memory(RAM(0xc000, 0xc3ff))     # Same as CPU module configuration
-        self._machine.add_memory(ROM(f"../resources/Monitor0.bin", 0x0000))
-        self._machine.add_memory(ROM(f"../resources/calculator.bin", 0x0800))
+        self._machine.add_memory(ROM(f"{resources_dir}/Monitor0.bin", 0x0000))
+        self._machine.add_memory(ROM(f"{resources_dir}/calculator.bin", 0x0800))
 
         self._emulator = Emulator(self._machine)
 
