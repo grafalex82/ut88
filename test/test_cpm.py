@@ -121,3 +121,29 @@ def test_put_char_cursor_movements(cpm):
 
     print_string(cpm, "\x1bD")  # Esc-D - move cursor left
     assert cpm.get_word(0xf7b2) == 0xe800
+
+def test_put_char_home_screen(cpm):
+    # Print something on the screen
+    print_string(cpm, "TEST")
+
+    # Then print home cursor sequence
+    print_string(cpm, "\x1bH")
+
+    # Check the cursor is at the top-left position
+    assert cpm.get_word(0xf7b2) == 0xe800
+
+
+def test_put_char_clear_screen(cpm):
+    # Print something on the screen
+    print_string(cpm, "TEST")
+
+    # Then clear screen
+    print_string(cpm, "\x1bE")
+
+    # Check the screen is empty, and cursor is at the top-left position
+    assert cpm.get_word(0xf7b2) == 0xe800
+    assert cpm.get_byte(0xe800) == 0x20
+    assert cpm.get_byte(0xe801) == 0xa0 # Byte after the cursor is highlighted
+    assert cpm.get_byte(0xe802) == 0x20
+    assert cpm.get_byte(0xe803) == 0x20
+

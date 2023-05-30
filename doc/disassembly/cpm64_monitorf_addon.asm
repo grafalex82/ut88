@@ -9,6 +9,8 @@
 ; ESC B     - Move cursor one position up
 ; ESC C     - Move cursor one position right
 ; ESC D     - Move cursor one position left
+; ESC E     - Clear screen
+; ESC H     - Move cursor to the top-left position
 ;
 ; Regular characters are printed normally using the Monitor-F PUR_CHAR_C function
 ; 
@@ -81,23 +83,23 @@ ESC_SEQ_CHAR_2ND_2:
 
 ESC_SEQ_CHAR_2ND_3:
     f557  fe 44      CPI A, 44                  ; Check if this is Esc-D sequence
-    f559  c2 61 f5   JNZ f561
+    f559  c2 61 f5   JNZ ESC_SEQ_CHAR_2ND_4 (f561)
 
     f55c  0e 08      MVI C, 08                  ; Esc-D sequence means move cursor one column left
     f55e  c3 0d f6   JMP ESC_PRINT_LAST_CHAR (f60d)
 
-????:
-    f561  fe 45      CPI A, 45
-    f563  c2 6b f5   JNZ f56b
+ESC_SEQ_CHAR_2ND_4:
+    f561  fe 45      CPI A, 45                  ; Check if this is a Esc-E sequence
+    f563  c2 6b f5   JNZ ESC_SEQ_CHAR_2ND_5 (f56b)
 
-    f566  0e 1f      MVI C, 1f
+    f566  0e 1f      MVI C, 1f                  ; Esc-E sequence means clearing the screen
     f568  c3 0d f6   JMP ESC_PRINT_LAST_CHAR (f60d)
 
-????:
-    f56b  fe 48      CPI A, 48
+ESC_SEQ_CHAR_2ND_5:
+    f56b  fe 48      CPI A, 48                  ; Check if this is a Esc-H sequence
     f56d  c2 75 f5   JNZ f575
 
-    f570  0e 0c      MVI C, 0c
+    f570  0e 0c      MVI C, 0c                  ; Esc-H sequence means moving the cursor to top-left position
     f572  c3 0d f6   JMP ESC_PRINT_LAST_CHAR (f60d)
 
 ????:
