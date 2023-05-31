@@ -36,6 +36,7 @@ class CPM:
         self._machine.add_memory(ROM(f"{resources_dir}/MonitorF.bin", 0xf800))
 
         self._emulator = Emulator(self._machine)
+        self._emulator.load_memory(f"{tapes_dir}/cpm64_bdos.rku")
         self._emulator.load_memory(f"{tapes_dir}/cpm64_bios.rku")
         self._emulator.load_memory(f"{tapes_dir}/cpm64_monitorf_addon.rku")
 
