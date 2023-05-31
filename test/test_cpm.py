@@ -121,6 +121,13 @@ def set_disk_buffer(cpm, addr):
     cpm.run_function(0xda24)
 
 
+def call_bdos_function(cpm, func, arg = 0):
+    cpm.cpu._c = func
+    cpm.cpu.de = arg
+    cpm.run_function(0xcc06)
+    return (cpm.cpu._b << 8) | cpm.cpu._a
+
+
 def test_print_string(cpm):
     print_string(cpm, "TEST")
     assert cpm.get_byte(0xe800) == ord('T')
@@ -330,3 +337,8 @@ def test_bios_write_sector(cpm, tmp_path):
     offset = 70*1024 + 3*128 # track 70 (track 6 on page 1), sector 3
     for i in range(128):
         assert data[offset + i] == sector_data[i]
+
+
+def test_bdos_get_version(cpm):
+    ver = call_bdos_function(cpm, 0x0c)
+    assert ver == 0x22

@@ -2,52 +2,96 @@
 ;
 ; This code is loaded to the 0xcc00-0xd9ff by CP/M initial bootloader, and initially is located at
 ; 0x3c00-0x49ff address range of the CP/M binary.
+;
+; ?????????????? Description TBD
+;
+;
+; Important variables:
+; cf0f  - save caller's SP (2 byte)
+; cf43  - function arguments (2 byte)
+; cf45  - function return code or return value(2 byte)
+; d9d6  - function argument (low byte)
 cc00  f9         SPHL
 cc01  16 00      MVI D, 00
 cc03  00         NOP
 cc04  00         NOP
 cc05  6b         MOV L, E
-cc06  c3 11 cc   JMP cc11
-????:
-cc09  99         SBB C
-cc0a  cc a5 cc   CZ cca5
-????:
-cc0d  ab         XRA E
-cc0e  cc b1 cc   CZ ccb1
-????:
-cc11  eb         XCHG
-cc12  22 43 cf   SHLD cf43
-cc15  eb         XCHG
-cc16  7b         MOV A, E
-cc17  32 d6 d9   STA d9d6
-cc1a  21 00 00   LXI HL, 0000
-cc1d  22 45 cf   SHLD cf45
-cc20  39         DAD SP
-cc21  22 0f cf   SHLD cf0f
-cc24  31 41 cf   LXI SP, cf41
-cc27  af         XRA A
-cc28  32 e0 d9   STA d9e0
-cc2b  32 de d9   STA d9de
-cc2e  21 74 d9   LXI HL, d974
-cc31  e5         PUSH HL
-cc32  79         MOV A, C
-cc33  fe 29      CPI A, 29
-cc35  d0         RNC
-cc36  4b         MOV C, E
-cc37  21 47 cc   LXI HL, cc47
-cc3a  5f         MOV E, A
-cc3b  16 00      MVI D, 00
-cc3d  19         DAD DE
-cc3e  19         DAD DE
-cc3f  5e         MOV E, M
-cc40  23         INX HL
-cc41  56         MOV D, M
-cc42  2a 43 cf   LHLD cf43
-cc45  eb         XCHG
-cc46  e9         PCHL
-????:
-cc47  03         INX BC
-cc48  da c8 ce   JC cec8
+
+
+BDOS_ENTRY:
+    cc06  c3 11 cc   JMP REAL_BDOS_ENTRY (cc11)
+
+DISK_READ_WRITE_ERROR_PTR:
+    cc09  99 cc     dw DISK_READ_WRITE_ERROR (cc99)
+
+DISK_SELECT_ERROR_PTR:
+    cc0b  a5 cc     dw DISK_SELECT_ERROR (cca5)
+
+DISK_READ_ONLY_ERROR_PTR:
+    cc0d  ab cc     dw DISK_READ_ONLY_ERROR (ccab)
+
+FILE_READ_ONLY_ERROR_PTR:
+    cc0f  b1 cc     dw FILE_READ_ONLY_ERROR (ccb1)
+
+
+; The BDOS entry (entry point for all BDOS functions)
+;
+; Arguments:
+; C     - function number
+; DE    - arguments
+;
+; Returns:
+; A     - result (low byte of the result)
+; B     - high byte of the result
+REAL_BDOS_ENTRY:
+    cc11  eb         XCHG                       ; Store arguments at cf43
+    cc12  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
+    cc15  eb         XCHG
+
+    cc16  7b         MOV A, E                   ; Store argument low byte separately
+    cc17  32 d6 d9   STA FUNCTION_BYTE_ARGUMENT (d9d6)
+
+    cc1a  21 00 00   LXI HL, 0000               ; Prepare result code
+    cc1d  22 45 cf   SHLD FUNCTION_RETURN_VALUE (cf45)
+
+    cc20  39         DAD SP                     ; Save caller's SP
+    cc21  22 0f cf   SHLD BDOS_SAVE_SP (cf0f)
+
+    cc24  31 41 cf   LXI SP, cf41               ; And set our own stack
+
+    cc27  af         XRA A                      ; ????
+    cc28  32 e0 d9   STA d9e0
+    cc2b  32 de d9   STA d9de
+
+    cc2e  21 74 d9   LXI HL, BDOS_HANDLER_RETURN (d974) ; Set the return address
+    cc31  e5         PUSH HL
+
+    cc32  79         MOV A, C                   ; Function with numbers >= 0x29 are not supported
+    cc33  fe 29      CPI A, 29
+    cc35  d0         RNC
+
+    cc36  4b         MOV C, E                   ; Load the table of function handlers
+    cc37  21 47 cc   LXI HL, FUNCTION_HANDLERS_TABLE (cc47)
+
+    cc3a  5f         MOV E, A                   ; DE is a function number
+    cc3b  16 00      MVI D, 00
+
+    cc3d  19         DAD DE                     ; Calculate the entry pointer in the table
+    cc3e  19         DAD DE
+
+    cc3f  5e         MOV E, M                   ; Load the handler address in DE
+    cc40  23         INX HL
+    cc41  56         MOV D, M
+
+    cc42  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Load arguments in HL
+
+    cc45  eb         XCHG                       ; Jump to the handler
+    cc46  e9         PCHL
+
+
+FUNCTION_HANDLERS_TABLE:
+    cc47  03 da      dw BIOS_WARM_BOOT (da03)       ; Function 0x00 - Warm boot
+cc48  c8 ce   JC cec8
 cc4b  90         SUB B
 cc4c  cd ce ce   CALL cece
 cc4f  12         STAX DE
@@ -57,8 +101,7 @@ cc56  ce f3      ACI A, f3
 cc58  ce f8      ACI A, f8
 cc5a  ce e1      ACI A, e1
 cc5c  cd fe ce   CALL cefe
-cc5f  7e         MOV A, M
-cc60  d8         RC
+    cc5f  7e d8      dw GET_BDOS_VERSION (d87e)     ; Function 0x0c - get version
 cc61  83         ADD E
 cc62  d8         RC
 cc63  45         MOV B, L
@@ -107,17 +150,23 @@ cc95  04         INR B
 cc96  cf         RST 1
 cc97  9b         SBB E
 cc98  d9         db d9
+
+DISK_READ_WRITE_ERROR:
 cc99  21 ca cc   LXI HL, ccca
 cc9c  cd e5 cc   CALL cce5
 cc9f  fe 03      CPI A, 03
 cca1  ca 00 00   JZ 0000
 cca4  c9         RET
-????:
+
+DISK_SELECT_ERROR:
 cca5  21 d5 cc   LXI HL, ccd5
 cca8  c3 b4 cc   JMP ccb4
+
+DISK_READ_ONLY_ERROR:
 ccab  21 e1 cc   LXI HL, cce1
 ccae  c3 b4 cc   JMP ccb4
-????:
+
+FILE_READ_ONLY_ERROR:
 ccb1  21 dc cc   LXI HL, ccdc
 ????:
 ccb4  cd e5 cc   CALL cce5
@@ -321,7 +370,7 @@ cdde  c3 d3 cd   JMP cdd3
 ????:
 cde1  3a 0c cf   LDA cf0c
 cde4  32 0b cf   STA cf0b
-cde7  2a 43 cf   LHLD cf43
+cde7  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 cdea  4e         MOV C, M
 cdeb  23         INX HL
 cdec  e5         PUSH HL
@@ -458,10 +507,10 @@ cec3  0e 0d      MVI C, 0d
 cec5  c3 48 cd   JMP cd48
 ????:
 cec8  cd 06 cd   CALL cd06
-cecb  c3 01 cf   JMP cf01
+cecb  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ????:
 cece  cd 15 da   CALL da15
-ced1  c3 01 cf   JMP cf01
+ced1  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ced4  79         MOV A, C
 ced5  3c         INR A
 ced6  ca e0 ce   JZ cee0
@@ -473,9 +522,9 @@ cee0  cd 06 da   CALL da06
 cee3  b7         ORA A
 cee4  ca 91 d9   JZ d991
 cee7  cd 09 da   CALL da09
-ceea  c3 01 cf   JMP cf01
+ceea  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ceed  3a 03 00   LDA 0003
-cef0  c3 01 cf   JMP cf01
+cef0  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 cef3  21 03 00   LXI HL, 0003
 cef6  71         MOV M, C
 cef7  c9         RET
@@ -486,11 +535,14 @@ cefb  c3 d3 cd   JMP cdd3
 ????:
 cefe  cd 23 cd   CALL cd23
 ????:
-cf01  32 45 cf   STA cf45
-cf04  c9         RET
+
+FUNCTION_EXIT:
+    cf01  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)   ; Store A in the predefined variable
+    cf04  c9         RET
+
 ????:
 cf05  3e 01      MVI A, 01
-cf07  c3 01 cf   JMP cf01
+cf07  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ????:
 cf0a  00         NOP
 ????:
@@ -501,9 +553,10 @@ cf0c  00         NOP
 cf0d  00         NOP
 ????:
 cf0e  00         NOP
-????:
-cf0f  00         NOP
-cf10  00         NOP
+
+BDOS_SAVE_SP:
+    cf0f  00 00        dw 0000
+
 cf11  00         NOP
 cf12  00         NOP
 cf13  00         NOP
@@ -552,18 +605,22 @@ cf3d  00         NOP
 cf3e  00         NOP
 cf3f  00         NOP
 cf40  00         NOP
-????:
-cf41  00         NOP
+
+BDOS_STACK:
+    cf41  00         NOP
+
 ????:
 cf42  00         NOP
+
+
+FUNCTION_ARGUMENTS:
+    cf43  00 00      dw 0000
+
+FUNCTION_RETURN_VALUE:
+    cf45  00 00      dw 0000
+
 ????:
-cf43  00         NOP
-cf44  00         NOP
-????:
-cf45  00         NOP
-cf46  00         NOP
-????:
-cf47  21 0b cc   LXI HL, cc0b
+cf47  21 0b cc   LXI HL, DISK_SELECT_ERROR_PTR (cc0b)
 ????:
 cf4a  5e         MOV E, M
 cf4b  23         INX HL
@@ -641,7 +698,7 @@ cfb8  cd 2a da   CALL da2a
 ????:
 cfbb  b7         ORA A
 cfbc  c8         RZ
-cfbd  21 09 cc   LXI HL, cc09
+cfbd  21 09 cc   LXI HL, DISK_READ_WRITE_ERROR_PTR (cc09)
 cfc0  c3 4a cf   JMP cf4a
 ????:
 cfc3  2a ea d9   LHLD d9ea
@@ -752,7 +809,7 @@ d059  c3 53 d0   JMP d053
 d05c  80         ADD B
 d05d  c9         RET
 ????:
-d05e  2a 43 cf   LHLD cf43
+d05e  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d061  11 10 00   LXI DE, 0010
 d064  19         DAD DE
 d065  09         DAD BC
@@ -798,12 +855,12 @@ d0a1  6f         MOV L, A
 d0a2  22 e5 d9   SHLD d9e5
 d0a5  c9         RET
 ????:
-d0a6  2a 43 cf   LHLD cf43
+d0a6  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d0a9  11 0c 00   LXI DE, 000c
 d0ac  19         DAD DE
 d0ad  c9         RET
 ????:
-d0ae  2a 43 cf   LHLD cf43
+d0ae  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d0b1  11 0f 00   LXI DE, 000f
 d0b4  19         DAD DE
 d0b5  eb         XCHG
@@ -912,12 +969,12 @@ d14a  19         DAD DE
 d14b  7e         MOV A, M
 d14c  17         RAL
 d14d  d0         RNC
-d14e  21 0f cc   LXI HL, cc0f
+d14e  21 0f cc   LXI HL, FILE_READ_ONLY_ERROR_PTR (cc0f)
 d151  c3 4a cf   JMP cf4a
 ????:
 d154  cd 1e d1   CALL d11e
 d157  c8         RZ
-d158  21 0d cc   LXI HL, cc0d
+d158  21 0d cc   LXI HL, DISK_READ_ONLY_ERROR_PTR (cc0d)
 d15b  c3 4a cf   JMP cf4a
 ????:
 d15e  2a b9 d9   LHLD d9b9
@@ -929,7 +986,7 @@ d166  d0         RNC
 d167  24         INR H
 d168  c9         RET
 ????:
-d169  2a 43 cf   LHLD cf43
+d169  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d16c  11 0e 00   LXI DE, 000e
 d16f  19         DAD DE
 d170  7e         MOV A, M
@@ -1180,7 +1237,7 @@ d2db  cd 5e d1   CALL d15e
 d2de  3e e5      MVI A, e5
 d2e0  be         CMP M
 d2e1  ca d2 d2   JZ d2d2
-d2e4  3a 41 cf   LDA cf41
+d2e4  3a 41 cf   LDA BDOS_STACK (cf41)
 d2e7  be         CMP M
 d2e8  c2 f6 d2   JNZ d2f6
 d2eb  23         INX HL
@@ -1188,7 +1245,7 @@ d2ec  7e         MOV A, M
 d2ed  d6 24      SUI A, 24
 d2ef  c2 f6 d2   JNZ d2f6
 d2f2  3d         DCR A
-d2f3  32 45 cf   STA cf45
+d2f3  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
 ????:
 d2f6  0e 01      MVI C, 01
 d2f8  cd 6b d2   CALL d26b
@@ -1196,7 +1253,7 @@ d2fb  cd 8c d1   CALL d18c
 d2fe  c3 d2 d2   JMP d2d2
 ????:
 d301  3a d4 d9   LDA d9d4
-d304  c3 01 cf   JMP cf01
+d304  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ????:
 d307  c5         PUSH BC
 d308  f5         PUSH PSW
@@ -1217,7 +1274,7 @@ d318  3e ff      MVI A, ff
 d31a  32 d4 d9   STA d9d4
 d31d  21 d8 d9   LXI HL, d9d8
 d320  71         MOV M, C
-d321  2a 43 cf   LHLD cf43
+d321  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d324  22 d9 d9   SHLD d9d9
 d327  cd fe d1   CALL d1fe
 d32a  cd a1 cf   CALL cfa1
@@ -1272,7 +1329,7 @@ d380  c3 53 d3   JMP d353
 ????:
 d383  3a ea d9   LDA d9ea
 d386  e6 03      ANI A, 03
-d388  32 45 cf   STA cf45
+d388  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
 d38b  21 d4 d9   LXI HL, d9d4
 d38e  7e         MOV A, M
 d38f  17         RAL
@@ -1283,7 +1340,7 @@ d393  c9         RET
 ????:
 d394  cd fe d1   CALL d1fe
 d397  3e ff      MVI A, ff
-d399  c3 01 cf   JMP cf01
+d399  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ????:
 d39c  cd 54 d1   CALL d154
 d39f  0e 0c      MVI C, 0c
@@ -1351,7 +1408,7 @@ d3ff  1e 20      MVI E, 20
 ????:
 d401  d5         PUSH DE
 d402  06 00      MVI B, 00
-d404  2a 43 cf   LHLD cf43
+d404  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d407  09         DAD BC
 d408  eb         XCHG
 d409  cd 5e d1   CALL d15e
@@ -1364,7 +1421,7 @@ d413  c3 c6 d1   JMP d1c6
 d416  cd 54 d1   CALL d154
 d419  0e 0c      MVI C, 0c
 d41b  cd 18 d3   CALL d318
-d41e  2a 43 cf   LHLD cf43
+d41e  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d421  7e         MOV A, M
 d422  11 10 00   LXI DE, 0010
 d425  19         DAD DE
@@ -1401,7 +1458,7 @@ d45e  f5         PUSH PSW
 d45f  e5         PUSH HL
 d460  cd 5e d1   CALL d15e
 d463  eb         XCHG
-d464  2a 43 cf   LHLD cf43
+d464  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d467  0e 20      MVI C, 20
 d469  d5         PUSH DE
 d46a  cd 4f cf   CALL cf4f
@@ -1424,7 +1481,7 @@ d484  3e 00      MVI A, 00
 d486  da 8b d4   JC d48b
 d489  3e 80      MVI A, 80
 ????:
-d48b  2a 43 cf   LHLD cf43
+d48b  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d48e  11 0f 00   LXI DE, 000f
 d491  19         DAD DE
 d492  77         MOV M, A
@@ -1446,7 +1503,7 @@ d4a0  2b         DCX HL
 d4a1  c9         RET
 ????:
 d4a2  af         XRA A
-d4a3  32 45 cf   STA cf45
+d4a3  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
 d4a6  32 ea d9   STA d9ea
 d4a9  32 eb d9   STA d9eb
 d4ac  cd 1e d1   CALL d11e
@@ -1462,7 +1519,7 @@ d4bf  01 10 00   LXI BC, 0010
 d4c2  cd 5e d1   CALL d15e
 d4c5  09         DAD BC
 d4c6  eb         XCHG
-d4c7  2a 43 cf   LHLD cf43
+d4c7  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d4ca  09         DAD BC
 d4cb  0e 10      MVI C, 10
 ????:
@@ -1521,20 +1578,20 @@ d517  3e ff      MVI A, ff
 d519  32 d2 d9   STA d9d2
 d51c  c3 10 d4   JMP d410
 ????:
-d51f  21 45 cf   LXI HL, cf45
+d51f  21 45 cf   LXI HL, FUNCTION_RETURN_VALUE (cf45)
 d522  35         DCR M
 d523  c9         RET
 ????:
 d524  cd 54 d1   CALL d154
-d527  2a 43 cf   LHLD cf43
+d527  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d52a  e5         PUSH HL
 d52b  21 ac d9   LXI HL, d9ac
-d52e  22 43 cf   SHLD cf43
+d52e  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
 d531  0e 01      MVI C, 01
 d533  cd 18 d3   CALL d318
 d536  cd f5 d1   CALL d1f5
 d539  e1         POP HL
-d53a  22 43 cf   SHLD cf43
+d53a  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
 d53d  c8         RZ
 d53e  eb         XCHG
 d53f  21 0f 00   LXI HL, 000f
@@ -1558,7 +1615,7 @@ d55b  32 d2 d9   STA d9d2
 d55e  cd a2 d4   CALL d4a2
 d561  cd f5 d1   CALL d1f5
 d564  c8         RZ
-d565  2a 43 cf   LHLD cf43
+d565  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d568  01 0c 00   LXI BC, 000c
 d56b  09         DAD BC
 d56c  7e         MOV A, M
@@ -1597,7 +1654,7 @@ d5ac  cd 5a d4   CALL d45a
 ????:
 d5af  cd bb d0   CALL d0bb
 d5b2  af         XRA A
-d5b3  c3 01 cf   JMP cf01
+d5b3  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ????:
 d5b6  cd 05 cf   CALL cf05
 d5b9  c3 78 d1   JMP d178
@@ -1617,7 +1674,7 @@ d5d5  c2 fb d5   JNZ d5fb
 d5d8  cd 5a d5   CALL d55a
 d5db  af         XRA A
 d5dc  32 e3 d9   STA d9e3
-d5df  3a 45 cf   LDA cf45
+d5df  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)
 d5e2  b7         ORA A
 d5e3  c2 fb d5   JNZ d5fb
 ????:
@@ -1637,7 +1694,7 @@ d600  32 d5 d9   STA d9d5
 d603  3e 00      MVI A, 00
 d605  32 d3 d9   STA d9d3
 d608  cd 54 d1   CALL d154
-d60b  2a 43 cf   LHLD cf43
+d60b  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d60e  cd 47 d1   CALL d147
 d611  cd bb d0   CALL d0bb
 d614  3a e3 d9   LDA d9e3
@@ -1663,11 +1720,11 @@ d63e  7d         MOV A, L
 d63f  b4         ORA H
 d640  c2 48 d6   JNZ d648
 d643  3e 02      MVI A, 02
-d645  c3 01 cf   JMP cf01
+d645  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ????:
 d648  22 e5 d9   SHLD d9e5
 d64b  eb         XCHG
-d64c  2a 43 cf   LHLD cf43
+d64c  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d64f  01 10 00   LXI BC, 0010
 d652  09         DAD BC
 d653  3a dd d9   LDA d9dd
@@ -1688,7 +1745,7 @@ d66b  72         MOV M, D
 ????:
 d66c  0e 02      MVI C, 02
 ????:
-d66e  3a 45 cf   LDA cf45
+d66e  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)
 d671  b7         ORA A
 d672  c0         RNZ
 d673  c5         PUSH BC
@@ -1761,7 +1818,7 @@ d6e7  fe 01      CPI A, 01
 d6e9  c2 00 d7   JNZ d700
 d6ec  cd d2 d0   CALL d0d2
 d6ef  cd 5a d5   CALL d55a
-d6f2  21 45 cf   LXI HL, cf45
+d6f2  21 45 cf   LXI HL, FUNCTION_RETURN_VALUE (cf45)
 d6f5  7e         MOV A, M
 d6f6  b7         ORA A
 d6f7  c2 fe d6   JNZ d6fe
@@ -1776,7 +1833,7 @@ d703  af         XRA A
 d704  32 d5 d9   STA d9d5
 ????:
 d707  c5         PUSH BC
-d708  2a 43 cf   LHLD cf43
+d708  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d70b  eb         XCHG
 d70c  21 21 00   LXI HL, 0021
 d70f  19         DAD DE
@@ -1825,7 +1882,7 @@ d749  cd a2 d4   CALL d4a2
 d74c  d1         POP DE
 d74d  c1         POP BC
 d74e  2e 03      MVI L, 03
-d750  3a 45 cf   LDA cf45
+d750  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)
 d753  3c         INR A
 d754  ca 84 d7   JZ d784
 d757  21 0c 00   LXI HL, 000c
@@ -1835,7 +1892,7 @@ d75c  21 0e 00   LXI HL, 000e
 d75f  19         DAD DE
 d760  70         MOV M, B
 d761  cd 51 d4   CALL d451
-d764  3a 45 cf   LDA cf45
+d764  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)
 d767  3c         INR A
 d768  c2 7f d7   JNZ d77f
 d76b  c1         POP BC
@@ -1845,13 +1902,13 @@ d76f  0c         INR C
 d770  ca 84 d7   JZ d784
 d773  cd 24 d5   CALL d524
 d776  2e 05      MVI L, 05
-d778  3a 45 cf   LDA cf45
+d778  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)
 d77b  3c         INR A
 d77c  ca 84 d7   JZ d784
 ????:
 d77f  c1         POP BC
 d780  af         XRA A
-d781  c3 01 cf   JMP cf01
+d781  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ????:
 d784  e5         PUSH HL
 d785  cd 69 d1   CALL d169
@@ -1860,7 +1917,7 @@ d78a  e1         POP HL
 ????:
 d78b  c1         POP BC
 d78c  7d         MOV A, L
-d78d  32 45 cf   STA cf45
+d78d  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
 d790  c3 78 d1   JMP d178
 ????:
 d793  0e ff      MVI C, ff
@@ -1912,7 +1969,7 @@ d7d1  c9         RET
 ????:
 d7d2  0e 0c      MVI C, 0c
 d7d4  cd 18 d3   CALL d318
-d7d7  2a 43 cf   LHLD cf43
+d7d7  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d7da  11 21 00   LXI DE, 0021
 d7dd  19         DAD DE
 d7de  e5         PUSH HL
@@ -1950,7 +2007,7 @@ d809  c3 e4 d7   JMP d7e4
 ????:
 d80c  e1         POP HL
 d80d  c9         RET
-d80e  2a 43 cf   LHLD cf43
+d80e  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d811  11 20 00   LXI DE, 0020
 d814  cd a5 d7   CALL d7a5
 d817  21 21 00   LXI HL, 0021
@@ -1981,7 +2038,7 @@ d83c  cd 0b d1   CALL d10b
 d83f  22 af d9   SHLD d9af
 d842  c3 a3 d2   JMP d2a3
 ????:
-d845  3a d6 d9   LDA d9d6
+d845  3a d6 d9   LDA FUNCTION_BYTE_ARGUMENT (d9d6)
 d848  21 42 cf   LXI HL, cf42
 d84b  be         CMP M
 d84c  c8         RZ
@@ -1990,11 +2047,11 @@ d84e  c3 21 d8   JMP d821
 ????:
 d851  3e ff      MVI A, ff
 d853  32 de d9   STA d9de
-d856  2a 43 cf   LHLD cf43
+d856  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d859  7e         MOV A, M
 d85a  e6 1f      ANI A, 1f
 d85c  3d         DCR A
-d85d  32 d6 d9   STA d9d6
+d85d  32 d6 d9   STA FUNCTION_BYTE_ARGUMENT (d9d6)
 d860  fe 1e      CPI A, 1e
 d862  d2 75 d8   JNC d875
 d865  3a 42 cf   LDA cf42
@@ -2005,13 +2062,22 @@ d86f  e6 e0      ANI A, e0
 d871  77         MOV M, A
 d872  cd 45 d8   CALL d845
 ????:
-d875  3a 41 cf   LDA cf41
-d878  2a 43 cf   LHLD cf43
+d875  3a 41 cf   LDA BDOS_STACK (cf41)
+d878  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d87b  b6         ORA M
 d87c  77         MOV M, A
 d87d  c9         RET
-d87e  3e 22      MVI A, 22
-d880  c3 01 cf   JMP cf01
+
+; Function 0x0c - get BDOS version
+;
+; Arguments: none
+;
+; Returns: 0x22, meaning CP/M v2.2
+GET_BDOS_VERSION:
+    d87e  3e 22      MVI A, 22                  ; Return version 2.2
+    d880  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+
+
 d883  21 00 00   LXI HL, 0000
 d886  22 ad d9   SHLD d9ad
 d889  22 af d9   SHLD d9af
@@ -2041,7 +2107,7 @@ d8c0  0e 0f      MVI C, 0f
 d8c2  cd 18 d3   CALL d318
 d8c5  c3 e9 d1   JMP d1e9
 d8c8  2a d9 d9   LHLD d9d9
-d8cb  22 43 cf   SHLD cf43
+d8cb  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
 d8ce  cd 51 d8   CALL d851
 d8d1  cd 2d d3   CALL d32d
 d8d4  c3 e9 d1   JMP d1e9
@@ -2061,7 +2127,7 @@ d8fb  c3 01 d3   JMP d301
 d8fe  2a af d9   LHLD d9af
 d901  c3 29 d9   JMP d929
 d904  3a 42 cf   LDA cf42
-d907  c3 01 cf   JMP cf01
+d907  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 d90a  eb         XCHG
 d90b  22 b1 d9   SHLD d9b1
 d90e  c3 da d1   JMP d1da
@@ -2074,16 +2140,16 @@ d920  cd 3b d4   CALL d43b
 d923  c3 01 d3   JMP d301
 d926  2a bb d9   LHLD d9bb
 ????:
-d929  22 45 cf   SHLD cf45
+d929  22 45 cf   SHLD FUNCTION_RETURN_VALUE (cf45)
 d92c  c9         RET
-d92d  3a d6 d9   LDA d9d6
+d92d  3a d6 d9   LDA FUNCTION_BYTE_ARGUMENT (d9d6)
 d930  fe ff      CPI A, ff
 d932  c2 3b d9   JNZ d93b
-d935  3a 41 cf   LDA cf41
-d938  c3 01 cf   JMP cf01
+d935  3a 41 cf   LDA BDOS_STACK (cf41)
+d938  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ????:
 d93b  e6 1f      ANI A, 1f
-d93d  32 41 cf   STA cf41
+d93d  32 41 cf   STA BDOS_STACK (cf41)
 d940  c9         RET
 d941  cd 51 d8   CALL d851
 d944  c3 93 d7   JMP d793
@@ -2091,7 +2157,7 @@ d947  cd 51 d8   CALL d851
 d94a  c3 9c d7   JMP d79c
 d94d  cd 51 d8   CALL d851
 d950  c3 d2 d7   JMP d7d2
-d953  2a 43 cf   LHLD cf43
+d953  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d956  7d         MOV A, L
 d957  2f         CMA
 d958  5f         MOV E, A
@@ -2114,23 +2180,24 @@ d96e  a2         ANA D
 d96f  67         MOV H, A
 d970  22 ad d9   SHLD d9ad
 d973  c9         RET
-????:
+
+BDOS_HANDLER_RETURN:
 d974  3a de d9   LDA d9de
 d977  b7         ORA A
 d978  ca 91 d9   JZ d991
-d97b  2a 43 cf   LHLD cf43
+d97b  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d97e  36 00      MVI M, 00
 d980  3a e0 d9   LDA d9e0
 d983  b7         ORA A
 d984  ca 91 d9   JZ d991
 d987  77         MOV M, A
 d988  3a df d9   LDA d9df
-d98b  32 d6 d9   STA d9d6
+d98b  32 d6 d9   STA FUNCTION_BYTE_ARGUMENT (d9d6)
 d98e  cd 45 d8   CALL d845
 ????:
-d991  2a 0f cf   LHLD cf0f
+d991  2a 0f cf   LHLD BDOS_SAVE_SP (cf0f)
 d994  f9         SPHL
-d995  2a 45 cf   LHLD cf45
+d995  2a 45 cf   LHLD FUNCTION_RETURN_VALUE (cf45)
 d998  7d         MOV A, L
 d999  44         MOV B, H
 d99a  c9         RET
@@ -2141,5 +2208,11 @@ d9a3  0e 00      MVI C, 00
 d9a5  cd 07 d7   CALL d707
 d9a8  cc 03 d6   CZ d603
 d9ab  c9         RET
+
 ????:
 d9ac  e5         PUSH HL
+
+
+
+FUNCTION_BYTE_ARGUMENT:
+    d9d6 00           db 00 

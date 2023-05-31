@@ -222,8 +222,8 @@ START_CPM:
     daf4  3e c3      MVI A, c3                  ; Put the JMP opcode to 0x0000
     daf6  32 00 00   STA 0000
 
-    daf9  32 05 00   STA 0005                   ; Store JMP BDOS_START opcode to 0x0005
-    dafc  21 06 cc   LXI HL, cc06
+    daf9  32 05 00   STA 0005                   ; Store JMP BDOS_ENTRY opcode to 0x0005
+    dafc  21 06 cc   LXI HL, BDOS_ENTRY (cc06)
     daff  22 06 00   SHLD 0006
 
     db02  3a 04 00   LDA 0004                   ; ????
