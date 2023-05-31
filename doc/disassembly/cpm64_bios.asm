@@ -3,18 +3,65 @@
 ; This code is loaded to the 0xda00-0xdbff by CP/M initial bootloader, and initially is located at
 ; 0x4a00-0x4bff address range of the CP/M binary.
 ;
-; Locic Quasi Disk Configuration (256k): 
+; The goal of the module is to provide CP/M upper levers a centralized entry point to various import/output
+; routines:
+; - Console input and output (in case of UT-88 is a keyboard and display)
+; - Printer output (in case of UT-88 is mapped to the same display console)
+; - Tape puncher and reader (in case of UT-88 magnetic tape recorder is used instead)
+; - Number of functions to read and write a sector on the disk
+;
+; In UT-88 a Quasik Disk is used as a disk drive. The Quasi disk is a battery powered RAM, that consists
+; of four 64k pages. This gives 256k capacity in total. Within a single page data can be addressed using
+; stack read and write operations within 0x0000-0xffff memory range. Stack read/write approach provides
+; possibility to use main RAM and quasi disk simultaneously on the same address range. Quasi disk page
+; selection (as well as disconnection from the stack read/write operations) is performed by writing a
+; configuration byte to 0x40 port.
+; 
+; Quasi Disk logical configuration is: 
 ; - 256 tracks
 ; - 8 sectors per track
 ; - 128 bytes per sector
 ;
-; Physically the 256k Quasi Disk is split into four 64k pages, each represent 0x40 (64) tracks.
-; Within a single page data can be addressed using stack read and write operations within 0x0000-0xffff
-; memory range.
+;
+; The module provides the following entry points:
+; 0xda00    - Cold boot (assuming that CP/M is loaded to the memory by a bootloader)
+; 0xda03    - Warm boot (assuming that BIOS part is already loaded, devices are initialized, but CCP
+;             and BDOS parts may need to be read from disk first)
+; 0xda06    - Check console input readines (in case of UT-88 checks if a button is pressed)
+;             Return A=0x00 if no buttons pressed, and A=0xff if any button is pressed
+; 0xda09    - Read the byte from console (in case of UT-88 read the symbol from the keyboard)
+;             Returns character code in A register
+; 0xda0c    - Put the char to the console (prints the character using escape sequence processing addon)
+;             Arguments: C register - character to output
+; 0xda0f    - Print character to printer (UT-88 does not have a printer, character is displayer to the console)
+;             Arguments: C register - character to output
+; 0xda12    - Output a byte to the tape
+;             Arguments: C register - character to output
+; 0xda15    - Input a byte from the tape
+;             Returns received byte in A register
+; 0xda18    - Move to track #0 of the current disk
+; 0xda1b    - Select the disk
+;             Arguments: C register - disk to select (the only disk is supported is 0x00)
+; 0xda1e    - Select the disk track
+;             Arguments: C register - track to select
+; 0xda21    - Select sector on the track
+;             Arguments: C register - sector to select (1-based numbering)
+; 0xda24    - Set the buffer to read/write sector data
+;             Arguments: BC - pointer to the buffer to use
+; 0xda27    - Read the selected sector to previously set buffer
+; 0xda2a    - Write the buffer data to the selected sector
+; 0xda2d    - Check if printer is ready
+;             Always returns 0xff "Ready" status in A register
+; 0xda30    - "Logical" to "physical" sector translation
+;             Arguments: DE - translation table pointer, C - logical sector number
+;             Returns: L - physical sector number
 ;
 ; Important variables:
+; 0x0000    - JMP WARM_BOOT opcode
 ; 0x0003    - ????
 ; 0x0004    - ????
+; 0x0005    - JMP BDOS_START opcode
+; 0x0080    - Default read/write buffer (128 bytes)
 ; 0xdbec    - Quasi disk page that matches selected track
 ; 0xdbed    - Selected track number (within selected Quasi disk page)
 ; 0xdbee    - Selected sector number (within selected disl and track)
@@ -26,12 +73,12 @@
 ENTRY_POINTS:
     da00  c3 80 da   JMP COLD_BOOT (da80)           # Cold boot
     da03  c3 9e da   JMP WARM_BOOT (da9e)           # Warm boot
-    da06  c3 12 f8   JMP f812
-    da09  c3 03 f8   JMP f803
-    da0c  c3 00 f5   JMP f500
-    da0f  c3 09 f8   JMP MONITOR_PUT_CHAR (f809)    # Console output
-    da12  c3 0c f8   JMP f80c
-    da15  c3 06 f8   JMP f806
+    da06  c3 12 f8   JMP MONITOR_IS_BUTTON_PRESSED (f812)   # Check if there is a console input ready
+    da09  c3 03 f8   JMP MONITOR_KBD_INPUT (f803)   # Console input
+    da0c  c3 00 f5   JMP MONITOR_ADDON_PUT_CHAR (f500)  # Console output
+    da0f  c3 09 f8   JMP MONITOR_PUT_CHAR (f809)    # Printer (List) output
+    da12  c3 0c f8   JMP MONITOR_OUT_BYTE (f80c)    # Output a byte to the tape
+    da15  c3 06 f8   JMP MONITOR_IN_BYTE (f806)     # Input a byte from the tape
     da18  c3 0c db   JMP TRACK_ZERO (db0c)          # Move to track 0 on the current disk
     da1b  c3 11 db   JMP SELECT_DISK (db11)         # Select current disk
     da1e  c3 2a db   JMP SELECT_TRACK (db2a)        # Select track on the current disk
@@ -39,20 +86,16 @@ ENTRY_POINTS:
     da24  c3 6d db   JMP SET_BUFFER (db6d)          # Set the buffer for reading and writing sectors
     da27  c3 73 db   JMP READ_SECTOR (db73)         # Read selected sector to the provided buffer
     da2a  c3 9e db   JMP WRITE_SECTOR (db9e)        # Write data buffer to selected sector
-    da2d  c3 09 db   JMP db09
-    da30  c3 63 db   JMP db63
+    da2d  c3 09 db   JMP PRINTER_STATUS (db09)      # Get the printer (list) status
+    da30  c3 63 db   JMP TRANSLATE_SECTOR (db63)    # "Logical" to "physical" sector translation
 
 DISK_DESCRIPTION:
     da33  43 da 00 00 00 00 00 00
     da3b  f6 db 4b da 95 dc 76 dc
     
-????:
-    da43  01 02   CC 0201
-    da45  03         INX BC
-    da46  04         INR B
-    da47  05         DCR B
-    da48  06 07      MVI B, 07
-    da4a  08         db 08
+SECTOR_TRANSLATION_TABLE:
+    da43  01 02 03 04 05 06 07 08
+    
     da4b  08         db 08
     da4c  00         NOP
     da4d  03         INX BC
@@ -75,6 +118,11 @@ WELCOME_STR:
     da72  20 2d 20 32 35 36 4b 2e   db " - 256K."
     da7a  0a 00                     db 0x0a, 0x00
 
+
+; Very initial boot of the system.
+; 
+; The function assumes that CP/M is loaded to the memory already, so it just prints
+; the welcome message and starts the CP/M OS
 COLD_BOOT:
     da80  31 00 01   LXI SP, 0100               ; Initialize the stack pointer
 
@@ -85,7 +133,7 @@ COLD_BOOT:
     da8a  32 04 00   STA 0004
     da8d  32 03 00   STA 0003
 
-    da90  c3 e7 da   JMP dae7
+    da90  c3 e7 da   JMP START_CPM (dae7)
 
 
 ; Print a string pointed by HL to the console
@@ -100,46 +148,55 @@ PRINT_STR:
     da9a  23         INX HL                     ; Advance to the next character in the string
     da9b  c3 93 da   JMP PRINT_STR (da93)
 
-
+; Warm Boot
+;
+; The function assumes that BIOS is already loaded and working, all devices are initialized.
+; At the same time CCP and BDOS parts may be unloaded by transit application, so these parts
+; needs to be loaded from disk first.
 WARM_BOOT:
     da9e  31 80 00   LXI SP, 0080               ; Initialize stack pointer (why 0x80? Cold boot uses 0x100)
     
-    daa1  0e 00      MVI C, 00
+    daa1  0e 00      MVI C, 00                  ; Select the disk and track
     daa3  cd 11 db   CALL SELECT_DISK (db11)
-
     daa6  cd 0c db   CALL TRACK_ZERO (db0c)
-    daa9  06 2c      MVI B, 2c
-    daab  0e 00      MVI C, 00
-    daad  16 01      MVI D, 01
-    daaf  21 00 c4   LXI HL, c400
 
-????:
+    daa9  06 2c      MVI B, 2c                  ; Number of sectors to read (0x2c*0x80 = 0x1600 bytes)
+    daab  0e 00      MVI C, 00
+    daad  16 01      MVI D, 01                  ; First sector number
+    daaf  21 00 c4   LXI HL, c400               ; Target loading address
+
+READ_NEXT_SECTOR:
     dab2  c5         PUSH BC
     dab3  d5         PUSH DE
     dab4  e5         PUSH HL
 
-    dab5  4a         MOV C, D
+    dab5  4a         MOV C, D                   ; Select next sector
     dab6  cd 5e db   CALL SELECT_SECTOR (db5e)
 
     dab9  c1         POP BC
     daba  c5         PUSH BC
-    
-    dabb  cd 6d db   CALL SET_BUFFER (db6d)
+
+    dabb  cd 6d db   CALL SET_BUFFER (db6d)     ; Read the sector
     dabe  cd 73 db   CALL READ_SECTOR (db73)
-    dac1  fe 00      CPI A, 00
-    dac3  c2 9e da   JNZ da9e
-    dac6  e1         POP HL
+
+    dac1  fe 00      CPI A, 00                  ; Check reading error
+    dac3  c2 9e da   JNZ WARM_BOOT (da9e)
+
+    dac6  e1         POP HL                     ; Advance the buffer pointer by 128 bytes
     dac7  11 80 00   LXI DE, 0080
     daca  19         DAD DE
-    dacb  d1         POP DE
+
+    dacb  d1         POP DE                     ; Decrement remaining sectors counter
     dacc  c1         POP BC
     dacd  05         DCR B
-    dace  ca e7 da   JZ dae7
-    dad1  14         INR D
+    dace  ca e7 da   JZ START_CPM (dae7)
+
+    dad1  14         INR D                      ; Advance to the next sector
     dad2  7a         MOV A, D
     dad3  fe 09      CPI A, 09
-    dad5  da b2 da   JC dab2
-    dad8  16 01      MVI D, 01
+    dad5  da b2 da   JC READ_NEXT_SECTOR (dab2)
+
+    dad8  16 01      MVI D, 01                  ; Read next track
     dada  0c         INR C
     dadb  c5         PUSH BC
     dadc  d5         PUSH DE
@@ -148,25 +205,34 @@ WARM_BOOT:
     dae1  e1         POP HL
     dae2  d1         POP DE
     dae3  c1         POP BC
-    dae4  c3 b2 da   JMP dab2
+    dae4  c3 b2 da   JMP READ_NEXT_SECTOR (dab2)
 
-????:
-    dae7  f3         DI
-    dae8  21 03 da   LXI HL, da03
+; Start the CPM
+;
+; This function does remaining initialization of the disk system, sets some entry points,
+; and passes the control to CP/M command processor
+START_CPM:
+    dae7  f3         DI                         ; Store WARM_BOOT address at 0x0000 jump command
+    dae8  21 03 da   LXI HL, WARM_BOOT (da03)
     daeb  22 01 00   SHLD 0001
-    daee  01 80 00   LXI BC, 0080
+
+    daee  01 80 00   LXI BC, 0080               ; Set the default buffer address to use
     daf1  cd 6d db   CALL SET_BUFFER (db6d)
-    daf4  3e c3      MVI A, c3
+
+    daf4  3e c3      MVI A, c3                  ; Put the JMP opcode to 0x0000
     daf6  32 00 00   STA 0000
-    daf9  32 05 00   STA 0005
+
+    daf9  32 05 00   STA 0005                   ; Store JMP BDOS_START opcode to 0x0005
     dafc  21 06 cc   LXI HL, cc06
     daff  22 06 00   SHLD 0006
-    db02  3a 04 00   LDA 0004
-    db05  4f         MOV C, A
-    db06  c3 00 c4   JMP c400
 
-????:
-    db09  3e ff      MVI A, ff
+    db02  3a 04 00   LDA 0004                   ; ????
+    db05  4f         MOV C, A
+    db06  c3 00 c4   JMP c400                   ; Jump to CP/M command processor
+
+
+PRINTER_STATUS:
+    db09  3e ff      MVI A, ff                  ; Printer status is always ready
     db0b  c9         RET
 
 TRACK_ZERO:
@@ -254,15 +320,31 @@ SELECT_SECTOR:
     db62  c9         RET
 
 
-
-????:
-    db63  06 00      MVI B, 00
+; Sector translation is needed on old machines to allow enough time to 
+; finish reading one sector and processing its buffers, while the disk has already rotated to 
+; the next sector. The machine is logically reading N+1 sector, while physically it will read
+; sector located at other place.
+;
+; As for the implementation, this function is a simple table lookup.
+; No sectors translation needed for RAM quasi disk
+;
+; Arguments:
+; DE - pointer to sector translation table (typically da43)
+; C  - logical sector number
+;
+; Return:
+; L  - physical sector number
+TRANSLATE_SECTOR:
+    db63  06 00      MVI B, 00                  ; Calculate pointer to the sector translation table
     db65  eb         XCHG
     db66  09         DAD BC
-    db67  7e         MOV A, M
+
+    db67  7e         MOV A, M                   ; Read the value and set it to the current sector
     db68  32 ee db   STA CURRENT_SECTOR (dbee)
-    db6b  6f         MOV L, A
+
+    db6b  6f         MOV L, A                   ; Return the value in L
     db6c  c9         RET
+
 
 ; Set read/write buffer address
 ;
@@ -312,7 +394,7 @@ SECTOR_READ_WRITE_EXIT:
     db98  2a f4 db   LHLD SAVE_SP (dbf4)        ; Restore original stack pointer
     db9b  f9         SPHL
 
-    db9c  af         XRA A
+    db9c  af         XRA A                      ; Indicate no error
     db9d  c9         RET
 
 

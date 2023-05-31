@@ -3,7 +3,7 @@
 ; This code is loaded to the memory by CP/M initial bootloader, and initially is located at
 ; 0x31e0-0x32ff address range of the CP/M binary
 ;
-; This file contains a small addition to the Monitor'S F put character functions. The goal of the
+; This file contains a small addition to the Monitor's F put character functions. The goal of the
 ; addition is to add support of some ANSI escape sequences (sort of), more than Monitor-F is capable
 ; of out of the box.
 ;
@@ -22,7 +22,8 @@
 ; 
 ; Issues:
 ; Perhaps this code was initially ported from some other machine, that does not support ESC-Y sequence.
-; This is the only explanation why this code implements the same feature, without any extra functionality.
+; This is the only explanation why this code implements the same feature that already exists in the Monitor,
+; without adding any extra functionality.
 ;
 ; This port also has a few obvious bugs, that perhaps caused by quick port from other platform:
 ; - The code expects cursor position to be located at 0xf75a, while in fact this should be 0xf7b2 for the
