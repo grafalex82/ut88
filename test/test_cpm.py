@@ -94,9 +94,30 @@ def put_char(cpm, c):
     cpm.cpu._c = c
     cpm.run_function(0xf500)    
 
+
 def print_string(cpm, string):
     for c in string:
         put_char(cpm, ord(c))
+
+
+def select_disk(cpm, disk):
+    cpm.cpu._c = disk
+    cpm.run_function(0xda1b)
+
+
+def select_track(cpm, track):
+    cpm.cpu._c = track
+    cpm.run_function(0xdb2a)
+
+
+def select_sector(cpm, sector):
+    cpm.cpu._c = sector
+    cpm.run_function(0xda21)
+
+
+def set_disk_buffer(cpm, addr):
+    cpm.cpu.bc = addr
+    cpm.run_function(0xda24)
 
 
 def test_print_string(cpm):
@@ -125,6 +146,7 @@ def test_put_char_cursor_movements(cpm):
 
     print_string(cpm, "\x1bD")  # Esc-D - move cursor left
     assert cpm.get_word(0xf7b2) == 0xe800
+
 
 def test_put_char_home_screen(cpm):
     # Print something on the screen
@@ -208,35 +230,26 @@ def test_put_char_clear_line_after_cursor(cpm):
 
 
 def test_bios_select_disk(cpm):
-    cpm.cpu._c = 0x00
-    cpm.run_function(0xda1b)
-
+    select_disk(cpm, 0)
     assert cpm.cpu.hl == 0xda33
 
-def test_bios_select_incorrect_disk(cpm):
-    cpm.cpu._c = 0x01
-    cpm.run_function(0xda1b)
 
+def test_bios_select_incorrect_disk(cpm):
+    select_disk(cpm, 1)
     assert cpm.cpu.hl == 0x0000
 
 
 def test_bios_select_track(cpm):
-    cpm.cpu._c = 0x05
-    cpm.run_function(0xdb2a)
-
+    select_track(cpm, 0x05)
     assert cpm.get_byte(0xdbec) == 0xfe  # Page 0
     assert cpm.get_byte(0xdbed) == 0x05  # Track 5
 
-    cpm.cpu._c = 0x98
-    cpm.run_function(0xdb2a)
-
+    select_track(cpm, 0x98)
     assert cpm.get_byte(0xdbec) == 0xfb  # Page 2
     assert cpm.get_byte(0xdbed) == 0x18  # Track 0x18
 
-    cpm.cpu._c = 0xff
-    cpm.run_function(0xdb2a)
-
-    assert cpm.get_byte(0xdbec) == 0xf7  # Page 2
+    select_track(cpm, 0xff)
+    assert cpm.get_byte(0xdbec) == 0xf7  # Page 3
     assert cpm.get_byte(0xdbed) == 0x3f  # Track 0x3f
 
 
@@ -248,15 +261,13 @@ def test_bios_select_track_zero(cpm):
 
 
 def test_bios_select_sector(cpm):
-    cpm.cpu._c = 0x42
-    cpm.run_function(0xda21)
+    select_sector(cpm, 0x42)
 
     assert cpm.get_byte(0xdbee) == 0x42
 
 
 def test_bios_set_buffer(cpm):
-    cpm.cpu.bc = 0xbeef
-    cpm.run_function(0xda24)
+    set_disk_buffer(cpm, 0xbeef)
 
     assert cpm.get_word(0xdbef) == 0xbeef
 
@@ -275,21 +286,11 @@ def test_bios_read_sector(cpm, tmp_path):
     disk = QuasiDisk(f)
     cpm._emulator._machine.set_quasi_disk(disk)
 
-    # Select disk
-    cpm.cpu._c = 0x00
-    cpm.run_function(0xda1b)
-
-    # Select track
-    cpm.cpu._c = 70
-    cpm.run_function(0xdb2a)
-    
-    # Select sector
-    cpm.cpu._c = 3 + 1 # Sectors numbering is 1-based
-    cpm.run_function(0xda21)
-
-    # Set the buffer
-    cpm.cpu.bc = 0x4200
-    cpm.run_function(0xda24)
+    # Select disk/track/sector
+    select_disk(cpm, 0)
+    select_track(cpm, 70)
+    select_sector(cpm, 3 + 1) # Sectors numbering is 1-based
+    set_disk_buffer(cpm, 0x4200)
 
     # Read the selected sector into the buffer
     cpm.run_function(0xda27)
@@ -311,21 +312,11 @@ def test_bios_write_sector(cpm, tmp_path):
     disk = QuasiDisk(f)
     cpm._emulator._machine.set_quasi_disk(disk)
 
-    # Select disk
-    cpm.cpu._c = 0x00
-    cpm.run_function(0xda1b)
-
-    # Select track
-    cpm.cpu._c = 70
-    cpm.run_function(0xdb2a)
-    
-    # Select sector
-    cpm.cpu._c = 3 + 1 # Sectors numbering is 1-based
-    cpm.run_function(0xda21)
-
-    # Set the buffer
-    cpm.cpu.bc = 0x4200
-    cpm.run_function(0xda24)
+    # Select disk/track/sector
+    select_disk(cpm, 0)
+    select_track(cpm, 70)
+    select_sector(cpm, 3 + 1) # Sectors numbering is 1-based
+    set_disk_buffer(cpm, 0x4200)
 
     # Write the buffer data to the selected sector
     cpm.run_function(0xda2a)
