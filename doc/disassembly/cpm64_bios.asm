@@ -3,16 +3,25 @@
 ; This code is loaded to the 0xda00-0xdbff by CP/M initial bootloader, and initially is located at
 ; 0x4a00-0x4bff address range of the CP/M binary.
 ;
-; Quasi Disk Configuration: ????? TBD
+; Locic Quasi Disk Configuration (256k): 
 ; - 256 tracks
-; - ????
+; - 8 sectors per track
+; - 128 bytes per sector
+;
+; Physically the 256k Quasi Disk is split into four 64k pages, each represent 0x40 (64) tracks.
+; Within a single page data can be addressed using stack read and write operations within 0x0000-0xffff
+; memory range.
 ;
 ; Important variables:
 ; 0x0003    - ????
 ; 0x0004    - ????
 ; 0xdbec    - Quasi disk page that matches selected track
 ; 0xdbed    - Selected track number (within selected Quasi disk page)
+; 0xdbee    - Selected sector number (within selected disl and track)
+; 0xdbef    - Buffer address
 ; 0xdbf1    - Current disk number
+; 0xdbf2    - Calculated offset of the selected disk/page/track/sector
+; 0xdbf4    - Save stack pointer while doing quasi disk operations
 
 ENTRY_POINTS:
     da00  c3 80 da   JMP COLD_BOOT (da80)           # Cold boot
@@ -26,10 +35,10 @@ ENTRY_POINTS:
     da18  c3 0c db   JMP TRACK_ZERO (db0c)          # Move to track 0 on the current disk
     da1b  c3 11 db   JMP SELECT_DISK (db11)         # Select current disk
     da1e  c3 2a db   JMP SELECT_TRACK (db2a)        # Select track on the current disk
-    da21  c3 5e db   JMP db5e
-    da24  c3 6d db   JMP db6d
-    da27  c3 73 db   JMP db73
-    da2a  c3 9e db   JMP db9e
+    da21  c3 5e db   JMP SELECT_SECTOR (db5e)       # Select sector on currently selected disk and track
+    da24  c3 6d db   JMP SET_BUFFER (db6d)          # Set the buffer for reading and writing sectors
+    da27  c3 73 db   JMP READ_SECTOR (db73)         # Read selected sector to the provided buffer
+    da2a  c3 9e db   JMP WRITE_SECTOR (db9e)        # Write data buffer to selected sector
     da2d  c3 09 db   JMP db09
     da30  c3 63 db   JMP db63
 
@@ -103,16 +112,20 @@ WARM_BOOT:
     daab  0e 00      MVI C, 00
     daad  16 01      MVI D, 01
     daaf  21 00 c4   LXI HL, c400
+
 ????:
     dab2  c5         PUSH BC
     dab3  d5         PUSH DE
     dab4  e5         PUSH HL
+
     dab5  4a         MOV C, D
-    dab6  cd 5e db   CALL db5e
+    dab6  cd 5e db   CALL SELECT_SECTOR (db5e)
+
     dab9  c1         POP BC
     daba  c5         PUSH BC
-    dabb  cd 6d db   CALL db6d
-    dabe  cd 73 db   CALL db73
+    
+    dabb  cd 6d db   CALL SET_BUFFER (db6d)
+    dabe  cd 73 db   CALL READ_SECTOR (db73)
     dac1  fe 00      CPI A, 00
     dac3  c2 9e da   JNZ da9e
     dac6  e1         POP HL
@@ -142,7 +155,7 @@ WARM_BOOT:
     dae8  21 03 da   LXI HL, da03
     daeb  22 01 00   SHLD 0001
     daee  01 80 00   LXI BC, 0080
-    daf1  cd 6d db   CALL db6d
+    daf1  cd 6d db   CALL SET_BUFFER (db6d)
     daf4  3e c3      MVI A, c3
     daf6  32 00 00   STA 0000
     daf9  32 05 00   STA 0005
@@ -151,6 +164,7 @@ WARM_BOOT:
     db02  3a 04 00   LDA 0004
     db05  4f         MOV C, A
     db06  c3 00 c4   JMP c400
+
 ????:
     db09  3e ff      MVI A, ff
     db0b  c9         RET
@@ -165,7 +179,7 @@ TRACK_ZERO:
 ; C - disk number (zero based)
 ;
 ; Returns:
-; HL - pointer to ???, or 0x0000 in case of error
+; HL - pointer to disk description record, or 0x0000 in case of error
 SELECT_DISK:
     db11  21 00 00   LXI HL, 0000
 
@@ -195,7 +209,7 @@ SELECT_DISK:
 ; C - track number
 SELECT_TRACK:
     db2a  3e fe      MVI A, fe                  ; Select Page 0 for tracks under 0x40
-    db2c  32 ec db   STA QUASI_DISK_PAGE (dbec)
+    db2c  32 ec db   STA CURRENT_QUASI_DISK_PAGE (dbec)
 
     db2f  79         MOV A, C
     db30  fe 40      CPI A, 40
@@ -204,7 +218,7 @@ SELECT_TRACK:
     db35  d6 40      SUI A, 40                  ; Select Page 1 for next 0x40 tracks
     db37  4f         MOV C, A
     db38  3e fd      MVI A, fd
-    db3a  32 ec db   STA QUASI_DISK_PAGE (dbec)
+    db3a  32 ec db   STA CURRENT_QUASI_DISK_PAGE (dbec)
 
     db3d  79         MOV A, C
     db3e  fe 40      CPI A, 40
@@ -213,7 +227,7 @@ SELECT_TRACK:
     db43  d6 40      SUI A, 40                  ; Select Page 2 for next 0x40 tracks
     db45  4f         MOV C, A
     db46  3e fb      MVI A, fb
-    db48  32 ec db   STA QUASI_DISK_PAGE (dbec)
+    db48  32 ec db   STA CURRENT_QUASI_DISK_PAGE (dbec)
 
     db4b  79         MOV A, C
     db4c  fe 40      CPI A, 40
@@ -222,110 +236,175 @@ SELECT_TRACK:
     db51  d6 40      SUI A, 40                  ; Select Page 3 for next 0x40 tracks
     db53  4f         MOV C, A
     db54  3e f7      MVI A, f7
-    db56  32 ec db   STA QUASI_DISK_PAGE (dbec)
+    db56  32 ec db   STA CURRENT_QUASI_DISK_PAGE (dbec)
 
 SELECT_TRACK_EXIT:
-    db59  21 ed db   LXI HL, TRACK_NUMBER (dbed); Save the track number on selected page
+    db59  21 ed db   LXI HL, CURRENT_TRACK (dbed); Save the track number on selected page
     db5c  71         MOV M, C
     db5d  c9         RET
 
 
-????:
-    db5e  21 ee db   LXI HL, dbee
+; Select sector of the current disk and track
+;
+; Arguments:
+; C - track number
+SELECT_SECTOR:
+    db5e  21 ee db   LXI HL, CURRENT_SECTOR (dbee)
     db61  71         MOV M, C
     db62  c9         RET
+
+
 
 ????:
     db63  06 00      MVI B, 00
     db65  eb         XCHG
     db66  09         DAD BC
     db67  7e         MOV A, M
-    db68  32 ee db   STA dbee
+    db68  32 ee db   STA CURRENT_SECTOR (dbee)
     db6b  6f         MOV L, A
     db6c  c9         RET
-????:
+
+; Set read/write buffer address
+;
+; Arguments:
+; BC    - pointer to the buffer
+SET_BUFFER:
     db6d  69         MOV L, C
     db6e  60         MOV H, B
-    db6f  22 ef db   SHLD dbef
+    db6f  22 ef db   SHLD BUFFER_ADDR (dbef)
     db72  c9         RET
-????:
-    db73  cd c8 db   CALL dbc8
-    db76  21 00 00   LXI HL, 0000
+
+
+; Read selected track/sector to previously set buffer
+;
+; This function reads 128 bytes sector, previously selected by select SELECT_DISK/TRACK/SECTOR functions.
+; Reading is performed into the buffer previously provided by SET_BUFFER function
+READ_SECTOR:
+    db73  cd c8 db   CALL CALCULATE_SECTOR_ADDR (dbc8)  ; Calculate sector offset
+
+    db76  21 00 00   LXI HL, 0000               ; Save stack pointer
     db79  39         DAD SP
-    db7a  22 f4 db   SHLD dbf4
-    db7d  2a f2 db   LHLD dbf2
+    db7a  22 f4 db   SHLD SAVE_SP (dbf4)
+    
+    db7d  2a f2 db   LHLD SECTOR_OFFSET (dbf2)  ; Set the calculated sector offset to SP
     db80  f9         SPHL
-    db81  2a ef db   LHLD dbef
-    db84  06 40      MVI B, 40
-    db86  3a ec db   LDA QUASI_DISK_PAGE (dbec)
+
+    db81  2a ef db   LHLD BUFFER_ADDR (dbef)    ; Set the buffer address
+
+    db84  06 40      MVI B, 40                  ; 0x40 words (0x80 bytes) in the sector
+
+    db86  3a ec db   LDA CURRENT_QUASI_DISK_PAGE (dbec) ; Select the quasi disk page
     db89  d3 40      OUT 40
-????:
-    db8b  d1         POP DE
-    db8c  73         MOV M, E
+
+READ_SECTOR_LOOP:
+    db8b  d1         POP DE                     ; Read 2 bytes from the quasi disk using stack read operations,
+    db8c  73         MOV M, E                   ; and store them at [HL]
     db8d  23         INX HL
     db8e  72         MOV M, D
     db8f  23         INX HL
     db90  05         DCR B
-    db91  c2 8b db   JNZ db8b
-????:
-    db94  3e ff      MVI A, ff
+    db91  c2 8b db   JNZ READ_SECTOR_LOOP (db8b)
+
+SECTOR_READ_WRITE_EXIT:
+    db94  3e ff      MVI A, ff                  ; Disconnect from the quasi disk
     db96  d3 40      OUT 40
-    db98  2a f4 db   LHLD dbf4
+
+    db98  2a f4 db   LHLD SAVE_SP (dbf4)        ; Restore original stack pointer
     db9b  f9         SPHL
+
     db9c  af         XRA A
     db9d  c9         RET
-????:
-    db9e  cd c8 db   CALL dbc8
-    dba1  19         DAD DE
-    dba2  22 f2 db   SHLD dbf2
-    dba5  21 00 00   LXI HL, 0000
+
+
+
+WRITE_SECTOR:
+    db9e  cd c8 db   CALL CALCULATE_SECTOR_ADDR (dbc8)  ; Calculate the sector address
+
+    dba1  19         DAD DE                     ; And add another sector on top (DE shall contain 0x80)
+    dba2  22 f2 db   SHLD SECTOR_OFFSET (dbf2)
+
+    dba5  21 00 00   LXI HL, 0000               ; Save the stack pointer
     dba8  39         DAD SP
-    dba9  22 f4 db   SHLD dbf4
-    dbac  2a f2 db   LHLD dbf2
+    dba9  22 f4 db   SHLD SAVE_SP (dbf4)
+
+    dbac  2a f2 db   LHLD SECTOR_OFFSET (dbf2)  ; Set the sector offset into SP
     dbaf  f9         SPHL
-    dbb0  2a ef db   LHLD dbef
+
+    dbb0  2a ef db   LHLD BUFFER_ADDR (dbef)    ; Load the buffer address
     dbb3  19         DAD DE
     dbb4  2b         DCX HL
-    dbb5  06 40      MVI B, 40
-    dbb7  3a ec db   LDA QUASI_DISK_PAGE (dbec)
+
+    dbb5  06 40      MVI B, 40                  ; Read 0x40 words (0x80 bytes - sector size)
+
+    dbb7  3a ec db   LDA CURRENT_QUASI_DISK_PAGE (dbec) ; Enable quasi disk, and select the page
     dbba  d3 40      OUT 40
-????:
-    dbbc  56         MOV D, M
-    dbbd  2b         DCX HL
+
+WRITE_SECTOR_LOOP:
+    dbbc  56         MOV D, M                   ; Read data from the buffer, and store it to 
+    dbbd  2b         DCX HL                     ; the quasi disk using stack write operations
     dbbe  5e         MOV E, M
     dbbf  2b         DCX HL
     dbc0  d5         PUSH DE
     dbc1  05         DCR B
-    dbc2  c2 bc db   JNZ dbbc
-    dbc5  c3 94 db   JMP db94
-????:
-    dbc8  21 00 00   LXI HL, 0000
-    dbcb  11 00 04   LXI DE, 0400
-    dbce  3a ed db   LDA TRACK_NUMBER (dbed)
+    dbc2  c2 bc db   JNZ WRITE_SECTOR_LOOP (dbbc)
+
+    dbc5  c3 94 db   JMP SECTOR_READ_WRITE_EXIT (db94)  ; Restore SP and exit
+
+
+; Calculate sector offset
+;
+; This function calculates offset of the currently selected track/sector on the currently
+; selected quasi disk page. Result is stored at 0xdbf2
+;
+; offset = 0x0400 * track_number + 0x0080 * sector_number
+CALCULATE_SECTOR_ADDR:
+    dbc8  21 00 00   LXI HL, 0000               ; Resulting address
+
+    dbcb  11 00 04   LXI DE, 0400               ; Number of bytes on a track
+
+    dbce  3a ed db   LDA CURRENT_TRACK (dbed)   ; Check if track #0 is selected
     dbd1  b7         ORA A
-    dbd2  ca da db   JZ dbda
-????:
-    dbd5  19         DAD DE
+    dbd2  ca da db   JZ CALCULATE_SECTOR_ADDR_1 (dbda)
+
+CALCULATE_TRACK_LOOP:
+    dbd5  19         DAD DE                     ; Multiply track number by number of bytes on the track
     dbd6  3d         DCR A
-    dbd7  c2 d5 db   JNZ dbd5
-????:
-    dbda  11 80 00   LXI DE, 0080
-    dbdd  3a ee db   LDA dbee
-????:
-    dbe0  3d         DCR A
-    dbe1  ca e8 db   JZ dbe8
+    dbd7  c2 d5 db   JNZ CALCULATE_TRACK_LOOP (dbd5)
+
+CALCULATE_SECTOR_ADDR_1:
+    dbda  11 80 00   LXI DE, 0080               ; Number of bytes in a single sector
+    dbdd  3a ee db   LDA CURRENT_SECTOR (dbee)
+
+CALCULATE_SECTOR_LOOP:
+    dbe0  3d         DCR A                      ; Multiply current sector index by sector size
+    dbe1  ca e8 db   JZ CALCULATE_SECTOR_ADDR_EXIT (dbe8)
+
     dbe4  19         DAD DE
-    dbe5  c3 e0 db   JMP dbe0
-????:
-    dbe8  22 f2 db   SHLD dbf2
+    dbe5  c3 e0 db   JMP CALCULATE_SECTOR_LOOP (dbe0)
+    
+CALCULATE_SECTOR_ADDR_EXIT:
+    dbe8  22 f2 db   SHLD SECTOR_OFFSET (dbf2)  ; Store the result
     dbeb  c9         RET
 
 
-QUASI_DISK_PAGE:
+
+CURRENT_QUASI_DISK_PAGE:
     dbec  00         db 00
 
-TRACK_NUMBER:
+CURRENT_TRACK:
     dbed  00         db 00
+
+CURRENT_SECTOR:
+    dbee  00         db 00
+
+BUFFER_ADDR:
+    dbef  00         db 00
 
 CUR_DISK_NO:
     dbf1  00         db 00
+
+SECTOR_OFFSET:
+    dbf2  00 00      dw 0000
+
+SAVE_SP:
+    dbf4  00 00      dw 0000

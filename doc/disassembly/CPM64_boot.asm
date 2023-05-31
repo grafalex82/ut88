@@ -1,4 +1,3 @@
-
 ; CP/M64 Loader
 ;
 ; This is a single binary loader of the CP/M operating system. The loader is responsible for

@@ -245,3 +245,96 @@ def test_bios_select_track_zero(cpm):
 
     assert cpm.get_byte(0xdbec) == 0xfe  # Page 0
     assert cpm.get_byte(0xdbed) == 0x00  # Track 0
+
+
+def test_bios_select_sector(cpm):
+    cpm.cpu._c = 0x42
+    cpm.run_function(0xda21)
+
+    assert cpm.get_byte(0xdbee) == 0x42
+
+
+def test_bios_set_buffer(cpm):
+    cpm.cpu.bc = 0xbeef
+    cpm.run_function(0xda24)
+
+    assert cpm.get_word(0xdbef) == 0xbeef
+
+
+def test_bios_read_sector(cpm, tmp_path):
+    data = bytearray(256*1024)
+    offset = 70*1024 + 3*128 # track 70 (track 6 on page 1), sector 3
+    sector_data = [1, 2, 3, 4, 5, 6, 7, 8] * 16
+    data[offset:offset+128] = sector_data
+
+    # Store the data to disk
+    f = tmp_path / "test.bin"
+    f.write_bytes(data)
+
+    # Attach the quasi disk with prepared data to the machine
+    disk = QuasiDisk(f)
+    cpm._emulator._machine.set_quasi_disk(disk)
+
+    # Select disk
+    cpm.cpu._c = 0x00
+    cpm.run_function(0xda1b)
+
+    # Select track
+    cpm.cpu._c = 70
+    cpm.run_function(0xdb2a)
+    
+    # Select sector
+    cpm.cpu._c = 3 + 1 # Sectors numbering is 1-based
+    cpm.run_function(0xda21)
+
+    # Set the buffer
+    cpm.cpu.bc = 0x4200
+    cpm.run_function(0xda24)
+
+    # Read the selected sector into the buffer
+    cpm.run_function(0xda27)
+
+    # Check the read sector
+    for i in range(len(sector_data)):
+        assert cpm.get_byte(0x4200 + i) == sector_data[i]
+
+
+def test_bios_write_sector(cpm, tmp_path):
+    # Prepare data buffer
+    sector_data = [1, 2, 3, 4, 5, 6, 7, 8] * 16
+    for i in range(len(sector_data)):
+        cpm.set_byte(0x4200 + i, sector_data[i])
+
+    # Create and install an empty quasi disk
+    f = tmp_path / "test.bin"
+    f.write_bytes(bytearray(256*1024))
+    disk = QuasiDisk(f)
+    cpm._emulator._machine.set_quasi_disk(disk)
+
+    # Select disk
+    cpm.cpu._c = 0x00
+    cpm.run_function(0xda1b)
+
+    # Select track
+    cpm.cpu._c = 70
+    cpm.run_function(0xdb2a)
+    
+    # Select sector
+    cpm.cpu._c = 3 + 1 # Sectors numbering is 1-based
+    cpm.run_function(0xda21)
+
+    # Set the buffer
+    cpm.cpu.bc = 0x4200
+    cpm.run_function(0xda24)
+
+    # Write the buffer data to the selected sector
+    cpm.run_function(0xda2a)
+
+    # Flush the data to the host
+    disk.update()
+
+    # Check written data
+    data = f.read_bytes()
+    offset = 70*1024 + 3*128 # track 70 (track 6 on page 1), sector 3
+    for i in range(128):
+        assert data[offset + i] == sector_data[i]
