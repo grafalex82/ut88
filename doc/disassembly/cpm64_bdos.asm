@@ -7,6 +7,7 @@
 ;
 ;
 ; Important variables:
+; 0003  - I/O Byte ?????
 ; cf0d  - ????? flag indicating that output to the printer is enabled in addition to console output
 ; cf0e  - if a keypress is detected, entered symbol is buffered in this variable
 ; cf0f  - save caller's SP (2 byte)
@@ -99,8 +100,8 @@ FUNCTION_HANDLERS_TABLE:
     cc4f  12 da      dw BIOS_OUT_BYTE (da12)        ; Function 0x04 - Output a byte to the tape
     cc51  0f da      dw BIOS_PRINT_BYTE (da0f)      ; Function 0x05 - Print (List) a byte
     cc53  d4 ce      dw DIRECT_CONSOLE_IO (ced4)    ; Function 0x06 - Direct console input or output
-cc55  ed ce
-cc57  f3 ce
+    cc55  ed ce      dw GET_IO_BYTE (ceed)          ; Function 0x07 - Get I/O Byte
+    cc57  f3 ce      dw SET_IO_BYTE (cef3)          ; Function 0x08 - Set I/O Byte
 cc59  f8 ce      dw PRINT_STRING (cef8)         ; Function 0x09 - print string
 cc5b  e1 cd 
     cc5d  fe ce      dw GET_CONSOLE_STATUS (cefe)   ; Function 0x0b - get console status (if a button pressed)
@@ -624,11 +625,22 @@ DIRECT_CONSOLE_INPUT:
     cee7  cd 09 da   CALL BIOS_CONSOLE_INPUT (da09) ; Input the character. No echo is performed.
     ceea  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 
-ceed  3a 03 00   LDA 0003
-cef0  c3 01 cf   JMP FUNCTION_EXIT (cf01)
-cef3  21 03 00   LXI HL, 0003
-cef6  71         MOV M, C
-cef7  c9         RET
+
+; Function 0x07 - Get I/O byte
+;
+; Get the byte from its location at 0x0003
+GET_IO_BYTE:
+    ceed  3a 03 00   LDA 0003
+    cef0  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+
+
+; Function 0x08 - Set I/O byte
+;
+; Store the byte to its location at 0x0003
+SET_IO_BYTE:
+    cef3  21 03 00   LXI HL, 0003
+    cef6  71         MOV M, C
+    cef7  c9         RET
 
 PRINT_STRING:
     cef8  eb         XCHG

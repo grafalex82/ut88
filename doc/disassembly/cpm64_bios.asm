@@ -58,7 +58,7 @@
 ;
 ; Important variables:
 ; 0x0000    - JMP WARM_BOOT opcode
-; 0x0003    - ????
+; 0x0003    - I/O Byte ?????
 ; 0x0004    - ????
 ; 0x0005    - JMP BDOS_START opcode
 ; 0x0080    - Default read/write buffer (128 bytes)
@@ -131,7 +131,8 @@ COLD_BOOT:
 
     da89  af         XRA A                      ; ?????
     da8a  32 04 00   STA 0004
-    da8d  32 03 00   STA 0003
+
+    da8d  32 03 00   STA 0003                   ; Clear the I/O byte
 
     da90  c3 e7 da   JMP START_CPM (dae7)
 
