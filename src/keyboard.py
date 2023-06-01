@@ -76,7 +76,6 @@ class Keyboard(IODevice):
     emulator will return port B value according to selected column and button pressed.
 
     """
-
     def __init__(self):
         IODevice.__init__(self, 0x04, 0x07)
         # The only supported configuration is Port A output, B and C - input
@@ -302,3 +301,7 @@ class Keyboard(IODevice):
                 return
             
         self._pressed_key = (0xff, 0xff, 0xff)
+
+    def emulate_key_press(self, ch):
+        if ch in self._key_map:
+            self._pressed_key = self._key_map[ch]
