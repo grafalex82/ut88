@@ -72,9 +72,9 @@ REAL_BDOS_ENTRY:
     cc33  fe 29      CPI A, 29
     cc35  d0         RNC
 
-    cc36  4b         MOV C, E                   ; Load the table of function handlers
+    cc36  4b         MOV C, E                   ; One byte arguments are available in C register
+    
     cc37  21 47 cc   LXI HL, FUNCTION_HANDLERS_TABLE (cc47)
-
     cc3a  5f         MOV E, A                   ; DE is a function number
     cc3b  16 00      MVI D, 00
 
@@ -94,11 +94,11 @@ REAL_BDOS_ENTRY:
 FUNCTION_HANDLERS_TABLE:
     cc47  03 da      dw BIOS_WARM_BOOT (da03)       ; Function 0x00 - Warm boot
     cc48  c8 ce      dw CONSOLE_INPUT (cec8)        ; Function 0x01 - Console input
-cc4b  90 cd
-cc4d  ce ce
-cc4f  12 da
-cc51  0f da
-cc53  d4 ce 
+    cc4b  90 cd      dw PUT_CHAR (cd90)             ; Function 0x02 - Console output
+    cc4d  ce ce      dw IN_BYTE (cece)              ; Function 0x03 - Input a byte from the tape
+    cc4f  12 da      dw BIOS_OUT_BYTE (da12)        ; Function 0x04 - Output a byte to the tape
+    cc51  0f da      dw BIOS_PRINT_BYTE (da0f)      ; Function 0x05 - Print (List) a byte
+    cc53  d4 ce      dw DIRECT_CONSOLE_IO (ced4)    ; Function 0x06 - Direct console input or output
 cc55  ed ce
 cc57  f3 ce
 cc59  f8 ce      dw PRINT_STRING (cef8)         ; Function 0x09 - print string
@@ -317,14 +317,14 @@ IS_KEY_PRESSED_EXIT:
     cd47  c9         RET
 
 
-
+;
 DO_PUT_CHAR:
     cd48  3a 0a cf   LDA cf0a                   ; ???????
     cd4b  b7         ORA A
     cd4c  c2 62 cd   JNZ DO_PUT_CHAR_1 (cd62)
 
-    cd4f  c5         PUSH BC                    ; Check if any key is pressed ????
-    cd50  cd 23 cd   CALL IS_KEY_PRESSED (cd23)
+    cd4f  c5         PUSH BC                    ; Get a chance to process Ctrl-S/Ctrl-C combinations
+    cd50  cd 23 cd   CALL IS_KEY_PRESSED (cd23) ; to break long output
     cd53  c1         POP BC
 
     cd54  c5         PUSH BC                    ; Print the character normally
@@ -382,19 +382,25 @@ cd8d  f6 40      ORI A, 40
 cd8f  4f         MOV C, A
 
 
+; Function 0x02 - Put a char to console (and printer)
+;
+; Parameters: 
+; C - character to output
 PUT_CHAR:
     cd90  79         MOV A, C                   ; Tab symbol is processed separately
     cd91  fe 09      CPI A, 09
     cd93  c2 48 cd   JNZ DO_PUT_CHAR (cd48)     ; All other symbols are processed by DO_PUT_CHAR
 
 PUT_CHAR_TAB_LOOP:
-    cd96  0e 20      MVI C, 20
+    cd96  0e 20      MVI C, 20                  ; Print spaces until next 8-char column
     cd98  cd 48 cd   CALL DO_PUT_CHAR (cd48)
 
-    cd9b  3a 0c cf   LDA cf0c
+    cd9b  3a 0c cf   LDA cf0c                   ; Check if we reached next 8-char column
     cd9e  e6 07      ANI A, 07
     cda0  c2 96 cd   JNZ cd96
+
     cda3  c9         RET
+
 
 ????:
 cda4  cd ac cd   CALL cdac
@@ -583,21 +589,41 @@ CONSOLE_INPUT:
     cec8  cd 06 cd   CALL DO_CONSOLE_INPUT (cd06)
     cecb  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 
-????:
-cece  cd 15 da   CALL da15
-ced1  c3 01 cf   JMP FUNCTION_EXIT (cf01)
-ced4  79         MOV A, C
-ced5  3c         INR A
-ced6  ca e0 ce   JZ cee0
-ced9  3c         INR A
-ceda  ca 06 da   JZ BIOS_IS_KEY_PRESSED (da06)
-cedd  c3 0c da   JMP BIOS_PUT_CHAR (da0c)
-????:
-cee0  cd 06 da   CALL BIOS_IS_KEY_PRESSED (da06)
-cee3  b7         ORA A
-cee4  ca 91 d9   JZ d991
-cee7  cd 09 da   CALL BIOS_CONSOLE_INPUT (da09)
-ceea  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+; Function 0x03 - Input byte from the tape reader
+; 
+; Return: received byte in A
+IN_BYTE:
+    cece  cd 15 da   CALL BIOS_IN_BYTE (da15)   ; Input a byte using BIOS/Monitor functions
+    ced1  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+
+; Function 0x06 - Direct console input or output
+;
+; As output: The function prints the character directly using BIOS routines, without Ctrl-S key 
+; combination handling.
+;
+; Arguments:
+; E (or C)  - 0xff for input, or a character symbol for output
+; 
+; Returns:
+; A - char code of the input character, or 0x00 if no character ready (input mode only)
+DIRECT_CONSOLE_IO:
+    ced4  79         MOV A, C                   ; Check if the byte is 0xff
+    ced5  3c         INR A
+    ced6  ca e0 ce   JZ DIRECT_CONSOLE_INPUT (cee0)
+
+    ced9  3c         INR A                      ; ??????
+    ceda  ca 06 da   JZ BIOS_IS_KEY_PRESSED (da06)
+
+    cedd  c3 0c da   JMP BIOS_PUT_CHAR (da0c)   ; In output mode - print characters as usual
+
+DIRECT_CONSOLE_INPUT:
+    cee0  cd 06 da   CALL BIOS_IS_KEY_PRESSED (da06); Check if a character is ready
+    cee3  b7         ORA A
+    cee4  ca 91 d9   JZ d991
+
+    cee7  cd 09 da   CALL BIOS_CONSOLE_INPUT (da09) ; Input the character. No echo is performed.
+    ceea  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+
 ceed  3a 03 00   LDA 0003
 cef0  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 cef3  21 03 00   LXI HL, 0003

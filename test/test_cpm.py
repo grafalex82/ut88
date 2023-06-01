@@ -367,6 +367,55 @@ def test_bdos_console_input_special_symbol(cpm):
     assert cpm.get_word(0xf7b2) == 0xe800   # Cursor not moved
 
 
+def test_bdos_console_output_regular_char(cpm):
+    call_bdos_function(cpm, 0x02, ord('A'))
+
+    assert cpm.get_byte(0xe800) == 0x41     # 'A' is printed on the screen
+    assert cpm.get_word(0xf7b2) == 0xe801   # Cursor moved to the next position
+
+
+def test_bdos_console_output_tab(cpm):
+    call_bdos_function(cpm, 0x02, 0x09)
+
+    assert cpm.get_byte(0xe800) == 0x20     # 8 spaces are printed on the screen
+    assert cpm.get_byte(0xe807) == 0x20     # 8 spaces are printed on the screen
+    assert cpm.get_word(0xf7b2) == 0xe808   # Cursor moved to the next position
+
+
+def test_bdos_console_output_lf(cpm):
+    call_bdos_function(cpm, 0x02, ord('A')) # Just print something
+    call_bdos_function(cpm, 0x02, 0x0a)     # Print LF
+
+    assert cpm.get_byte(0xe800) == 0x41     # 'A' is printed
+    assert cpm.get_word(0xf7b2) == 0xe840   # Cursor moved to the beginning of the next line
+
+
+def test_bdos_console_output_cr(cpm):
+    call_bdos_function(cpm, 0x02, ord('A')) # Just print something
+    call_bdos_function(cpm, 0x02, 0x0d)     # Print CR
+
+    assert cpm.get_byte(0xe800) == 0x41     # 'A' is printed
+    # CR printing is not supported by the Monitor. It is printed like a normal character, and thererfore
+    # cursor advances right
+    assert cpm.get_word(0xf7b2) == 0xe802   
+
+
+def test_bdos_console_direct_output(cpm):
+    call_bdos_function(cpm, 0x06, ord('A')) # Just print something
+
+    assert cpm.get_byte(0xe800) == 0x41     # 'A' is printed
+    assert cpm.get_word(0xf7b2) == 0xe801   # Cursor is advanced
+
+
+def test_bdos_console_direct_input(cpm):
+    cpm._keyboard.emulate_key_press('A')
+    ch = call_bdos_function(cpm, 0x06, 0xff)# Set the input mode
+
+    assert ch == 0x41                       # Input character is A
+    assert cpm.get_byte(0xe800) == 0x00     # No echo
+    assert cpm.get_word(0xf7b2) == 0xe800   # Cursor has not moved
+
+
 def test_bdos_check_key_pressed(cpm):
     cpm._keyboard.emulate_key_press('A')
     pressed = call_bdos_function(cpm, 0x0b)
