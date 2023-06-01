@@ -416,6 +416,22 @@ def test_bdos_console_direct_input(cpm):
     assert cpm.get_word(0xf7b2) == 0xe800   # Cursor has not moved
 
 
+def test_bdos_print_string(cpm):
+    cpm.set_byte(0x1234, ord('T'))
+    cpm.set_byte(0x1235, ord('E'))
+    cpm.set_byte(0x1236, ord('S'))
+    cpm.set_byte(0x1237, ord('T'))
+    cpm.set_byte(0x1238, ord('$'))
+    call_bdos_function(cpm, 0x09, 0x1234)   # Print the string
+
+    assert cpm.get_byte(0xe800) == ord('T')
+    assert cpm.get_byte(0xe801) == ord('E')
+    assert cpm.get_byte(0xe802) == ord('S')
+    assert cpm.get_byte(0xe803) == ord('T')
+    assert cpm.get_byte(0xe804) == 0x00     # Stopped here
+    assert cpm.get_word(0xf7b2) == 0xe804   # Cursor is advanced and stopped after 4 symbols printed
+
+
 def test_bdos_check_key_pressed(cpm):
     cpm._keyboard.emulate_key_press('A')
     pressed = call_bdos_function(cpm, 0x0b)

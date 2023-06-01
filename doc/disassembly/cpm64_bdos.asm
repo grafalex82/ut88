@@ -102,7 +102,7 @@ FUNCTION_HANDLERS_TABLE:
     cc53  d4 ce      dw DIRECT_CONSOLE_IO (ced4)    ; Function 0x06 - Direct console input or output
     cc55  ed ce      dw GET_IO_BYTE (ceed)          ; Function 0x07 - Get I/O Byte
     cc57  f3 ce      dw SET_IO_BYTE (cef3)          ; Function 0x08 - Set I/O Byte
-cc59  f8 ce      dw PRINT_STRING (cef8)         ; Function 0x09 - print string
+    cc59  f8 ce      dw PRINT_STRING (cef8)         ; Function 0x09 - print string
 cc5b  e1 cd 
     cc5d  fe ce      dw GET_CONSOLE_STATUS (cefe)   ; Function 0x0b - get console status (if a button pressed)
     cc5f  7e d8      dw GET_BDOS_VERSION (d87e)     ; Function 0x0c - get version
@@ -229,9 +229,9 @@ cce9  3a 42 cf   LDA cf42
 ccec  c6 41      ADI A, 41
 ccee  32 c6 cc   STA ccc6
 ccf1  01 ba cc   LXI BC, ccba
-ccf4  cd d3 cd   CALL cdd3
+ccf4  cd d3 cd   CALL DO_PRINT_STRING (cdd3)
 ccf7  c1         POP BC
-ccf8  cd d3 cd   CALL cdd3
+ccf8  cd d3 cd   CALL DO_PRINT_STRING (cdd3)
 
 ; Wait for a character from the console input (keyboard)
 ;
@@ -642,11 +642,16 @@ SET_IO_BYTE:
     cef6  71         MOV M, C
     cef7  c9         RET
 
+
+; Function 0x09 - Print string
+;
+; Arguments:
+; DE - pointer to the string to print
 PRINT_STRING:
-    cef8  eb         XCHG
+    cef8  eb         XCHG                       ; Move pointer to BC
     cef9  4d         MOV C, L
     cefa  44         MOV B, H
-    cefb  c3 d3 cd   JMP cdd3
+    cefb  c3 d3 cd   JMP DO_PRINT_STRING (cdd3)
 
 ; Function 0x0b - check console status (check if a symbol entered on keyboard)
 ;
