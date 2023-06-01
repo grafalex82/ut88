@@ -1633,7 +1633,7 @@ KBD_INPUT_PRESS:
     fd86  3d         DCR A
     fd87  32 f3 f7   STA f7f3
 
-    fd8a  c2 5f fd   JNZ fd5f
+    fd8a  c2 5f fd   JNZ KBD_INPUT_LOOP (fd5f)
 
     fd8d  3e 01      MVI A, 01                  ; Raise the pressed flag
     fd8f  32 f4 f7   STA f7f4
