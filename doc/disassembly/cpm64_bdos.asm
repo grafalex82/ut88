@@ -7,6 +7,7 @@
 ;
 ;
 ; Important variables:
+; cf0d  - ????? flag indicating that output to the printer is enabled in addition to console output
 ; cf0e  - if a keypress is detected, entered symbol is buffered in this variable
 ; cf0f  - save caller's SP (2 byte)
 ; cf43  - function arguments (2 byte)
@@ -92,7 +93,7 @@ REAL_BDOS_ENTRY:
 
 FUNCTION_HANDLERS_TABLE:
     cc47  03 da      dw BIOS_WARM_BOOT (da03)       ; Function 0x00 - Warm boot
-cc48  c8 ce      dw CONSOLE_INPUT (cec8)        ; Function 0x01 - Console input
+    cc48  c8 ce      dw CONSOLE_INPUT (cec8)        ; Function 0x01 - Console input
 cc4b  90 cd
 cc4d  ce ce
 cc4f  12 da
@@ -231,24 +232,36 @@ ccf4  cd d3 cd   CALL cdd3
 ccf7  c1         POP BC
 ccf8  cd d3 cd   CALL cdd3
 
-????:
-ccfb  21 0e cf   LXI HL, CONSOLE_KEY_PRESSED (cf0e)
-ccfe  7e         MOV A, M
-ccff  36 00      MVI M, 00
-cd01  b7         ORA A
-cd02  c0         RNZ
-cd03  c3 09 da   JMP BIOS_CONSOLE_INPUT (da09)
+; Wait for a character from the console input (keyboard)
+;
+; Return: A - entered symbol
+WAIT_CONSOLE_CHAR:
+    ccfb  21 0e cf   LXI HL, CONSOLE_KEY_PRESSED (cf0e) ; Check if we have a character in the byffer already
+    ccfe  7e         MOV A, M                           ; Get the buffered char and reset the buffer
+    ccff  36 00      MVI M, 00
+    cd01  b7         ORA A
+    cd02  c0         RNZ
 
+    cd03  c3 09 da   JMP BIOS_CONSOLE_INPUT (da09)  ; If no character ready - wait for it using BIOS routines
+
+
+; Function 0x01 - Console input
+;
+; The function waits for a console character (if not received already), and echo it on the screen
+;
+; Return: A - entered character code
 DO_CONSOLE_INPUT:
-cd06  cd fb cc   CALL ccfb
-cd09  cd 14 cd   CALL IS_SPECIAL_SYMBOL (cd14)
-cd0c  d8         RC
+    cd06  cd fb cc   CALL WAIT_CONSOLE_CHAR (ccfb)  ; Wait for the character
+    
+    cd09  cd 14 cd   CALL IS_SPECIAL_SYMBOL (cd14)  ; Skip echoing non-printable characters
+    cd0c  d8         RC
 
-cd0d  f5         PUSH PSW
-cd0e  4f         MOV C, A
-cd0f  cd 90 cd   CALL (cd90)
-cd12  f1         POP PSW
-cd13  c9         RET
+    cd0d  f5         PUSH PSW                   ; Echo entered character
+    cd0e  4f         MOV C, A
+    cd0f  cd 90 cd   CALL PUT_CHAR (cd90)
+    cd12  f1         POP PSW
+    cd13  c9         RET
+
 
 ; Check if A has a special symbol
 ;
@@ -305,43 +318,56 @@ IS_KEY_PRESSED_EXIT:
 
 
 
-????:
-cd48  3a 0a cf   LDA cf0a
-cd4b  b7         ORA A
-cd4c  c2 62 cd   JNZ cd62
-cd4f  c5         PUSH BC
-cd50  cd 23 cd   CALL IS_KEY_PRESSED (cd23)
-cd53  c1         POP BC
-cd54  c5         PUSH BC
-cd55  cd 0c da   CALL da0c
-cd58  c1         POP BC
-cd59  c5         PUSH BC
-cd5a  3a 0d cf   LDA cf0d
-cd5d  b7         ORA A
-cd5e  c4 0f da   CNZ da0f
-cd61  c1         POP BC
-????:
-cd62  79         MOV A, C
-cd63  21 0c cf   LXI HL, cf0c
-cd66  fe 7f      CPI A, 7f
-cd68  c8         RZ
-cd69  34         INR M
-cd6a  fe 20      CPI A, 20
-cd6c  d0         RNC
-cd6d  35         DCR M
-cd6e  7e         MOV A, M
-cd6f  b7         ORA A
-cd70  c8         RZ
-cd71  79         MOV A, C
-cd72  fe 08      CPI A, 08
-cd74  c2 79 cd   JNZ cd79
-cd77  35         DCR M
-cd78  c9         RET
-????:
-cd79  fe 0a      CPI A, 0a
-cd7b  c0         RNZ
-cd7c  36 00      MVI M, 00
-cd7e  c9         RET
+DO_PUT_CHAR:
+    cd48  3a 0a cf   LDA cf0a                   ; ???????
+    cd4b  b7         ORA A
+    cd4c  c2 62 cd   JNZ DO_PUT_CHAR_1 (cd62)
+
+    cd4f  c5         PUSH BC                    ; Check if any key is pressed ????
+    cd50  cd 23 cd   CALL IS_KEY_PRESSED (cd23)
+    cd53  c1         POP BC
+
+    cd54  c5         PUSH BC                    ; Print the character normally
+    cd55  cd 0c da   CALL BIOS_PUT_CHAR (da0c)
+    cd58  c1         POP BC
+
+    cd59  c5         PUSH BC
+    cd5a  3a 0d cf   LDA PRINTER_ENABLED (cf0d) ; If printer enabled - print the char on printer as well
+    cd5d  b7         ORA A
+    cd5e  c4 0f da   CNZ BIOS_PRINT_CHAR (da0f)
+    cd61  c1         POP BC
+
+DO_PUT_CHAR_1:
+    cd62  79         MOV A, C                   ; Load cursor position index   ?????
+    cd63  21 0c cf   LXI HL, cf0c
+
+    cd66  fe 7f      CPI A, 7f                  ; Do not print 0x7f character
+    cd68  c8         RZ
+
+    cd69  34         INR M                      ; Normal characters advance the cursor
+
+    cd6a  fe 20      CPI A, 20                  ; Nothing else needed to do for printable characters
+    cd6c  d0         RNC
+
+    cd6d  35         DCR M                      ; Special characters do not advance the cursor, revert bacl
+
+    cd6e  7e         MOV A, M                   ; Check if we reached start of string
+    cd6f  b7         ORA A
+    cd70  c8         RZ
+
+    cd71  79         MOV A, C                   ; Check if the printed symbol is a backspace
+    cd72  fe 08      CPI A, 08
+    cd74  c2 79 cd   JNZ DO_PUT_CHAR_2 (cd79)
+
+    cd77  35         DCR M                      ; Backspace moves cursor left
+    cd78  c9         RET
+
+DO_PUT_CHAR_2:
+    cd79  fe 0a      CPI A, 0a                  ; No cursor position changes on all characters except for CR
+    cd7b  c0         RNZ
+
+    cd7c  36 00      MVI M, 00                  ; Reset the cursor position in case of carriage return
+    cd7e  c9         RET
 
 
 ????:
@@ -350,33 +376,38 @@ cd80  cd 14 cd   CALL IS_SPECIAL_SYMBOL (cd14)
 cd83  d2 90 cd   JNC PUT_CHAR (cd90)
 cd86  f5         PUSH PSW
 cd87  0e 5e      MVI C, 5e
-cd89  cd 48 cd   CALL cd48
+cd89  cd 48 cd   CALL DO_PUT_CHAR (cd48)
 cd8c  f1         POP PSW
 cd8d  f6 40      ORI A, 40
 cd8f  4f         MOV C, A
 
-PUT_CHAR:
-    cd90  79         MOV A, C
-    cd91  fe 09      CPI A, 09
-    cd93  c2 48 cd   JNZ cd48
 
-????:
-cd96  0e 20      MVI C, 20
-cd98  cd 48 cd   CALL cd48
-cd9b  3a 0c cf   LDA cf0c
-cd9e  e6 07      ANI A, 07
-cda0  c2 96 cd   JNZ cd96
-cda3  c9         RET
+PUT_CHAR:
+    cd90  79         MOV A, C                   ; Tab symbol is processed separately
+    cd91  fe 09      CPI A, 09
+    cd93  c2 48 cd   JNZ DO_PUT_CHAR (cd48)     ; All other symbols are processed by DO_PUT_CHAR
+
+PUT_CHAR_TAB_LOOP:
+    cd96  0e 20      MVI C, 20
+    cd98  cd 48 cd   CALL DO_PUT_CHAR (cd48)
+
+    cd9b  3a 0c cf   LDA cf0c
+    cd9e  e6 07      ANI A, 07
+    cda0  c2 96 cd   JNZ cd96
+    cda3  c9         RET
+
 ????:
 cda4  cd ac cd   CALL cdac
 cda7  0e 20      MVI C, 20
-cda9  cd 0c da   CALL da0c
+cda9  cd 0c da   CALL BIOS_PUT_CHAR (da0c)
+
 ????:
 cdac  0e 08      MVI C, 08
-cdae  c3 0c da   JMP da0c
+cdae  c3 0c da   JMP BIOS_PUT_CHAR (da0c)
+
 ????:
 cdb1  0e 23      MVI C, 23
-cdb3  cd 48 cd   CALL cd48
+cdb3  cd 48 cd   CALL DO_PUT_CHAR (cd48)
 cdb6  cd c9 cd   CALL cdc9
 ????:
 cdb9  3a 0c cf   LDA cf0c
@@ -384,13 +415,13 @@ cdbc  21 0b cf   LXI HL, cf0b
 cdbf  be         CMP M
 cdc0  d0         RNC
 cdc1  0e 20      MVI C, 20
-cdc3  cd 48 cd   CALL cd48
+cdc3  cd 48 cd   CALL DO_PUT_CHAR (cd48)
 cdc6  c3 b9 cd   JMP cdb9
 ????:
 cdc9  0e 0d      MVI C, 0d
-cdcb  cd 48 cd   CALL cd48
+cdcb  cd 48 cd   CALL DO_PUT_CHAR (cd48)
 cdce  0e 0a      MVI C, 0a
-cdd0  c3 48 cd   JMP cd48
+cdd0  c3 48 cd   JMP DO_PUT_CHAR (cd48)
 
 ; Print string pointed by BC, until '$' symbol is reached
 DO_PRINT_STRING:
@@ -420,7 +451,7 @@ cded  06 00      MVI B, 00
 cdef  c5         PUSH BC
 cdf0  e5         PUSH HL
 ????:
-cdf1  cd fb cc   CALL ccfb
+cdf1  cd fb cc   CALL WAIT_CONSOLE_CHAR (ccfb)
 cdf4  e6 7f      ANI A, 7f
 cdf6  e1         POP HL
 cdf7  c1         POP BC
@@ -460,7 +491,7 @@ ce34  c3 f1 cd   JMP cdf1
 ce37  fe 10      CPI A, 10
 ce39  c2 48 ce   JNZ ce48
 ce3c  e5         PUSH HL
-ce3d  21 0d cf   LXI HL, cf0d
+ce3d  21 0d cf   LXI HL, PRINTER_ENABLED (cf0d)
 ce40  3e 01      MVI A, 01
 ce42  96         SUB M
 ce43  77         MOV M, A
@@ -545,7 +576,7 @@ cebe  da ef cd   JC cdef
 cec1  e1         POP HL
 cec2  70         MOV M, B
 cec3  0e 0d      MVI C, 0d
-cec5  c3 48 cd   JMP cd48
+cec5  c3 48 cd   JMP DO_PUT_CHAR (cd48)
 
 ; Function 0x01 - Console input
 CONSOLE_INPUT:
@@ -560,7 +591,7 @@ ced5  3c         INR A
 ced6  ca e0 ce   JZ cee0
 ced9  3c         INR A
 ceda  ca 06 da   JZ BIOS_IS_KEY_PRESSED (da06)
-cedd  c3 0c da   JMP da0c
+cedd  c3 0c da   JMP BIOS_PUT_CHAR (da0c)
 ????:
 cee0  cd 06 da   CALL BIOS_IS_KEY_PRESSED (da06)
 cee3  b7         ORA A
@@ -599,8 +630,9 @@ cf0a  00         NOP
 cf0b  00         NOP
 ????:
 cf0c  00         NOP
-????:
-cf0d  00         NOP
+
+PRINTER_ENABLED:
+    cf0d  00         NOP
 
 CONSOLE_KEY_PRESSED:
     cf0e  00           db 00

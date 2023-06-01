@@ -39,7 +39,7 @@ class Keyboard(IODevice):
       |  Й  |  Ц  |  У  |  К  |  Е  |  Н  |  Г  |  Ш  |  Щ  |  З  |  Х  |  *  |     |
       |  J  |  C  |  U  |  K  |  E  |  N  |  G  |  [  |  ]  |  Z  |  H  |  :  |Enter|
     |     |  Ф  |  Ы  |  В  |  А  |  П  |  Р  |  О  |  Л  |  Д  |  Ж  |  Э  |     |
-    | Ctrl|  F  |  Y  |  W  |  A  |  P  |  R  |  O  |  L  |  D  |  V  |  \  |Enter|
+    | Ctrl|  F  |  Y  |  W  |  A  |  P  |  R  |  O  |  L  |  D  |  V  |  \\ |Enter|
       |     |  Я  |  Ч  |  С  |  М  |  И  |  Т  |  Ь  |  Б  |  Ю  |  <  |  ?  |     |
       |Shift|  Q  |  ^  |  S  |  M  |  I  |  T  |  X  |  B  |  @  |  .  |  /  |Enter|
 
@@ -74,7 +74,6 @@ class Keyboard(IODevice):
     When a button is pressed, the emulator class sets the _pressed_key member to a tripple, representing
     ports A, B, and C values. When the Monitor F firmware will scan keyboard matrix via port A, the
     emulator will return port B value according to selected column and button pressed.
-
     """
     def __init__(self):
         IODevice.__init__(self, 0x04, 0x07)
@@ -305,3 +304,7 @@ class Keyboard(IODevice):
     def emulate_key_press(self, ch):
         if ch in self._key_map:
             self._pressed_key = self._key_map[ch]
+
+    def emulate_ctrl_key_press(self, ch):
+        if ch in self._ctrl_codes_map:
+            self._pressed_key = self._ctrl_codes_map[ch]

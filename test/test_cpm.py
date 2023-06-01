@@ -11,6 +11,7 @@
 import pytest
 import os
 import logging
+import pygame
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 tapes_dir = os.path.join(os.path.dirname(__file__), "../tapes")
@@ -346,6 +347,24 @@ def test_bios_write_sector(cpm, tmp_path):
     offset = 70*1024 + 3*128 # track 70 (track 6 on page 1), sector 3
     for i in range(128):
         assert data[offset + i] == sector_data[i]
+
+
+def test_bdos_console_input(cpm):
+    cpm._keyboard.emulate_key_press('A')
+    ch = call_bdos_function(cpm, 0x01)
+
+    assert ch == ord('A')                   # 'A' is returned as a result value
+    assert cpm.get_byte(0xe800) == 0x41     # 'A' is printed on the screen
+    assert cpm.get_word(0xf7b2) == 0xe801   # Cursor moved to the next position
+
+
+def test_bdos_console_input_special_symbol(cpm):
+    cpm._keyboard.emulate_ctrl_key_press(pygame.K_c)    # Press Ctrl-C
+    ch = call_bdos_function(cpm, 0x01)
+
+    assert ch == 0x03                       # Ctrl-C is returned as a result value
+    assert cpm.get_byte(0xe800) == 0x00     # No symbol is printed
+    assert cpm.get_word(0xf7b2) == 0xe800   # Cursor not moved
 
 
 def test_bdos_check_key_pressed(cpm):
