@@ -22,6 +22,7 @@ from emulator import Emulator
 from cpu import CPU
 from rom import ROM
 from ram import RAM
+from keyboard import Keyboard
 from quasidisk import QuasiDisk
 from utils import *
 
@@ -35,6 +36,9 @@ class CPM:
         self._machine.add_memory(RAM(0x0000, 0xf7ff))
         self._machine.add_memory(ROM(f"{resources_dir}/MonitorF.bin", 0xf800))
 
+        self._keyboard = Keyboard()
+        self._machine.add_io(self._keyboard)
+
         self._emulator = Emulator(self._machine)
         self._emulator.load_memory(f"{tapes_dir}/cpm64_bdos.rku")
         self._emulator.load_memory(f"{tapes_dir}/cpm64_bios.rku")
@@ -45,6 +49,11 @@ class CPM:
         # Since we do not run MonitorF initialization routine, let's just initialize needed variables,
         # and particularly set cursor to the top-left corner
         self.set_word(0xf7b2, 0xe800)
+
+        # Each key press require 127 cycles of the keyboard scanning, until the key is considered pressed.
+        # Skip this, 1 scan is enough. Key repeat function is also disabled, as not needed for tests
+        self._emulator.add_breakpoint(0xfd75, lambda: self._emulator._cpu.set_pc(0xfd95))
+
 
     @property
     def cpu(self):
@@ -337,6 +346,17 @@ def test_bios_write_sector(cpm, tmp_path):
     offset = 70*1024 + 3*128 # track 70 (track 6 on page 1), sector 3
     for i in range(128):
         assert data[offset + i] == sector_data[i]
+
+
+def test_bdos_check_key_pressed(cpm):
+    cpm._keyboard.emulate_key_press('A')
+    pressed = call_bdos_function(cpm, 0x0b)
+    assert pressed
+
+
+def test_bdos_check_key_not_pressed(cpm):
+    pressed = call_bdos_function(cpm, 0x0b)
+    assert not pressed
 
 
 def test_bdos_get_version(cpm):

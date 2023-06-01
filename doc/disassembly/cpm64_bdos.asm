@@ -7,6 +7,7 @@
 ;
 ;
 ; Important variables:
+; cf0e  - if a keypress is detected, entered symbol is buffered in this variable
 ; cf0f  - save caller's SP (2 byte)
 ; cf43  - function arguments (2 byte)
 ; cf45  - function return code or return value(2 byte)
@@ -91,16 +92,17 @@ REAL_BDOS_ENTRY:
 
 FUNCTION_HANDLERS_TABLE:
     cc47  03 da      dw BIOS_WARM_BOOT (da03)       ; Function 0x00 - Warm boot
-cc48  c8 ce   JC cec8
-cc4b  90         SUB B
-cc4c  cd ce ce   CALL cece
-cc4f  12         STAX DE
-cc50  da 0f da   JC da0f
-cc53  d4 ce ed   CNC edce
-cc56  ce f3      ACI A, f3
-cc58  ce f8      ACI A, f8
-cc5a  ce e1      ACI A, e1
-cc5c  cd fe ce   CALL cefe
+cc48  c8 ce      dw CONSOLE_INPUT (cec8)        ; Function 0x01 - Console input
+cc4b  90 cd
+cc4d  ce ce
+cc4f  12 da
+cc51  0f da
+cc53  d4 ce 
+cc55  ed ce
+cc57  f3 ce
+cc59  f8 ce      dw PRINT_STRING (cef8)         ; Function 0x09 - print string
+cc5b  e1 cd 
+    cc5d  fe ce      dw GET_CONSOLE_STATUS (cefe)   ; Function 0x0b - get console status (if a button pressed)
     cc5f  7e d8      dw GET_BDOS_VERSION (d87e)     ; Function 0x0c - get version
 cc61  83         ADD E
 cc62  d8         RC
@@ -228,59 +230,87 @@ ccf1  01 ba cc   LXI BC, ccba
 ccf4  cd d3 cd   CALL cdd3
 ccf7  c1         POP BC
 ccf8  cd d3 cd   CALL cdd3
+
 ????:
-ccfb  21 0e cf   LXI HL, cf0e
+ccfb  21 0e cf   LXI HL, CONSOLE_KEY_PRESSED (cf0e)
 ccfe  7e         MOV A, M
 ccff  36 00      MVI M, 00
 cd01  b7         ORA A
 cd02  c0         RNZ
-cd03  c3 09 da   JMP da09
-????:
+cd03  c3 09 da   JMP BIOS_CONSOLE_INPUT (da09)
+
+DO_CONSOLE_INPUT:
 cd06  cd fb cc   CALL ccfb
-cd09  cd 14 cd   CALL cd14
+cd09  cd 14 cd   CALL IS_SPECIAL_SYMBOL (cd14)
 cd0c  d8         RC
+
 cd0d  f5         PUSH PSW
 cd0e  4f         MOV C, A
-cd0f  cd 90 cd   CALL cd90
+cd0f  cd 90 cd   CALL (cd90)
 cd12  f1         POP PSW
 cd13  c9         RET
-????:
-cd14  fe 0d      CPI A, 0d
-cd16  c8         RZ
-cd17  fe 0a      CPI A, 0a
-cd19  c8         RZ
-cd1a  fe 09      CPI A, 09
-cd1c  c8         RZ
-cd1d  fe 08      CPI A, 08
-cd1f  c8         RZ
-cd20  fe 20      CPI A, 20
-cd22  c9         RET
-????:
-cd23  3a 0e cf   LDA cf0e
-cd26  b7         ORA A
-cd27  c2 45 cd   JNZ cd45
-cd2a  cd 06 da   CALL da06
-cd2d  e6 01      ANI A, 01
-cd2f  c8         RZ
-cd30  cd 09 da   CALL da09
-cd33  fe 13      CPI A, 13
-cd35  c2 42 cd   JNZ cd42
-cd38  cd 09 da   CALL da09
-cd3b  fe 03      CPI A, 03
-cd3d  ca 00 00   JZ 0000
-cd40  af         XRA A
-cd41  c9         RET
-????:
-cd42  32 0e cf   STA cf0e
-????:
-cd45  3e 01      MVI A, 01
-cd47  c9         RET
+
+; Check if A has a special symbol
+;
+; Function raises Z flag if A contains 0x0d (carriage return), 0x0a (line feed), 0x08 (backspace), 
+; or 0x09 (tab)
+; Function raises C flag if the symbol is not printable (symbol code < 0x20)
+IS_SPECIAL_SYMBOL:
+    cd14  fe 0d      CPI A, 0d
+    cd16  c8         RZ
+    cd17  fe 0a      CPI A, 0a
+    cd19  c8         RZ
+    cd1a  fe 09      CPI A, 09
+    cd1c  c8         RZ
+    cd1d  fe 08      CPI A, 08
+    cd1f  c8         RZ
+    cd20  fe 20      CPI A, 20
+    cd22  c9         RET
+
+
+; Check if a key is pressed
+;
+; This function not just calls BIOS IS_KEY_PRESSED function, it also checks if a Ctrl-S combination
+; is pressed. If yes, Ctrl-C combination will do the software reset.
+;
+; If a key is pressed, entered symbol is buffered at cf0e
+;
+; Return: A=01 if key is pressed (Z flag is off), A=00 otherwise (Z flag is on)
+IS_KEY_PRESSED:
+    cd23  3a 0e cf   LDA CONSOLE_KEY_PRESSED (cf0e) ; Check if there is a symbol in the buffer already
+    cd26  b7         ORA A
+    cd27  c2 45 cd   JNZ IS_KEY_PRESSED_EXIT (cd45)
+
+    cd2a  cd 06 da   CALL BIOS_IS_KEY_PRESSED (da06); Return if no button is pressed
+    cd2d  e6 01      ANI A, 01
+    cd2f  c8         RZ
+
+    cd30  cd 09 da   CALL BIOS_CONSOLE_INPUT (da09) ; Check if Ctrl-S is pressed (Stop Screen condition)
+    cd33  fe 13      CPI A, 13
+    cd35  c2 42 cd   JNZ cd42
+
+    cd38  cd 09 da   CALL BIOS_CONSOLE_INPUT (da09) ; If Ctrl-C is pressed - do soft reset
+    cd3b  fe 03      CPI A, 03
+    cd3d  ca 00 00   JZ 0000
+
+    cd40  af         XRA A                      ; Other symbols are invalid
+    cd41  c9         RET
+
+IS_KEY_PRESSED_OK:
+    cd42  32 0e cf   STA CONSOLE_KEY_PRESSED (cf0e) ; Some valid symbol is entered - buffer it
+
+IS_KEY_PRESSED_EXIT:
+    cd45  3e 01      MVI A, 01                  ; Indicate that a button is pressed
+    cd47  c9         RET
+
+
+
 ????:
 cd48  3a 0a cf   LDA cf0a
 cd4b  b7         ORA A
 cd4c  c2 62 cd   JNZ cd62
 cd4f  c5         PUSH BC
-cd50  cd 23 cd   CALL cd23
+cd50  cd 23 cd   CALL IS_KEY_PRESSED (cd23)
 cd53  c1         POP BC
 cd54  c5         PUSH BC
 cd55  cd 0c da   CALL da0c
@@ -312,20 +342,24 @@ cd79  fe 0a      CPI A, 0a
 cd7b  c0         RNZ
 cd7c  36 00      MVI M, 00
 cd7e  c9         RET
+
+
 ????:
 cd7f  79         MOV A, C
-cd80  cd 14 cd   CALL cd14
-cd83  d2 90 cd   JNC cd90
+cd80  cd 14 cd   CALL IS_SPECIAL_SYMBOL (cd14)
+cd83  d2 90 cd   JNC PUT_CHAR (cd90)
 cd86  f5         PUSH PSW
 cd87  0e 5e      MVI C, 5e
 cd89  cd 48 cd   CALL cd48
 cd8c  f1         POP PSW
 cd8d  f6 40      ORI A, 40
 cd8f  4f         MOV C, A
-????:
-cd90  79         MOV A, C
-cd91  fe 09      CPI A, 09
-cd93  c2 48 cd   JNZ cd48
+
+PUT_CHAR:
+    cd90  79         MOV A, C
+    cd91  fe 09      CPI A, 09
+    cd93  c2 48 cd   JNZ cd48
+
 ????:
 cd96  0e 20      MVI C, 20
 cd98  cd 48 cd   CALL cd48
@@ -357,16 +391,23 @@ cdc9  0e 0d      MVI C, 0d
 cdcb  cd 48 cd   CALL cd48
 cdce  0e 0a      MVI C, 0a
 cdd0  c3 48 cd   JMP cd48
-????:
-cdd3  0a         LDAX BC
-cdd4  fe 24      CPI A, 24
-cdd6  c8         RZ
-cdd7  03         INX BC
-cdd8  c5         PUSH BC
-cdd9  4f         MOV C, A
-cdda  cd 90 cd   CALL cd90
-cddd  c1         POP BC
-cdde  c3 d3 cd   JMP cdd3
+
+; Print string pointed by BC, until '$' symbol is reached
+DO_PRINT_STRING:
+    cdd3  0a         LDAX BC                    ; Load next byte
+
+    cdd4  fe 24      CPI A, 24                  ; Stop printing when '$' is reached
+    cdd6  c8         RZ
+
+    cdd7  03         INX BC
+    cdd8  c5         PUSH BC
+
+    cdd9  4f         MOV C, A                   ; Print next character
+    cdda  cd 90 cd   CALL PUT_CHAR (cd90)
+
+    cddd  c1         POP BC
+    cdde  c3 d3 cd   JMP DO_PRINT_STRING (cdd3)
+
 ????:
 cde1  3a 0c cf   LDA cf0c
 cde4  32 0b cf   STA cf0b
@@ -505,9 +546,12 @@ cec1  e1         POP HL
 cec2  70         MOV M, B
 cec3  0e 0d      MVI C, 0d
 cec5  c3 48 cd   JMP cd48
-????:
-cec8  cd 06 cd   CALL cd06
-cecb  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+
+; Function 0x01 - Console input
+CONSOLE_INPUT:
+    cec8  cd 06 cd   CALL DO_CONSOLE_INPUT (cd06)
+    cecb  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+
 ????:
 cece  cd 15 da   CALL da15
 ced1  c3 01 cf   JMP FUNCTION_EXIT (cf01)
@@ -515,26 +559,32 @@ ced4  79         MOV A, C
 ced5  3c         INR A
 ced6  ca e0 ce   JZ cee0
 ced9  3c         INR A
-ceda  ca 06 da   JZ da06
+ceda  ca 06 da   JZ BIOS_IS_KEY_PRESSED (da06)
 cedd  c3 0c da   JMP da0c
 ????:
-cee0  cd 06 da   CALL da06
+cee0  cd 06 da   CALL BIOS_IS_KEY_PRESSED (da06)
 cee3  b7         ORA A
 cee4  ca 91 d9   JZ d991
-cee7  cd 09 da   CALL da09
+cee7  cd 09 da   CALL BIOS_CONSOLE_INPUT (da09)
 ceea  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ceed  3a 03 00   LDA 0003
 cef0  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 cef3  21 03 00   LXI HL, 0003
 cef6  71         MOV M, C
 cef7  c9         RET
-cef8  eb         XCHG
-cef9  4d         MOV C, L
-cefa  44         MOV B, H
-cefb  c3 d3 cd   JMP cdd3
-????:
-cefe  cd 23 cd   CALL cd23
-????:
+
+PRINT_STRING:
+    cef8  eb         XCHG
+    cef9  4d         MOV C, L
+    cefa  44         MOV B, H
+    cefb  c3 d3 cd   JMP cdd3
+
+; Function 0x0b - check console status (check if a symbol entered on keyboard)
+;
+; Returns: A=01 if a key is pressed, A=00 if no key pressed
+GET_CONSOLE_STATUS:
+    cefe  cd 23 cd   CALL IS_KEY_PRESSED (cd23)
+
 
 FUNCTION_EXIT:
     cf01  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)   ; Store A in the predefined variable
@@ -551,8 +601,9 @@ cf0b  00         NOP
 cf0c  00         NOP
 ????:
 cf0d  00         NOP
-????:
-cf0e  00         NOP
+
+CONSOLE_KEY_PRESSED:
+    cf0e  00           db 00
 
 BDOS_SAVE_SP:
     cf0f  00 00        dw 0000
