@@ -8,7 +8,10 @@
 ;
 ; Important variables:
 ; 0003  - I/O Byte ?????
-; cf0d  - ????? flag indicating that output to the printer is enabled in addition to console output
+; cf0a  - Flag indicating that no char printing needed, only computing cursor position
+; cf0b  - Start column of the input buffer reading (used to track back Ctrl-H and backspace)
+; cf0c  - Current cursor horizontap position (used to print tabs)
+; cf0d  - flag indicating that output to the printer is enabled in addition to console output
 ; cf0e  - if a keypress is detected, entered symbol is buffered in this variable
 ; cf0f  - save caller's SP (2 byte)
 ; cf43  - function arguments (2 byte)
@@ -103,7 +106,7 @@ FUNCTION_HANDLERS_TABLE:
     cc55  ed ce      dw GET_IO_BYTE (ceed)          ; Function 0x07 - Get I/O Byte
     cc57  f3 ce      dw SET_IO_BYTE (cef3)          ; Function 0x08 - Set I/O Byte
     cc59  f8 ce      dw PRINT_STRING (cef8)         ; Function 0x09 - print string
-cc5b  e1 cd 
+    cc5b  e1 cd      dw READ_CONSOLE_BUFFER (cde1)  ; Function 0x0a - read console to the buffer
     cc5d  fe ce      dw GET_CONSOLE_STATUS (cefe)   ; Function 0x0b - get console status (if a button pressed)
     cc5f  7e d8      dw GET_BDOS_VERSION (d87e)     ; Function 0x0c - get version
 cc61  83         ADD E
@@ -224,7 +227,7 @@ cce3  4f         MOV C, A
 cce4  24         INR H
 ????:
 cce5  e5         PUSH HL
-cce6  cd c9 cd   CALL cdc9
+cce6  cd c9 cd   CALL PRINT_CRLF (cdc9)
 cce9  3a 42 cf   LDA cf42
 ccec  c6 41      ADI A, 41
 ccee  32 c6 cc   STA ccc6
@@ -320,7 +323,7 @@ IS_KEY_PRESSED_EXIT:
 
 ;
 DO_PUT_CHAR:
-    cd48  3a 0a cf   LDA cf0a                   ; ???????
+    cd48  3a 0a cf   LDA COMP_CURSOR_POSITION (cf0a); Do we need to print the character?
     cd4b  b7         ORA A
     cd4c  c2 62 cd   JNZ DO_PUT_CHAR_1 (cd62)
 
@@ -339,8 +342,8 @@ DO_PUT_CHAR:
     cd61  c1         POP BC
 
 DO_PUT_CHAR_1:
-    cd62  79         MOV A, C                   ; Load cursor position index   ?????
-    cd63  21 0c cf   LXI HL, cf0c
+    cd62  79         MOV A, C                   ; Load cursor position
+    cd63  21 0c cf   LXI HL, CURSOR_COLUMN (cf0c)
 
     cd66  fe 7f      CPI A, 7f                  ; Do not print 0x7f character
     cd68  c8         RZ
@@ -350,9 +353,9 @@ DO_PUT_CHAR_1:
     cd6a  fe 20      CPI A, 20                  ; Nothing else needed to do for printable characters
     cd6c  d0         RNC
 
-    cd6d  35         DCR M                      ; Special characters do not advance the cursor, revert bacl
+    cd6d  35         DCR M                      ; Special characters do not advance the cursor, revert back
 
-    cd6e  7e         MOV A, M                   ; Check if we reached start of string
+    cd6e  7e         MOV A, M                   ; Check if we reached start of the line
     cd6f  b7         ORA A
     cd70  c8         RZ
 
@@ -371,16 +374,23 @@ DO_PUT_CHAR_2:
     cd7e  c9         RET
 
 
-????:
-cd7f  79         MOV A, C
-cd80  cd 14 cd   CALL IS_SPECIAL_SYMBOL (cd14)
-cd83  d2 90 cd   JNC PUT_CHAR (cd90)
-cd86  f5         PUSH PSW
-cd87  0e 5e      MVI C, 5e
-cd89  cd 48 cd   CALL DO_PUT_CHAR (cd48)
-cd8c  f1         POP PSW
-cd8d  f6 40      ORI A, 40
-cd8f  4f         MOV C, A
+; Print character including control symbols
+;
+; Prints character in C register as follows:
+; - Characters with codes >= 0x20 printed normally
+; - Characters with codes < 0x20 printed as "^<Letter>"
+PUT_CHAR_CTRL_SYMBOLS:
+    cd7f  79         MOV A, C                   ; Print characters that can be printed
+    cd80  cd 14 cd   CALL IS_SPECIAL_SYMBOL (cd14)
+    cd83  d2 90 cd   JNC PUT_CHAR (cd90)
+
+    cd86  f5         PUSH PSW                   ; Characters in 0x00-0x1f range are printed as '^'
+    cd87  0e 5e      MVI C, 5e                  ; and a letter
+    cd89  cd 48 cd   CALL DO_PUT_CHAR (cd48)
+    cd8c  f1         POP PSW
+
+    cd8d  f6 40      ORI A, 40                  ; Convert 0x00-0x1f to 0x40-0x5f range, and print
+    cd8f  4f         MOV C, A
 
 
 ; Function 0x02 - Put a char to console (and printer)
@@ -396,39 +406,53 @@ PUT_CHAR_TAB_LOOP:
     cd96  0e 20      MVI C, 20                  ; Print spaces until next 8-char column
     cd98  cd 48 cd   CALL DO_PUT_CHAR (cd48)
 
-    cd9b  3a 0c cf   LDA cf0c                   ; Check if we reached next 8-char column
+    cd9b  3a 0c cf   LDA CURSOR_COLUMN (cf0c)   ; Check if we reached next 8-char column
     cd9e  e6 07      ANI A, 07
     cda0  c2 96 cd   JNZ cd96
 
     cda3  c9         RET
 
 
-????:
-cda4  cd ac cd   CALL cdac
-cda7  0e 20      MVI C, 20
-cda9  cd 0c da   CALL BIOS_PUT_CHAR (da0c)
+; Do a backspace (literally print space left to the cursot)
+;
+; Function moves cursor left, prints a space, and moves cursor left again
+PRINT_BACKSPACE:
+    cda4  cd ac cd   CALL MOVE_CURSOR_LEFT (cdac)
+    cda7  0e 20      MVI C, 20
+    cda9  cd 0c da   CALL BIOS_PUT_CHAR (da0c)
 
-????:
-cdac  0e 08      MVI C, 08
-cdae  c3 0c da   JMP BIOS_PUT_CHAR (da0c)
+MOVE_CURSOR_LEFT:
+    cdac  0e 08      MVI C, 08
+    cdae  c3 0c da   JMP BIOS_PUT_CHAR (da0c)
 
-????:
-cdb1  0e 23      MVI C, 23
-cdb3  cd 48 cd   CALL DO_PUT_CHAR (cd48)
-cdb6  cd c9 cd   CALL cdc9
-????:
-cdb9  3a 0c cf   LDA cf0c
-cdbc  21 0b cf   LXI HL, cf0b
-cdbf  be         CMP M
-cdc0  d0         RNC
-cdc1  0e 20      MVI C, 20
-cdc3  cd 48 cd   CALL DO_PUT_CHAR (cd48)
-cdc6  c3 b9 cd   JMP cdb9
-????:
-cdc9  0e 0d      MVI C, 0d
-cdcb  cd 48 cd   CALL DO_PUT_CHAR (cd48)
-cdce  0e 0a      MVI C, 0a
-cdd0  c3 48 cd   JMP DO_PUT_CHAR (cd48)
+
+; Print '#' and CR/LF
+;
+; This function is used in combination with Ctrl-R (repeat current line), Ctrl-U (Remove current line),
+; and Ctrl-X (backspace till the beginning of the current line) key combinations. Restarts the line starting
+; from READ_START_COLUMN positions (characters to the left are filled with spaces).
+PRINT_HASH_CRLF:
+    cdb1  0e 23      MVI C, 23                  ; Print '#' symbol
+    cdb3  cd 48 cd   CALL DO_PUT_CHAR (cd48)    
+
+    cdb6  cd c9 cd   CALL PRINT_CRLF (cdc9)     ; Then CR/LF
+
+PRINT_HASH_CRLF_LOOP:
+    cdb9  3a 0c cf   LDA CURSOR_COLUMN (cf0c)   ; Fill space between start of the line and start column
+    cdbc  21 0b cf   LXI HL, READ_START_COLUMN (cf0b)   ; with spaces
+    cdbf  be         CMP M
+    cdc0  d0         RNC
+
+    cdc1  0e 20      MVI C, 20
+    cdc3  cd 48 cd   CALL DO_PUT_CHAR (cd48)
+    cdc6  c3 b9 cd   JMP PRINT_HASH_CRLF_LOOP (cdb9)
+
+
+PRINT_CRLF:
+    cdc9  0e 0d      MVI C, 0d                  ; Print CR and LF symbols
+    cdcb  cd 48 cd   CALL DO_PUT_CHAR (cd48)
+    cdce  0e 0a      MVI C, 0a
+    cdd0  c3 48 cd   JMP DO_PUT_CHAR (cd48)
 
 ; Print string pointed by BC, until '$' symbol is reached
 DO_PRINT_STRING:
@@ -446,54 +470,81 @@ DO_PRINT_STRING:
     cddd  c1         POP BC
     cdde  c3 d3 cd   JMP DO_PRINT_STRING (cdd3)
 
-????:
-cde1  3a 0c cf   LDA cf0c
-cde4  32 0b cf   STA cf0b
-cde7  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-cdea  4e         MOV C, M
-cdeb  23         INX HL
-cdec  e5         PUSH HL
-cded  06 00      MVI B, 00
-????:
-cdef  c5         PUSH BC
-cdf0  e5         PUSH HL
-????:
-cdf1  cd fb cc   CALL WAIT_CONSOLE_CHAR (ccfb)
-cdf4  e6 7f      ANI A, 7f
-cdf6  e1         POP HL
-cdf7  c1         POP BC
-cdf8  fe 0d      CPI A, 0d
-cdfa  ca c1 ce   JZ cec1
-cdfd  fe 0a      CPI A, 0a
-cdff  ca c1 ce   JZ cec1
-ce02  fe 08      CPI A, 08
-ce04  c2 16 ce   JNZ ce16
-ce07  78         MOV A, B
-ce08  b7         ORA A
-ce09  ca ef cd   JZ cdef
-ce0c  05         DCR B
-ce0d  3a 0c cf   LDA cf0c
-ce10  32 0a cf   STA cf0a
-ce13  c3 70 ce   JMP ce70
-????:
+; Function 0x0a - read console input to the provided buffer
+;
+; Arguments:
+; [cf43]    - pointer to the buffer. First character of the buffer indicates buffer size
+;
+; Return:
+; Buffer is filled with entered characters as follows:
+; 1st byte - buffer size
+; 2nd byte - number of entered symbols
+; 3rd byte and further - entered symbols
+READ_CONSOLE_BUFFER:
+    cde1  3a 0c cf   LDA CURSOR_COLUMN (cf0c)   ; Remember the start position for proper handling of
+    cde4  32 0b cf   STA READ_START_COLUMN (cf0b); Ctrl-H and backspace
+
+    cde7  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Get the buffer size
+    cdea  4e         MOV C, M
+
+    cdeb  23         INX HL                     ; Advance pointer to the first data byte in the buffer
+    cdec  e5         PUSH HL
+
+    cded  06 00      MVI B, 00                  ; Counter of the entered symbols ?????
+
+READ_NEXT_SYMBOL:
+    cdef  c5         PUSH BC
+    cdf0  e5         PUSH HL
+
+READ_NEXT_SYMBOL_2:
+    cdf1  cd fb cc   CALL WAIT_CONSOLE_CHAR (ccfb)  ; Wait for the next symbol
+    cdf4  e6 7f      ANI A, 7f
+    cdf6  e1         POP HL
+    cdf7  c1         POP BC
+
+    cdf8  fe 0d      CPI A, 0d                  ; Check if CR is entered
+    cdfa  ca c1 ce   JZ READ_CONSOLE_BUFFER_EOL (cec1)
+
+    cdfd  fe 0a      CPI A, 0a                  ; Check if LF is entered
+    cdff  ca c1 ce   JZ READ_CONSOLE_BUFFER_EOL (cec1)
+
+    ce02  fe 08      CPI A, 08                  ; Check if backspace is entered
+    ce04  c2 16 ce   JNZ READ_NEXT_SYMBOL_3 (ce16)
+
+    ce07  78         MOV A, B                   ; Can't do backspace if there are no symbols in the buffer
+    ce08  b7         ORA A
+    ce09  ca ef cd   JZ READ_NEXT_SYMBOL (cdef)
+
+    ce0c  05         DCR B                      ; Decrease symbols counter
+
+    ce0d  3a 0c cf   LDA CURSOR_COLUMN (cf0c)   ; ?????
+    ce10  32 0a cf   STA COMP_CURSOR_POSITION (cf0a)
+
+    ce13  c3 70 ce   JMP ce70
+
+READ_NEXT_SYMBOL_3:
 ce16  fe 7f      CPI A, 7f
 ce18  c2 26 ce   JNZ ce26
+
 ce1b  78         MOV A, B
 ce1c  b7         ORA A
-ce1d  ca ef cd   JZ cdef
+ce1d  ca ef cd   JZ READ_NEXT_SYMBOL (cdef)
 ce20  7e         MOV A, M
 ce21  05         DCR B
 ce22  2b         DCX HL
 ce23  c3 a9 ce   JMP cea9
+
 ????:
 ce26  fe 05      CPI A, 05
 ce28  c2 37 ce   JNZ ce37
+
 ce2b  c5         PUSH BC
 ce2c  e5         PUSH HL
-ce2d  cd c9 cd   CALL cdc9
+ce2d  cd c9 cd   CALL PRINT_CRLF (cdc9)
 ce30  af         XRA A
-ce31  32 0b cf   STA cf0b
-ce34  c3 f1 cd   JMP cdf1
+ce31  32 0b cf   STA READ_START_COLUMN (cf0b)
+ce34  c3 f1 cd   JMP READ_NEXT_SYMBOL_2 (cdf1)
+
 ????:
 ce37  fe 10      CPI A, 10
 ce39  c2 48 ce   JNZ ce48
@@ -503,87 +554,110 @@ ce40  3e 01      MVI A, 01
 ce42  96         SUB M
 ce43  77         MOV M, A
 ce44  e1         POP HL
-ce45  c3 ef cd   JMP cdef
+ce45  c3 ef cd   JMP READ_NEXT_SYMBOL (cdef)
 ????:
 ce48  fe 18      CPI A, 18
 ce4a  c2 5f ce   JNZ ce5f
 ce4d  e1         POP HL
 ????:
-ce4e  3a 0b cf   LDA cf0b
-ce51  21 0c cf   LXI HL, cf0c
+ce4e  3a 0b cf   LDA READ_START_COLUMN (cf0b)
+ce51  21 0c cf   LXI HL, CURSOR_COLUMN (cf0c)
 ce54  be         CMP M
-ce55  d2 e1 cd   JNC cde1
+ce55  d2 e1 cd   JNC READ_CONSOLE_BUFFER (cde1)
 ce58  35         DCR M
-ce59  cd a4 cd   CALL cda4
+ce59  cd a4 cd   CALL PRINT_BACKSPACE (cda4)
 ce5c  c3 4e ce   JMP ce4e
 ????:
 ce5f  fe 15      CPI A, 15
 ce61  c2 6b ce   JNZ ce6b
-ce64  cd b1 cd   CALL cdb1
+ce64  cd b1 cd   CALL PRINT_HASH_CRLF (cdb1)    ; ?????
 ce67  e1         POP HL
-ce68  c3 e1 cd   JMP cde1
+ce68  c3 e1 cd   JMP READ_CONSOLE_BUFFER (cde1)
 ????:
 ce6b  fe 12      CPI A, 12
 ce6d  c2 a6 ce   JNZ cea6
+
+
+????:   ; Compute the length of the line????
+    ce70  c5         PUSH BC
+    ce71  cd b1 cd   CALL PRINT_HASH_CRLF (cdb1); print #, CR/LF, then ????
+    ce74  c1         POP BC
+    ce75  e1         POP HL
+    ce76  e5         PUSH HL
+    ce77  c5         PUSH BC
+
 ????:
-ce70  c5         PUSH BC
-ce71  cd b1 cd   CALL cdb1
-ce74  c1         POP BC
-ce75  e1         POP HL
-ce76  e5         PUSH HL
-ce77  c5         PUSH BC
+    ce78  78         MOV A, B                   ; Re-print the line once again, while counting number of
+    ce79  b7         ORA A                      ; printed characters
+    ce7a  ca 8a ce   JZ ce8a                    ; Exit when all characters are printed
+
+    ce7d  23         INX HL                     ; Some symbols in the input buffer are printed as 2 characters
+    ce7e  4e         MOV C, M                   ; (^symb). This function calculates number of printed chars
+    ce7f  05         DCR B
+
+    ce80  c5         PUSH BC
+    ce81  e5         PUSH HL                    ; "Print" the char (in fact, just count characters to print,
+    ce82  cd 7f cd   CALL PUT_CHAR_CTRL_SYMBOLS (cd7f)  ; without actual printing)
+    ce85  e1         POP HL
+    ce86  c1         POP BC
+
+    ce87  c3 78 ce   JMP ce78
+
 ????:
-ce78  78         MOV A, B
-ce79  b7         ORA A
-ce7a  ca 8a ce   JZ ce8a
-ce7d  23         INX HL
-ce7e  4e         MOV C, M
-ce7f  05         DCR B
-ce80  c5         PUSH BC
-ce81  e5         PUSH HL
-ce82  cd 7f cd   CALL cd7f
-ce85  e1         POP HL
-ce86  c1         POP BC
-ce87  c3 78 ce   JMP ce78
+    ce8a  e5         PUSH HL
+
+    ce8b  3a 0a cf   LDA COMP_CURSOR_POSITION (cf0a); If we are at the target column already - go
+    ce8e  b7         ORA A                          ; and wait for the next symbol
+    ce8f  ca f1 cd   JZ READ_NEXT_SYMBOL_2 (cdf1)
+
+    ce92  21 0c cf   LXI HL, CURSOR_COLUMN (cf0c)   ; Calculate how many symbols needs to be erased
+    ce95  96         SUB M                          ; with spaces
+    ce96  32 0a cf   STA COMP_CURSOR_POSITION (cf0a)
+
 ????:
-ce8a  e5         PUSH HL
-ce8b  3a 0a cf   LDA cf0a
-ce8e  b7         ORA A
-ce8f  ca f1 cd   JZ cdf1
-ce92  21 0c cf   LXI HL, cf0c
-ce95  96         SUB M
-ce96  32 0a cf   STA cf0a
+    ce99  cd a4 cd   CALL PRINT_BACKSPACE (cda4); Print spaces back until calculated position reached
+    
+    ce9c  21 0a cf   LXI HL, COMP_CURSOR_POSITION (cf0a)]
+    ce9f  35         DCR M                      ; Eventual this will zero cf0a flag here, and reenable
+    cea0  c2 99 ce   JNZ ce99                   ; symbols printing
+
+    cea3  c3 f1 cd   JMP READ_NEXT_SYMBOL_2 (cdf1)  ; Then we are ready to wait for the next symbol
+
+
+
+
 ????:
-ce99  cd a4 cd   CALL cda4
-ce9c  21 0a cf   LXI HL, cf0a
-ce9f  35         DCR M
-cea0  c2 99 ce   JNZ ce99
-cea3  c3 f1 cd   JMP cdf1
+    cea6  23         INX HL                     ; Store entered symbol in the input buffer
+    cea7  77         MOV M, A
+    cea8  04         INR B
+
 ????:
-cea6  23         INX HL
-cea7  77         MOV M, A
-cea8  04         INR B
+    cea9  c5         PUSH BC                    ; Print the entered symbol
+    ceaa  e5         PUSH HL
+    ceab  4f         MOV C, A
+    ceac  cd 7f cd   CALL PUT_CHAR_CTRL_SYMBOLS (cd7f)
+    ceaf  e1         POP HL
+    ceb0  c1         POP BC
+
+    ceb1  7e         MOV A, M                   ; Check if Ctrl-C is pressed
+    ceb2  fe 03      CPI A, 03
+    ceb4  78         MOV A, B
+    ceb5  c2 bd ce   JNZ cebd
+
+    ceb8  fe 01      CPI A, 01                  ; Ctrl-C causes soft reset
+    ceba  ca 00 00   JZ 0000
+
 ????:
-cea9  c5         PUSH BC
-ceaa  e5         PUSH HL
-ceab  4f         MOV C, A
-ceac  cd 7f cd   CALL cd7f
-ceaf  e1         POP HL
-ceb0  c1         POP BC
-ceb1  7e         MOV A, M
-ceb2  fe 03      CPI A, 03
-ceb4  78         MOV A, B
-ceb5  c2 bd ce   JNZ cebd
-ceb8  fe 01      CPI A, 01
-ceba  ca 00 00   JZ 0000
-????:
-cebd  b9         CMP C
-cebe  da ef cd   JC cdef
-????:
-cec1  e1         POP HL
-cec2  70         MOV M, B
-cec3  0e 0d      MVI C, 0d
-cec5  c3 48 cd   JMP DO_PUT_CHAR (cd48)
+    cebd  b9         CMP C                      ; Check if buffer is full
+    cebe  da ef cd   JC READ_NEXT_SYMBOL (cdef)
+
+READ_CONSOLE_BUFFER_EOL:
+    cec1  e1         POP HL
+    cec2  70         MOV M, B                   ; Store number of received symbols
+
+    cec3  0e 0d      MVI C, 0d                  ; And print the CR (meaning no more symbols in this input)
+    cec5  c3 48 cd   JMP DO_PUT_CHAR (cd48)
+
 
 ; Function 0x01 - Console input
 CONSOLE_INPUT:
@@ -667,15 +741,19 @@ FUNCTION_EXIT:
 ????:
 cf05  3e 01      MVI A, 01
 cf07  c3 01 cf   JMP FUNCTION_EXIT (cf01)
-????:
-cf0a  00         NOP
-????:
-cf0b  00         NOP
-????:
-cf0c  00         NOP
+
+COMP_CURSOR_POSITION:
+    cf0a  00           db 00                    ; Flag indicates that no char printing required, only
+                                                ; computing the resulting cursor position
+
+READ_START_COLUMN:
+    cf0b  00           db 00                    ; Cursor position when starting a input buffer reading
+
+CURSOR_COLUMN:
+    cf0c  00           db 00                    ; Variable that tracks current cursor column
 
 PRINTER_ENABLED:
-    cf0d  00         NOP
+    cf0d  00           db 00
 
 CONSOLE_KEY_PRESSED:
     cf0e  00           db 00
