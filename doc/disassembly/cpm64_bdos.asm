@@ -523,56 +523,70 @@ READ_NEXT_SYMBOL_2:
     ce13  c3 70 ce   JMP ce70
 
 READ_NEXT_SYMBOL_3:
-ce16  fe 7f      CPI A, 7f
-ce18  c2 26 ce   JNZ ce26
+    ce16  fe 7f      CPI A, 7f                  ; Check if rubout symbol is entered
+    ce18  c2 26 ce   JNZ READ_NEXT_SYMBOL_4 (ce26)
 
-ce1b  78         MOV A, B
-ce1c  b7         ORA A
-ce1d  ca ef cd   JZ READ_NEXT_SYMBOL (cdef)
-ce20  7e         MOV A, M
-ce21  05         DCR B
-ce22  2b         DCX HL
-ce23  c3 a9 ce   JMP cea9
+    ce1b  78         MOV A, B                   ; Can't do backspace if there are no symbols in the buffer
+    ce1c  b7         ORA A
+    ce1d  ca ef cd   JZ READ_NEXT_SYMBOL (cdef)
+
+    ce20  7e         MOV A, M                   ; Just erase previous character on the screen, and a char
+    ce21  05         DCR B                      ; in the buffer. Unlike previuos backspace case this will
+    ce22  2b         DCX HL                     ; not track 2-char control characters, and erase only one
+                                                ; on the screen
+
+    ce23  c3 a9 ce   JMP cea9
+
+READ_NEXT_SYMBOL_4:
+    ce26  fe 05      CPI A, 05                  ; Check if this is Ctrl-E (end of line)
+    ce28  c2 37 ce   JNZ READ_NEXT_SYMBOL_5 (ce37)
+
+    ce2b  c5         PUSH BC
+    ce2c  e5         PUSH HL
+    ce2d  cd c9 cd   CALL PRINT_CRLF (cdc9)     ; Print the CR/LF
+
+    ce30  af         XRA A                      ; Restart entering the characters on the next line
+    ce31  32 0b cf   STA READ_START_COLUMN (cf0b)   ; (Ctrl-E will not be added to the buffer)
+
+    ce34  c3 f1 cd   JMP READ_NEXT_SYMBOL_2 (cdf1)
+
+READ_NEXT_SYMBOL_5:
+    ce37  fe 10      CPI A, 10                  ; Check if Ctrl-P entered
+    ce39  c2 48 ce   JNZ ce48
+
+    ce3c  e5         PUSH HL                    ; Toggle the PRINTER_ENABLED flag
+    ce3d  21 0d cf   LXI HL, PRINTER_ENABLED (cf0d)
+    ce40  3e 01      MVI A, 01
+    ce42  96         SUB M
+    ce43  77         MOV M, A
+    ce44  e1         POP HL
+
+    ce45  c3 ef cd   JMP READ_NEXT_SYMBOL (cdef)
 
 ????:
-ce26  fe 05      CPI A, 05
-ce28  c2 37 ce   JNZ ce37
+    ce48  fe 18      CPI A, 18                  ; Check if Ctrl-X entered
+    ce4a  c2 5f ce   JNZ ce5f
 
-ce2b  c5         PUSH BC
-ce2c  e5         PUSH HL
-ce2d  cd c9 cd   CALL PRINT_CRLF (cdc9)
-ce30  af         XRA A
-ce31  32 0b cf   STA READ_START_COLUMN (cf0b)
-ce34  c3 f1 cd   JMP READ_NEXT_SYMBOL_2 (cdf1)
+    ce4d  e1         POP HL
+????:
+    ce4e  3a 0b cf   LDA READ_START_COLUMN (cf0b)   ; Backspace until reached start of the line
+    ce51  21 0c cf   LXI HL, CURSOR_COLUMN (cf0c)
+    ce54  be         CMP M
+    ce55  d2 e1 cd   JNC READ_CONSOLE_BUFFER (cde1)
+
+    ce58  35         DCR M                      ; Do the backspace
+    ce59  cd a4 cd   CALL PRINT_BACKSPACE (cda4)
+    
+    ce5c  c3 4e ce   JMP ce4e
 
 ????:
-ce37  fe 10      CPI A, 10
-ce39  c2 48 ce   JNZ ce48
-ce3c  e5         PUSH HL
-ce3d  21 0d cf   LXI HL, PRINTER_ENABLED (cf0d)
-ce40  3e 01      MVI A, 01
-ce42  96         SUB M
-ce43  77         MOV M, A
-ce44  e1         POP HL
-ce45  c3 ef cd   JMP READ_NEXT_SYMBOL (cdef)
-????:
-ce48  fe 18      CPI A, 18
-ce4a  c2 5f ce   JNZ ce5f
-ce4d  e1         POP HL
-????:
-ce4e  3a 0b cf   LDA READ_START_COLUMN (cf0b)
-ce51  21 0c cf   LXI HL, CURSOR_COLUMN (cf0c)
-ce54  be         CMP M
-ce55  d2 e1 cd   JNC READ_CONSOLE_BUFFER (cde1)
-ce58  35         DCR M
-ce59  cd a4 cd   CALL PRINT_BACKSPACE (cda4)
-ce5c  c3 4e ce   JMP ce4e
-????:
-ce5f  fe 15      CPI A, 15
-ce61  c2 6b ce   JNZ ce6b
-ce64  cd b1 cd   CALL PRINT_HASH_CRLF (cdb1)    ; ?????
-ce67  e1         POP HL
-ce68  c3 e1 cd   JMP READ_CONSOLE_BUFFER (cde1)
+    ce5f  fe 15      CPI A, 15                  ; Check if this is Ctrl-U
+    ce61  c2 6b ce   JNZ ce6b
+
+    ce64  cd b1 cd   CALL PRINT_HASH_CRLF (cdb1); Print the CR/LF and restart the buffer read
+    ce67  e1         POP HL
+    ce68  c3 e1 cd   JMP READ_CONSOLE_BUFFER (cde1)
+
 ????:
 ce6b  fe 12      CPI A, 12
 ce6d  c2 a6 ce   JNZ cea6
