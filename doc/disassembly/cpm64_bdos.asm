@@ -472,14 +472,46 @@ DO_PRINT_STRING:
 
 ; Function 0x0a - read console input to the provided buffer
 ;
+; The function waits user console input and writes it to the provided buffer. First 2 elements of
+; the buffer have special meaning (1st byte - buffer size, 2nd byte - number of symbols entered).
+;
+; Each entered symbol is echoed to the console output. Characters with codes < 0x20 (if not processed
+; as special symbols) are printed as 2-char sequence - ^symb. 
+;
+; Console reading is finished either with reaching end of the buffer, or with Enter key (Ctrl-J and Ctrl-M
+; do the same)
+;
+; The function also handles special keys and key combinations:
+; - backspace   - removes symbol left to the cursor. Special 2-char symbols are erased as well (2 symbols
+;   (or Ctrl-H)   at a once). This is done using a 'fake printing' approach - function sets cf0a to turn
+;                 printing into width calculation mode, then previously entered string is 'printed'. Extra
+;                 characters are erased with spaces.
+; - rubout      - similar to the backspace, but erases only one character on the screen (so in case of 
+;                 2-byte special symbols the line can be visually corrupted)
+; - Ctrl-C      - reboots the system from 0x0000
+; - Ctrl-E      - New line on terminal. Continues reading the console to the same buffer, while echoing
+;                 symbols is moved to the next line. Resulting buffer does not contain Ctrl-E symbol. This
+;                 is just visual moving to the next line.
+; - Ctrl-R      - Retype currently entered line from the new line. Handy in case of the line if visually
+;                 corrupted, and simply needs to be redrawn on the screen. Does not change the buffer.
+; - Ctrl-U      - Restart entering the current input. Visually it moves to the new line, and start reading
+;                 to the buffer from the beginning.
+; - Ctrl-X      - Restart entering the current input in the same line. Technically it does multiple back
+;                 spaces, until reaches the beginning of line.
+;
+; The function tries to maintain the starting column of the input line. This allows making input not at
+; the beginning of the line, but at further positions. Various erase combinations (Ctrl-X, Ctrl-U) maintain
+; the start position and restart the input from the same column.
+;
 ; Arguments:
-; [cf43]    - pointer to the buffer. First character of the buffer indicates buffer size
+; [cf43]    - pointer to the buffer. First byte of the buffer indicates buffer size (not counting first
+;             2 service bytes)
 ;
 ; Return:
 ; Buffer is filled with entered characters as follows:
-; 1st byte - buffer size
-; 2nd byte - number of entered symbols
-; 3rd byte and further - entered symbols
+; - 1st byte - buffer size (original byte)
+; - 2nd byte - number of entered symbols
+; - 3rd byte and further - entered symbols
 READ_CONSOLE_BUFFER:
     cde1  3a 0c cf   LDA CURSOR_COLUMN (cf0c)   ; Remember the start position for proper handling of
     cde4  32 0b cf   STA READ_START_COLUMN (cf0b); Ctrl-H and backspace
@@ -517,10 +549,10 @@ READ_NEXT_SYMBOL_2:
 
     ce0c  05         DCR B                      ; Decrease symbols counter
 
-    ce0d  3a 0c cf   LDA CURSOR_COLUMN (cf0c)   ; ?????
-    ce10  32 0a cf   STA COMP_CURSOR_POSITION (cf0a)
+    ce0d  3a 0c cf   LDA CURSOR_COLUMN (cf0c)   ; Enable 'fake printing' mode to calculate visible width
+    ce10  32 0a cf   STA COMP_CURSOR_POSITION (cf0a)    ; of the entered line
 
-    ce13  c3 70 ce   JMP ce70
+    ce13  c3 70 ce   JMP REPRINT_BUFFER (ce70)
 
 READ_NEXT_SYMBOL_3:
     ce16  fe 7f      CPI A, 7f                  ; Check if rubout symbol is entered
@@ -535,7 +567,7 @@ READ_NEXT_SYMBOL_3:
     ce22  2b         DCX HL                     ; not track 2-char control characters, and erase only one
                                                 ; on the screen
 
-    ce23  c3 a9 ce   JMP cea9
+    ce23  c3 a9 ce   JMP READ_CONSOLE_ECHO_SYMBOL (cea9)
 
 READ_NEXT_SYMBOL_4:
     ce26  fe 05      CPI A, 05                  ; Check if this is Ctrl-E (end of line)
@@ -552,7 +584,7 @@ READ_NEXT_SYMBOL_4:
 
 READ_NEXT_SYMBOL_5:
     ce37  fe 10      CPI A, 10                  ; Check if Ctrl-P entered
-    ce39  c2 48 ce   JNZ ce48
+    ce39  c2 48 ce   JNZ READ_NEXT_SYMBOL_6 (ce48)
 
     ce3c  e5         PUSH HL                    ; Toggle the PRINTER_ENABLED flag
     ce3d  21 0d cf   LXI HL, PRINTER_ENABLED (cf0d)
@@ -563,12 +595,12 @@ READ_NEXT_SYMBOL_5:
 
     ce45  c3 ef cd   JMP READ_NEXT_SYMBOL (cdef)
 
-????:
+READ_NEXT_SYMBOL_6:
     ce48  fe 18      CPI A, 18                  ; Check if Ctrl-X entered
-    ce4a  c2 5f ce   JNZ ce5f
+    ce4a  c2 5f ce   JNZ READ_NEXT_SYMBOL_7 (ce5f)
 
     ce4d  e1         POP HL
-????:
+BACKSPACE_LOOP:
     ce4e  3a 0b cf   LDA READ_START_COLUMN (cf0b)   ; Backspace until reached start of the line
     ce51  21 0c cf   LXI HL, CURSOR_COLUMN (cf0c)
     ce54  be         CMP M
@@ -577,33 +609,42 @@ READ_NEXT_SYMBOL_5:
     ce58  35         DCR M                      ; Do the backspace
     ce59  cd a4 cd   CALL PRINT_BACKSPACE (cda4)
     
-    ce5c  c3 4e ce   JMP ce4e
+    ce5c  c3 4e ce   JMP BACKSPACE_LOOP (ce4e)
 
-????:
+READ_NEXT_SYMBOL_7:
     ce5f  fe 15      CPI A, 15                  ; Check if this is Ctrl-U
-    ce61  c2 6b ce   JNZ ce6b
+    ce61  c2 6b ce   JNZ READ_NEXT_SYMBOL_8 (ce6b)
 
     ce64  cd b1 cd   CALL PRINT_HASH_CRLF (cdb1); Print the CR/LF and restart the buffer read
     ce67  e1         POP HL
     ce68  c3 e1 cd   JMP READ_CONSOLE_BUFFER (cde1)
 
-????:
-ce6b  fe 12      CPI A, 12
-ce6d  c2 a6 ce   JNZ cea6
+READ_NEXT_SYMBOL_8:
+    ce6b  fe 12      CPI A, 12                  ; Check if this Ctrl-R keyboard combination
+    ce6d  c2 a6 ce   JNZ READ_CONSOLE_STORE_SYMBOL (cea6)
 
 
-????:   ; Compute the length of the line????
+; Re-print the buffer from the next line
+;
+; Function prints '#' has sign, moves to the next line, and then re-prints symbols currently
+; collected in the buffer. The function is used in 2 cases:
+; - User entered Ctrl-R combination. In this case function works as described above - re-prints
+;   the buffer from the next line
+; - User has pressed backspace button. In this case char output function works in 'fake printing'
+;   mode, and just calculates the cursor position. Function does 'printing' of the buffer, and 
+;   calculate the line width, taking into account that special characters are printed as 2 symbols.
+REPRINT_BUFFER:   
     ce70  c5         PUSH BC
-    ce71  cd b1 cd   CALL PRINT_HASH_CRLF (cdb1); print #, CR/LF, then ????
+    ce71  cd b1 cd   CALL PRINT_HASH_CRLF (cdb1); print #, then CR/LF
     ce74  c1         POP BC
     ce75  e1         POP HL
     ce76  e5         PUSH HL
     ce77  c5         PUSH BC
 
-????:
+REPRINT_BUFFER_LOOP:
     ce78  78         MOV A, B                   ; Re-print the line once again, while counting number of
     ce79  b7         ORA A                      ; printed characters
-    ce7a  ca 8a ce   JZ ce8a                    ; Exit when all characters are printed
+    ce7a  ca 8a ce   JZ REPRINT_BUFFER_1 (ce8a) ; Exit when all characters are printed
 
     ce7d  23         INX HL                     ; Some symbols in the input buffer are printed as 2 characters
     ce7e  4e         MOV C, M                   ; (^symb). This function calculates number of printed chars
@@ -615,9 +656,9 @@ ce6d  c2 a6 ce   JNZ cea6
     ce85  e1         POP HL
     ce86  c1         POP BC
 
-    ce87  c3 78 ce   JMP ce78
+    ce87  c3 78 ce   JMP REPRINT_BUFFER_LOOP (ce78)
 
-????:
+REPRINT_BUFFER_1:
     ce8a  e5         PUSH HL
 
     ce8b  3a 0a cf   LDA COMP_CURSOR_POSITION (cf0a); If we are at the target column already - go
@@ -628,24 +669,24 @@ ce6d  c2 a6 ce   JNZ cea6
     ce95  96         SUB M                          ; with spaces
     ce96  32 0a cf   STA COMP_CURSOR_POSITION (cf0a)
 
-????:
+REPRINT_BUFFER_LOOP_2:
     ce99  cd a4 cd   CALL PRINT_BACKSPACE (cda4); Print spaces back until calculated position reached
     
-    ce9c  21 0a cf   LXI HL, COMP_CURSOR_POSITION (cf0a)]
+    ce9c  21 0a cf   LXI HL, COMP_CURSOR_POSITION (cf0a)
     ce9f  35         DCR M                      ; Eventual this will zero cf0a flag here, and reenable
-    cea0  c2 99 ce   JNZ ce99                   ; symbols printing
+    cea0  c2 99 ce   JNZ REPRINT_BUFFER_LOOP_2 (ce99)   ; symbols printing
 
     cea3  c3 f1 cd   JMP READ_NEXT_SYMBOL_2 (cdf1)  ; Then we are ready to wait for the next symbol
 
 
 
 
-????:
+READ_CONSOLE_STORE_SYMBOL:
     cea6  23         INX HL                     ; Store entered symbol in the input buffer
     cea7  77         MOV M, A
     cea8  04         INR B
 
-????:
+READ_CONSOLE_ECHO_SYMBOL:
     cea9  c5         PUSH BC                    ; Print the entered symbol
     ceaa  e5         PUSH HL
     ceab  4f         MOV C, A
@@ -656,12 +697,12 @@ ce6d  c2 a6 ce   JNZ cea6
     ceb1  7e         MOV A, M                   ; Check if Ctrl-C is pressed
     ceb2  fe 03      CPI A, 03
     ceb4  78         MOV A, B
-    ceb5  c2 bd ce   JNZ cebd
+    ceb5  c2 bd ce   JNZ READ_CONSOLE_ECHO_SYMBOL_1 (cebd)
 
     ceb8  fe 01      CPI A, 01                  ; Ctrl-C causes soft reset
     ceba  ca 00 00   JZ 0000
 
-????:
+READ_CONSOLE_ECHO_SYMBOL_1:
     cebd  b9         CMP C                      ; Check if buffer is full
     cebe  da ef cd   JC READ_NEXT_SYMBOL (cdef)
 
@@ -767,10 +808,10 @@ CURSOR_COLUMN:
     cf0c  00           db 00                    ; Variable that tracks current cursor column
 
 PRINTER_ENABLED:
-    cf0d  00           db 00
+    cf0d  00           db 00                    ; Flag indicating that symbols are output to the printer
 
 CONSOLE_KEY_PRESSED:
-    cf0e  00           db 00
+    cf0e  00           db 00                    ; Buffer for the entered symbol
 
 BDOS_SAVE_SP:
     cf0f  00 00        dw 0000

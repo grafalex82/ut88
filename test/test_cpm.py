@@ -432,30 +432,33 @@ def test_bdos_print_string(cpm):
     assert cpm.get_word(0xf7b2) == 0xe804   # Cursor is advanced and stopped after 4 symbols printed
 
 
-def key_sequence_generator(cpm, sequence):
-    # Emulate next key in the sqeuence
-    for ch in sequence:
-        if ord(ch) < 0x20:
-            print(f"Emulating Ctrl-{chr(ord(ch)+0x40)}")
-            cpm._keyboard.emulate_ctrl_key_press(ch)
-        else:
-            print(f"Emulating {ch}")
-            cpm._keyboard.emulate_key_press(ch)
-        yield
+def emulate_key_sequence(cpm, sequence):
+    def generator(cpm, sequence):
+        # Emulate next key in the sqeuence
+        for ch in sequence:
+            if ord(ch) < 0x20:
+                print(f"Emulating Ctrl-{chr(ord(ch)+0x40)}")
+                cpm._keyboard.emulate_ctrl_key_press(ch)
+            else:
+                print(f"Emulating {ch}")
+                cpm._keyboard.emulate_key_press(ch)
+            yield
 
-    # Further calls of this generator will produce keyboard release
-    while True:
-        print(f"Emulating no press")
-        cpm._keyboard.emulate_key_press(None)
-        yield
+        # Further calls of this generator will produce keyboard release
+        while True:
+            print(f"Emulating no press")
+            cpm._keyboard.emulate_key_press(None)
+            yield
+
+    g = generator(cpm, sequence)
+    cpm._emulator.add_breakpoint(0xcde1, lambda: g.__next__())
+    cpm._emulator.add_breakpoint(0xcdf4, lambda: g.__next__())
 
 
 def test_bdos_read_console_buffer(cpm):
     cpm.set_byte(0x1000, 0x20)              # Reserve 0x20 bytes for the buffer
 
-    sequence = key_sequence_generator(cpm, "TEST\n")
-    cpm._emulator.add_breakpoint(0xcde1, lambda: sequence.__next__())
-    cpm._emulator.add_breakpoint(0xcdf4, lambda: sequence.__next__())
+    emulate_key_sequence(cpm, "TEST\n")
 
     call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
 
@@ -470,9 +473,7 @@ def test_bdos_read_console_buffer(cpm):
 def test_bdos_read_console_buffer_buffer_too_small(cpm):
     cpm.set_byte(0x1000, 0x04)              # Reserve just 4 bytes for the buffer
 
-    sequence = key_sequence_generator(cpm, "TESTTEST\n")
-    cpm._emulator.add_breakpoint(0xcde1, lambda: sequence.__next__())
-    cpm._emulator.add_breakpoint(0xcdf4, lambda: sequence.__next__())
+    emulate_key_sequence(cpm, "TESTTEST\n")
 
     call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
 
@@ -488,9 +489,7 @@ def test_bdos_read_console_buffer_buffer_too_small(cpm):
 def test_bdos_read_console_ctrl_symbol(cpm):
     cpm.set_byte(0x1000, 0x20)              # Reserve 0x20 bytes for the buffer
 
-    sequence = key_sequence_generator(cpm, "\x04\n")
-    cpm._emulator.add_breakpoint(0xcde1, lambda: sequence.__next__())
-    cpm._emulator.add_breakpoint(0xcdf4, lambda: sequence.__next__())
+    emulate_key_sequence(cpm, "\x04\n")
 
     call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
 
@@ -504,9 +503,7 @@ def test_bdos_read_console_ctrl_symbol(cpm):
 def test_bdos_read_console_backspace(cpm):
     cpm.set_byte(0x1000, 0x20)              # Reserve 0x20 bytes for the buffer
 
-    sequence = key_sequence_generator(cpm, "TEST\x08Q\n")    # Add backspace symbol
-    cpm._emulator.add_breakpoint(0xcde1, lambda: sequence.__next__())
-    cpm._emulator.add_breakpoint(0xcdf4, lambda: sequence.__next__())
+    emulate_key_sequence(cpm, "TEST\x08Q\n")    # Add backspace symbol
 
     call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
 
@@ -526,9 +523,7 @@ def test_bdos_read_console_backspace_2(cpm):
     cpm.set_byte(0x1000, 0x20)              # Reserve 0x20 bytes for the buffer
 
     # Backspace symbol in the beginning. Should not make any harm
-    sequence = key_sequence_generator(cpm, "\x08TEST\n")    
-    cpm._emulator.add_breakpoint(0xcde1, lambda: sequence.__next__())
-    cpm._emulator.add_breakpoint(0xcdf4, lambda: sequence.__next__())
+    emulate_key_sequence(cpm, "\x08TEST\n")    
 
     call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
 
@@ -543,9 +538,7 @@ def test_bdos_read_console_backspace_2(cpm):
 def test_bdos_read_console_backspace_3(cpm):
     cpm.set_byte(0x1000, 0x20)              # Reserve 0x20 bytes for the buffer
 
-    sequence = key_sequence_generator(cpm, "TE\x04\x08ST\n")    # Backspace a 2-char control symbol
-    cpm._emulator.add_breakpoint(0xcde1, lambda: sequence.__next__())
-    cpm._emulator.add_breakpoint(0xcdf4, lambda: sequence.__next__())
+    emulate_key_sequence(cpm, "TE\x04\x08ST\n")    # Backspace a 2-char control symbol
 
     call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
 
@@ -567,9 +560,7 @@ def test_bdos_read_console_backspace_4(cpm):
     # Ctrl-X (0x18) - backspace till start of the line
     # The function does extra keyboard read after Ctrl-X, so just emulate an extra symbol after Ctrl-x, which
     # will be ignored. This is an emulation issue, rather than CP/M code buf
-    sequence = key_sequence_generator(cpm, "TEST\x18 ABCD\n")    
-    cpm._emulator.add_breakpoint(0xcde1, lambda: sequence.__next__())
-    cpm._emulator.add_breakpoint(0xcdf4, lambda: sequence.__next__())
+    emulate_key_sequence(cpm, "TEST\x18 ABCD\n")    
 
     call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
 
@@ -588,9 +579,7 @@ def test_bdos_read_console_backspace_4(cpm):
 def test_bdos_read_console_end_of_line(cpm):
     cpm.set_byte(0x1000, 0x20)              # Reserve 0x20 bytes for the buffer
 
-    sequence = key_sequence_generator(cpm, "TE\x05ST\n")    # End of line in the middle of the string
-    cpm._emulator.add_breakpoint(0xcde1, lambda: sequence.__next__())
-    cpm._emulator.add_breakpoint(0xcdf4, lambda: sequence.__next__())
+    emulate_key_sequence(cpm, "TE\x05ST\n")    # End of line in the middle of the string
 
     call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
 
@@ -614,18 +603,16 @@ def test_bdos_read_console_abandon_current_line(cpm):
     # Ctrl-X (0x18) - backspace till start of the line
     # The function does extra keyboard read after Ctrl-U and 'A', so just emulate an extra symbol after 'A', 
     # which will be ignored. This is an emulation issue, rather than CP/M code buf
-    sequence = key_sequence_generator(cpm, "TEST\x15A BCD\n")
-    cpm._emulator.add_breakpoint(0xcde1, lambda: sequence.__next__())
-    cpm._emulator.add_breakpoint(0xcdf4, lambda: sequence.__next__())
+    emulate_key_sequence(cpm, "TEST\x15A BCD\n")
 
     call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
 
     assert cpm.get_byte(0x1000) == 0x20     # Buffer size
-    # assert cpm.get_byte(0x1001) == 0x04     # Number of entered characters
-    # assert cpm.get_byte(0x1002) == ord('A') # Entered characters
-    # assert cpm.get_byte(0x1003) == ord('B')
-    # assert cpm.get_byte(0x1003) == ord('D')
-    # assert cpm.get_byte(0x1003) == ord('E')
+    assert cpm.get_byte(0x1001) == 0x04     # Number of entered characters
+    assert cpm.get_byte(0x1002) == ord('A') # Entered characters
+    assert cpm.get_byte(0x1003) == ord('B')
+    assert cpm.get_byte(0x1004) == ord('C')
+    assert cpm.get_byte(0x1005) == ord('D')
     assert cpm.get_byte(0xe800) == ord('T') # Printed "TEST"
     assert cpm.get_byte(0xe801) == ord('E')
     assert cpm.get_byte(0xe802) == ord('S') 
@@ -635,6 +622,31 @@ def test_bdos_read_console_abandon_current_line(cpm):
     assert cpm.get_byte(0xe841) == ord('B')
     assert cpm.get_byte(0xe842) == ord('C') 
     assert cpm.get_byte(0xe843) == ord('D')
+
+
+def test_bdos_read_console_retype_current_line(cpm):
+    cpm.set_byte(0x1000, 0x20)              # Reserve 0x20 bytes for the buffer
+
+    # Ctrl-R (0x12) - retype currently entered characters from the new line
+    emulate_key_sequence(cpm, "TE\x12ST\n")
+
+    call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
+
+    assert cpm.get_byte(0x1000) == 0x20     # Buffer size
+    assert cpm.get_byte(0x1001) == 0x04     # Number of entered characters
+    assert cpm.get_byte(0x1002) == ord('T') # Entered characters
+    assert cpm.get_byte(0x1003) == ord('E')
+    assert cpm.get_byte(0x1004) == ord('S')
+    assert cpm.get_byte(0x1005) == ord('T')
+
+    assert cpm.get_byte(0xe800) == ord('T') # Printed "TE"
+    assert cpm.get_byte(0xe801) == ord('E')
+    assert cpm.get_byte(0xe802) == ord('#') # then hash
+
+    assert cpm.get_byte(0xe840) == ord('T') # "TE" is redrawn from the new line
+    assert cpm.get_byte(0xe841) == ord('E')
+    assert cpm.get_byte(0xe842) == ord('S') # "ST" - finish typing test string
+    assert cpm.get_byte(0xe843) == ord('T')
 
 
 def test_bdos_check_key_pressed(cpm):
