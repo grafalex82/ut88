@@ -302,9 +302,16 @@ class Keyboard(IODevice):
         self._pressed_key = (0xff, 0xff, 0xff)
 
     def emulate_key_press(self, ch):
+        if ch == None:
+            self._pressed_key = (0xff, 0xff, 0xff)
+
         if ch in self._key_map:
             self._pressed_key = self._key_map[ch]
 
+
     def emulate_ctrl_key_press(self, ch):
-        if ch in self._ctrl_codes_map:
-            self._pressed_key = self._ctrl_codes_map[ch]
+        ch = ord(ch)
+        if ch > 0 and ch <= 0x1a:
+            self._pressed_key = self._ctrl_codes_map[pygame.K_a + ch - 1]
+        else:
+            self._pressed_key = (0xff, 0xff, 0xff)
