@@ -1,7 +1,7 @@
 # To run these tests install pytest, then run this command line:
 # py.test -rfeEsxXwa --verbose --showlocals
 
-# This file contains tests for CP/M operating system, rather than UT-88 schematics.
+# This file contains tests for CP/M operating system (BDOS console functions), rather than UT-88 schematics. 
 # These tests are not tests in general meaning, they are not supposed to _test_ anything.
 # This is rather a handy way to run emulation of some functions from the CP/M software bundle,
 # in order to understand better how do they work.
@@ -9,10 +9,8 @@
 # Tests run an emulator, load CP/M components, and run required functions with certain arguments.
 
 import pytest
-import os
 
 from cpm_helper import CPM
-from quasidisk import QuasiDisk
 
 @pytest.fixture
 def cpm():
@@ -340,6 +338,3 @@ def test_bdos_check_key_not_pressed(cpm):
 def test_bdos_get_version(cpm):
     ver = call_bdos_function(cpm, 0x0c)
     assert ver == 0x22
-
-#def test_bdos_reset_disk_system(cpm):
-#    call_bdos_function(cpm, 0x0d)
