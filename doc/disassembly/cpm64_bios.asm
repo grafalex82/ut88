@@ -71,45 +71,48 @@
 ; 0xdbf4    - Save stack pointer while doing quasi disk operations
 
 ENTRY_POINTS:
-    da00  c3 80 da   JMP COLD_BOOT (da80)           # Cold boot
-    da03  c3 9e da   JMP WARM_BOOT (da9e)           # Warm boot
-    da06  c3 12 f8   JMP MONITOR_IS_BUTTON_PRESSED (f812)   # Check if there is a console input ready
-    da09  c3 03 f8   JMP MONITOR_KBD_INPUT (f803)   # Console input
-    da0c  c3 00 f5   JMP MONITOR_ADDON_PUT_CHAR (f500)  # Console output
-    da0f  c3 09 f8   JMP MONITOR_PUT_CHAR (f809)    # Printer (List) output
-    da12  c3 0c f8   JMP MONITOR_OUT_BYTE (f80c)    # Output a byte to the tape
-    da15  c3 06 f8   JMP MONITOR_IN_BYTE (f806)     # Input a byte from the tape
-    da18  c3 0c db   JMP TRACK_ZERO (db0c)          # Move to track 0 on the current disk
-    da1b  c3 11 db   JMP SELECT_DISK (db11)         # Select current disk
-    da1e  c3 2a db   JMP SELECT_TRACK (db2a)        # Select track on the current disk
-    da21  c3 5e db   JMP SELECT_SECTOR (db5e)       # Select sector on currently selected disk and track
-    da24  c3 6d db   JMP SET_BUFFER (db6d)          # Set the buffer for reading and writing sectors
-    da27  c3 73 db   JMP READ_SECTOR (db73)         # Read selected sector to the provided buffer
-    da2a  c3 9e db   JMP WRITE_SECTOR (db9e)        # Write data buffer to selected sector
-    da2d  c3 09 db   JMP PRINTER_STATUS (db09)      # Get the printer (list) status
-    da30  c3 63 db   JMP TRANSLATE_SECTOR (db63)    # "Logical" to "physical" sector translation
+    da00  c3 80 da   JMP COLD_BOOT (da80)           ; Cold boot
+    da03  c3 9e da   JMP WARM_BOOT (da9e)           ; Warm boot
+    da06  c3 12 f8   JMP MONITOR_IS_BUTTON_PRESSED (f812)   ; Check if there is a console input ready
+    da09  c3 03 f8   JMP MONITOR_KBD_INPUT (f803)   ; Console input
+    da0c  c3 00 f5   JMP MONITOR_ADDON_PUT_CHAR (f500)  ; Console output
+    da0f  c3 09 f8   JMP MONITOR_PUT_CHAR (f809)    ; Printer (List) output
+    da12  c3 0c f8   JMP MONITOR_OUT_BYTE (f80c)    ; Output a byte to the tape
+    da15  c3 06 f8   JMP MONITOR_IN_BYTE (f806)     ; Input a byte from the tape
+    da18  c3 0c db   JMP TRACK_ZERO (db0c)          ; Move to track 0 on the current disk
+    da1b  c3 11 db   JMP SELECT_DISK (db11)         ; Select current disk
+    da1e  c3 2a db   JMP SELECT_TRACK (db2a)        ; Select track on the current disk
+    da21  c3 5e db   JMP SELECT_SECTOR (db5e)       ; Select sector on currently selected disk and track
+    da24  c3 6d db   JMP SET_BUFFER (db6d)          ; Set the buffer for reading and writing sectors
+    da27  c3 73 db   JMP READ_SECTOR (db73)         ; Read selected sector to the provided buffer
+    da2a  c3 9e db   JMP WRITE_SECTOR (db9e)        ; Write data buffer to selected sector
+    da2d  c3 09 db   JMP PRINTER_STATUS (db09)      ; Get the printer (list) status
+    da30  c3 63 db   JMP TRANSLATE_SECTOR (db63)    ; "Logical" to "physical" sector translation
 
 DISK_DESCRIPTION:
-    da33  43 da 00 00 00 00 00 00
-    da3b  f6 db 4b da 95 dc 76 dc
+    da33  43 da      dw SECTOR_TRANSLATION_TABLE (da43) ; Pointer to the sector translation table, or 0000
+    da35  00 00      dw 0000                            ; Scratchpad values ????
+    da37  00 00      dw 0000                            ; Currently selected track
+    da39  00 00      dw 0000                            ; Currently selected sector
+    da3b  f6 db      dw DIRECTORY_BUFFER (dbf6)         ; Pointer to the 128b buffer for directory operations
+    da3d  4b da      dw DISK_PARAMETER_BLOCK (da4b)     ; Pointer to the Disk Parameter Block (DPB)
+    da3f  95 dc      dw dc95                            ; Address of scratchpad value for software check ????
+    da41  76 dc      dw dc76                            ; Address of disk allocation information ????
     
 SECTOR_TRANSLATION_TABLE:
     da43  01 02 03 04 05 06 07 08
     
-    da4b  08         db 08
-    da4c  00         NOP
-    da4d  03         INX BC
-    da4e  07         RLC
-    da4f  00         NOP
-    da50  39         DAD SP
-    da51  00         NOP
-    da52  1f         RAR
-    da53  00         NOP
-    da54  80         ADD B
-    da55  00         NOP
-    da56  08         db 08
-    da57  00         NOP
-    da58  06 00      MVI B, 00
+DISK_PARAMETER_BLOCK:
+    da4b  08 00      dw 0x0008                  ; Sectors per table (8)
+    da4d  03         db 03                      ; Block shift factor
+    da4e  07         db 07                      ; BLM ???
+    da4f  00         db 00                      ; Extent mask ????
+    da50  39 00      dw 0039                    ; Total storage capacity ????
+    da52  1f 00      dw 001f                    ; Number of directory entries
+    da54  80         db 80                      ; AL0 ???? Reserved directory blocks
+    da55  00         db 00                      ; AL1 ???? Reserved directory blocks
+    da56  08 00      dw 0008                    ; Size of the directory check vector
+    da58  06 00      dw 0006                    ; Number of reserved tracks in the beginning
 
 WELCOME_STR:
     da5a  1f 0a 20 43 50 4d 20 56   db 0x1f, 0x0a, " CPM V"
@@ -491,3 +494,12 @@ SECTOR_OFFSET:
 
 SAVE_SP:
     dbf4  00 00      dw 0000
+
+DIRECTORY_BUFFER:
+    dbf6  00         db 128*0x00                ; 128 byte buffer for directory operations
+
+DISK_ALLOCATION_INFO:
+    dc76  00         db 00
+
+????:
+    dc95  00         db 00
