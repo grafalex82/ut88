@@ -14,9 +14,23 @@
 ; cf0d  - flag indicating that output to the printer is enabled in addition to console output
 ; cf0e  - if a keypress is detected, entered symbol is buffered in this variable
 ; cf0f  - save caller's SP (2 byte)
+; cf42  - current disk
 ; cf43  - function arguments (2 byte)
 ; cf45  - function return code or return value(2 byte)
+; d9ad  - Pointer to read only vector
+; d9af  - Disk Login Vector
+; d9b1  - ???? Disk buffer address
+; d9b3  - Disk scratchpad address 1
+; d9b5  - Address of the variable containing current track number
+; d9b7  - Address of the variable containing current track first sector number
+; d9b9  - Pointer to the directory buffer
+; d9bb  - Address of Disk Params Block (DPB)
+; d9bd  - Address of scratchpad value for software check ????
+; d9bf  - Address of disk allocation information ????
 ; d9d6  - function argument (low byte)
+; d9e5  - Actual sector number (similar to LBA concept)
+; d9e9  - ???? Directory entry offset (on the current sector)
+; d9ea  - ???? Directory counter
 cc00  f9         SPHL
 cc01  16 00      MVI D, 00
 cc03  00         NOP
@@ -63,7 +77,7 @@ REAL_BDOS_ENTRY:
     cc20  39         DAD SP                     ; Save caller's SP
     cc21  22 0f cf   SHLD BDOS_SAVE_SP (cf0f)
 
-    cc24  31 41 cf   LXI SP, cf41               ; And set our own stack
+    cc24  31 41 cf   LXI SP, BDOS_STACK (cf41)  ; And set our own stack
 
     cc27  af         XRA A                      ; ????
     cc28  32 e0 d9   STA d9e0
@@ -109,132 +123,100 @@ FUNCTION_HANDLERS_TABLE:
     cc5b  e1 cd      dw READ_CONSOLE_BUFFER (cde1)  ; Function 0x0a - read console to the buffer
     cc5d  fe ce      dw GET_CONSOLE_STATUS (cefe)   ; Function 0x0b - get console status (if a button pressed)
     cc5f  7e d8      dw GET_BDOS_VERSION (d87e)     ; Function 0x0c - get version
-cc61  83         ADD E
-cc62  d8         RC
-cc63  45         MOV B, L
-cc64  d8         RC
-cc65  9c         SBB H
-cc66  d8         RC
-cc67  a5         ANA L
-cc68  d8         RC
-cc69  ab         XRA E
-cc6a  d8         RC
-cc6b  c8         RZ
-cc6c  d8         RC
-cc6d  d7         RST 2
-cc6e  d8         RC
-cc6f  e0         RPO
-cc70  d8         RC
-cc71  e6 d8      ANI A, d8
-cc73  ec d8 f5   CPE f5d8
-cc76  d8         RC
-cc77  fe d8      CPI A, d8
-cc79  04         INR B
-cc7a  d9         db d9
-cc7b  0a         LDAX BC
-cc7c  d9         db d9
-cc7d  11 d9 2c   LXI DE, 2cd9
-cc80  d1         POP DE
-cc81  17         RAL
-cc82  d9         db d9
-cc83  1d         DCR E
-cc84  d9         db d9
-cc85  26 d9      MVI H, d9
-cc87  2d         DCR L
-cc88  d9         db d9
-cc89  41         MOV B, C
-cc8a  d9         db d9
-cc8b  47         MOV B, A
-cc8c  d9         db d9
-cc8d  4d         MOV C, L
-cc8e  d9         db d9
-cc8f  0e d8      MVI C, d8
-cc91  53         MOV D, E
-cc92  d9         db d9
-cc93  04         INR B
-cc94  cf         RST 1
-cc95  04         INR B
-cc96  cf         RST 1
-cc97  9b         SBB E
-cc98  d9         db d9
+    cc61  83 d8      dw RESET_DISK_SYSTEM (d883)    ; Function 0x0d - reset disk system
+    cc63  45 d8      dw SELECT_DISK_FUNC (d845)     ; Function 0x0e - select disk
+cc65  9c d8
+cc67  a5 d8
+cc69  ab d8
+cc6b  c8 d8
+cc6d  d7 d8
+cc6f  e0 d8
+cc71  e6 d8
+cc73  ec d8
+cc75  f5 d8
+    cc77  fe d8     dw GET_LOGIN_VECTOR (d8fe)      ; Function 0x18 - Return disk login vector
+    cc79  04 d9     dw GET_CURRENT_DISK (d904)      ; Function 0x19 - Return current disk
+    cc7b  0a d9     dw SET_BUFFER_ADDR (d90a)       ; Function 0x1a - Set DMA buffer address
+    cc7d  11 d9     dw GET_ALLOCATION_VECTOR (d911) ; Function 0x1b - Get current disk allocation vector
+    cc7f  2c d1     dw WRITE_PROTECT_DISK (d12c)    ; Function 0x1c - Write protect disk
+    cc81  17 d9     dw GET_READ_ONLY_VECTOR (d917)  ; Function 0x1d - Get Read Only vector
+cc83  1d d9
+    cc85  26 d9     dw GET_DISK_PARAMS (d926)       ; Function 0x1f - Get address of Disk Params Block (DPB)
+    cc87  2d d9     dw GET_SET_USER_CODE (d92d)     ; Function 0x20 - Get or set user code
+cc89  41 d9
+cc8b  47 d9
+cc8d  4d d9
+cc8f  0e d8
+cc91  53 d9
+cc93  04 cf
+cc95  04 cf
+cc97  9b d9
+
 
 DISK_READ_WRITE_ERROR:
-cc99  21 ca cc   LXI HL, ccca
-cc9c  cd e5 cc   CALL cce5
-cc9f  fe 03      CPI A, 03
-cca1  ca 00 00   JZ 0000
-cca4  c9         RET
+    cc99  21 ca cc   LXI HL, DISK_READ_WRITE_ERROR_STR (ccca)   ; Print the error
+    cc9c  cd e5 cc   CALL PRINT_ERROR (cce5)
+
+    cc9f  fe 03      CPI A, 03                  ; Ctrl-C will reset
+    cca1  ca 00 00   JZ 0000
+
+    cca4  c9         RET
+
 
 DISK_SELECT_ERROR:
-cca5  21 d5 cc   LXI HL, ccd5
-cca8  c3 b4 cc   JMP ccb4
+    cca5  21 d5 cc   LXI HL, DISK_SELECT_ERROR_STR (ccd5)
+    cca8  c3 b4 cc   JMP PRINT_ERROR_AND_RESET (ccb4)
 
 DISK_READ_ONLY_ERROR:
-ccab  21 e1 cc   LXI HL, cce1
-ccae  c3 b4 cc   JMP ccb4
+    ccab  21 e1 cc   LXI HL, DISK_READ_ONLY_ERROR_STR (cce1)
+    ccae  c3 b4 cc   JMP PRINT_ERROR_AND_RESET (ccb4)
 
 FILE_READ_ONLY_ERROR:
-ccb1  21 dc cc   LXI HL, ccdc
-????:
-ccb4  cd e5 cc   CALL cce5
-ccb7  c3 00 00   JMP 0000
-????:
-ccba  42         MOV B, D
-ccbb  64         MOV H, H
-ccbc  6f         MOV L, A
-ccbd  73         MOV M, E
-ccbe  20         db 20
-ccbf  45         MOV B, L
-ccc0  72         MOV M, D
-ccc1  72         MOV M, D
-ccc2  20         db 20
-ccc3  4f         MOV C, A
-ccc4  6e         MOV L, M
-ccc5  20         db 20
-????:
-ccc6  20         db 20
-ccc7  3a 20 24   LDA 2420
-????:
-ccca  42         MOV B, D
-cccb  61         MOV H, C
-cccc  64         MOV H, H
-cccd  20         db 20
-ccce  53         MOV D, E
-cccf  65         MOV H, L
-ccd0  63         MOV H, E
-ccd1  74         MOV M, H
-ccd2  6f         MOV L, A
-ccd3  72         MOV M, D
-ccd4  24         INR H
-????:
-ccd5  53         MOV D, E
-ccd6  65         MOV H, L
-ccd7  6c         MOV L, H
-ccd8  65         MOV H, L
-ccd9  63         MOV H, E
-ccda  74         MOV M, H
-ccdb  24         INR H
-????:
-ccdc  46         MOV B, M
-ccdd  69         MOV L, C
-ccde  6c         MOV L, H
-ccdf  65         MOV H, L
-cce0  20         db 20
-????:
-cce1  52         MOV D, D
-cce2  2f         CMA
-cce3  4f         MOV C, A
-cce4  24         INR H
-????:
-cce5  e5         PUSH HL
-cce6  cd c9 cd   CALL PRINT_CRLF (cdc9)
-cce9  3a 42 cf   LDA cf42
-ccec  c6 41      ADI A, 41
-ccee  32 c6 cc   STA ccc6
-ccf1  01 ba cc   LXI BC, ccba
-ccf4  cd d3 cd   CALL DO_PRINT_STRING (cdd3)
-ccf7  c1         POP BC
-ccf8  cd d3 cd   CALL DO_PRINT_STRING (cdd3)
+    ccb1  21 dc cc   LXI HL, FILE_READ_ONLY_ERROR_STR (ccdc)
+
+PRINT_ERROR_AND_RESET:
+    ccb4  cd e5 cc   CALL PRINT_ERROR (cce5)    ; Print error
+    ccb7  c3 00 00   JMP 0000                   ; and reset
+
+
+BDOS_ERROR_STR:
+    ccba  42 64 6f 73 20 45 72 72   db "Bdos Err"
+    ccc2  20 4f 6e 20 20 3a 20 24   db " On  : $"
+    
+DISK_READ_WRITE_ERROR_STR:
+    ccca  42 61 64 20 53 65 63 74   db "Bad sect"
+    ccd2  6f 72 24                  db "or$"
+
+DISK_SELECT_ERROR_STR:
+    ccd5  53 65 6c 65 63 74 24      db "Select$"
+    
+FILE_READ_ONLY_ERROR_STR:
+    ccdc  46 69 6c 65 20            db "File "
+
+DISK_READ_ONLY_ERROR_STR:
+    cce1  52 2f 4f 24               db "R/O$"
+
+
+; Print the error message, prefixed by BDOS message, indicating the drive letter.
+; The function waits for a keyboard press, and returns the entered code
+;
+; Arguments: BC pointer to the error message
+;
+; Return: A - keyboard character
+PRINT_ERROR:
+    cce5  e5         PUSH HL
+    cce6  cd c9 cd   CALL PRINT_CRLF (cdc9)     ; Error will be printed on the next line
+
+    cce9  3a 42 cf   LDA CURRENT_DISK (cf42)    ; Calculate the disk letter and burn it to the message
+    ccec  c6 41      ADI A, 41
+    ccee  32 c6 cc   STA ccc6
+
+    ccf1  01 ba cc   LXI BC, BDOS_ERROR_STR (ccba)  ; Print the "BDOS Error on X: " prefix, where X is 
+    ccf4  cd d3 cd   CALL DO_PRINT_STRING (cdd3)    ; drive letter
+
+    ccf7  c1         POP BC                     ; Print the message pointed by BC, and wait for a key
+    ccf8  cd d3 cd   CALL DO_PRINT_STRING (cdd3)
+
 
 ; Wait for a character from the console input (keyboard)
 ;
@@ -865,11 +847,13 @@ cf3e  00         NOP
 cf3f  00         NOP
 cf40  00         NOP
 
-BDOS_STACK:
-    cf41  00         NOP
+BDOS_STACK:     ; The stack growth up
 
-????:
-cf42  00         NOP
+USER_CODE:
+    cf41  00         db 00
+
+CURRENT_DISK:
+    cf42  00         db 00
 
 
 FUNCTION_ARGUMENTS:
@@ -878,174 +862,267 @@ FUNCTION_ARGUMENTS:
 FUNCTION_RETURN_VALUE:
     cf45  00 00      dw 0000
 
+
+
+HANDLE_DISK_SELECT_ERROR:
+    cf47  21 0b cc   LXI HL, DISK_SELECT_ERROR_PTR (cc0b)
+
+ROUTE_TO_ERROR_HANDLER:
+    cf4a  5e         MOV E, M                   ; Load handler address to DE
+    cf4b  23         INX HL
+    cf4c  56         MOV D, M
+
+    cf4d  eb         XCHG                       ; Jump to the handler
+    cf4e  e9         PCHL
+
+
+; Copy C number of bytes from [DE] to [HL]
+MEMCOPY_DE_HL:
+    cf4f  0c         INR C
+
+MEMCOPY_DE_HL_LOOP:
+    cf50  0d         DCR C
+    cf51  c8         RZ
+
+    cf52  1a         LDAX DE
+    cf53  77         MOV M, A
+    cf54  13         INX DE
+    cf55  23         INX HL
+    cf56  c3 50 cf   JMP MEMCOPY_DE_HL_LOOP (cf50)
+
+
+DO_SELECT_DISK:
+    cf59  3a 42 cf   LDA CURRENT_DISK (cf42)    ; Select the disk
+    cf5c  4f         MOV C, A
+    cf5d  cd 1b da   CALL BIOS_SELECT_DISK (da1b)
+
+    cf60  7c         MOV A, H                   ; Check if return code in HL is zero (no disk selected)
+    cf61  b5         ORA L
+    cf62  c8         RZ
+
+    cf63  5e         MOV E, M                   ; Parse Disk Descriptor. Get address of sector translation
+    cf64  23         INX HL                     ; table to DE
+    cf65  56         MOV D, M
+    cf66  23         INX HL
+
+    cf67  22 b3 d9   SHLD SCRATCHPAD_ADDR_1 (d9b3)  ; Store scratchpad addr 1
+
+    cf6a  23         INX HL                     ; Store the current track variable address
+    cf6b  23         INX HL
+    cf6c  22 b5 d9   SHLD CUR_TRACK_ADDR (d9b5)
+
+    cf6f  23         INX HL                     ; Store the current sector variable address
+    cf70  23         INX HL
+    cf71  22 b7 d9   SHLD CUR_TRACK_SECTOR_ADDR (d9b7)
+
+    cf74  23         INX HL                     ; Get address of the directory buffer ptr field
+    cf75  23         INX HL
+    cf76  eb         XCHG
+
+    cf77  22 d0 d9   SHLD SECTOR_TRANS_TABLE (d9d0) ; Store sector translation table
+
+    cf7a  21 b9 d9   LXI HL, DIRECTORY_BUFFER_ADDR (d9b9)   ; Copy directory buffer ptr, disk param block ptr,
+    cf7d  0e 08      MVI C, 08                              ; scratchpad address ????, and disk allocation
+    cf7f  cd 4f cf   CALL MEMCOPY_DE_HL (cf4f)              ; information addr ????
+
+    cf82  2a bb d9   LHLD DISK_PARAMS_BLOCK_ADDR (d9bb) ; Copy disk parameters block
+    cf85  eb         XCHG
+    cf86  21 c1 d9   LXI HL, DISK_PARAMETER_BLOCK (d9c1)
+    cf89  0e 0f      MVI C, 0f
+    cf8b  cd 4f cf   CALL MEMCOPY_DE_HL (cf4f)  
+
+    cf8e  2a c6 d9   LHLD DISK_TOTAL_STORAGE_CAPACITY (d9c6)    ; Check if disk capacity is small enough
+    cf91  7c         MOV A, H
+    cf92  21 dd d9   LXI HL, SINGLE_BYTE_ALLOCATION_MAP (d9dd)
+    cf95  36 ff      MVI M, ff                          ; if small - set the single byte allocation mode
+    cf97  b7         ORA A
+    cf98  ca 9d cf   JZ DO_SELECT_DISK_EXIT (cf9d)
+    cf9b  36 00      MVI M, 00                          ; otherwise it will be double byte allocation mode
+
+DO_SELECT_DISK_EXIT:
+    cf9d  3e ff      MVI A, ff                  ; Indicate success of the disk selection
+    cf9f  b7         ORA A
+    cfa0  c9         RET
+
+
+SET_TRACK_ZERO:
+    cfa1  cd 18 da   CALL BIOS_SET_TRACK_ZERO (da18)
+
+    cfa4  af         XRA A                      ; Reset current track number
+    cfa5  2a b5 d9   LHLD CUR_TRACK_ADDR (d9b5)
+    cfa8  77         MOV M, A
+    cfa9  23         INX HL
+    cfaa  77         MOV M, A
+
+    cfab  2a b7 d9   LHLD CUR_TRACK_SECTOR_ADDR (d9b7)  ; Reset current sector number
+    cfae  77         MOV M, A
+    cfaf  23         INX HL
+    cfb0  77         MOV M, A
+
+    cfb1  c9         RET
+
+
+READ_SECTOR:
+    cfb2  cd 27 da   CALL BIOS_READ_SECTOR (da27)
+    cfb5  c3 bb cf   JMP CHECK_READ_WRITE_ERROR (cfbb)
+
+WRITE_SECTOR:
+    cfb8  cd 2a da   CALL BIOS_WRITE_SECTOR (da2a)
+
+CHECK_READ_WRITE_ERROR:
+    cfbb  b7         ORA A
+    cfbc  c8         RZ
+
+    cfbd  21 09 cc   LXI HL, DISK_READ_WRITE_ERROR_PTR (cc09)
+    cfc0  c3 4a cf   JMP ROUTE_TO_ERROR_HANDLER (cf4a)
+
+
+; Seek dir ????
+????:   
+    cfc3  2a ea d9   LHLD DIRECTORY_COUNTER (d9ea)  ; Calculate sector number of the directory entry
+    cfc6  0e 02      MVI C, 02
+    cfc8  cd ea d0   CALL SHIFT_HL_RIGHT (d0ea)
+    cfcb  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
+    cfce  22 ec d9   SHLD d9ec 
+
+
+; Seek to selected sector
+;
+; The function moves to the requested track and sector. Argument of the function is a sector number
+; (d9e5), which is a logical sector index from the start of the disk. The function converts it to the
+; track number and track sector index.
+;
+; Since the disk may have reserved tracks at the beginning of the disk, reserved tracks number is added
+; to the logical track number when calculating physical track number.
+;
+; Eventually the function uses BIOS functions to select track and sector.
+;
+; Result is calculated as follows:
+; - Logical track number = requested sector number / sectors per track (ignore the rest)
+; - Physical track number = logical track number + number of reserved tracks
+; - Track first sector number = logical track number * sectors-per-track
+; - Logical sector number = requested sector number - track first sector number
+;                           (should be the same as requested sector number % sectors per track)
+; - Physical sector number = sector_translate(logical sector number)
+;
+; Perhaps counting track number as requested sector number / sectors per track could be very CPU consuming
+; for large sector numbers, and significantly drop performance on the far tracks. Instead, the implementation
+; does a trick: most probably programs will move a few tracks further or backward, rathar than do large
+; jumps. So the trick is to advance track counter starting on current track, by adding/subtracting
+; sectors-per-track value to the sector counter.
+SEEK_TO_SECTOR:
+    cfd1  21 e5 d9   LXI HL, ACTUAL_SECTOR (d9e5)   ; Load desired sector number to BC
+    cfd4  4e         MOV C, M
+    cfd5  23         INX HL
+    cfd6  46         MOV B, M
+
+    cfd7  2a b7 d9   LHLD CUR_TRACK_SECTOR_ADDR (d9b7)  ; Load current track first sector number to DE
+    cfda  5e         MOV E, M
+    cfdb  23         INX HL
+    cfdc  56         MOV D, M
+
+    cfdd  2a b5 d9   LHLD CUR_TRACK_ADDR (d9b5) ; Load current track number to HL
+    cfe0  7e         MOV A, M
+    cfe1  23         INX HL
+    cfe2  66         MOV H, M
+    cfe3  6f         MOV L, A
+
+    ; If requested sector number is lower than current track sector number, decrease current track sector
+    ; in sector-per-track steps, and simultaneously decrease track counter. As a result of this operation
+    ; it will calculate track number where requested sector is located.
+SEEK_TO_SECTOR_LOOP1:
+    cfe4  79         MOV A, C                   
+    cfe5  93         SUB E                      ; Compare desired sector number with current sector number
+    cfe6  78         MOV A, B                   ; (BC - HL)
+    cfe7  9a         SBB D
+    cfe8  d2 fa cf   JNC SEEK_TO_SECTOR_LOOP2 (cffa)
+
+    cfeb  e5         PUSH HL                    ; Load sectors per track value to HL
+    cfec  2a c1 d9   LHLD DISK_SECTORS_PER_TRACK (d9c1)
+
+    cfef  7b         MOV A, E                   ; Decrease current sector number by sectors-per-track value
+    cff0  95         SUB L
+    cff1  5f         MOV E, A
+
+    cff2  7a         MOV A, D
+    cff3  9c         SBB H
+    cff4  57         MOV D, A
+
+    cff5  e1         POP HL                     ; and decrement track counter
+    cff6  2b         DCX HL
+
+    cff7  c3 e4 cf   JMP SEEK_TO_SECTOR_LOOP1 (cfe4); repeat until we reach requested track
+
+    ; If requested sector number is greater than current sector number - do the same in other direction:
+    ; increase current sector by sectors-per-track steps, and simultaneously increment track counter. 
+    ; As a result of this operation it will calculate track number where requested sector is located
+SEEK_TO_SECTOR_LOOP2:
+    cffa  e5         PUSH HL                    ; Load sectors-per-track value
+    cffb  2a c1 d9   LHLD DISK_SECTORS_PER_TRACK (d9c1)
+
+    cffe  19         DAD DE                     ; Increase current sector number by sectors-per-track value
+    cfff  da 0f d0   JC SEEK_TO_SECTOR_EXIT (d00f)
+
+    d002  79         MOV A, C                   ; Compare requested track number and current track number
+    d003  95         SUB L
+    d004  78         MOV A, B
+    d005  9c         SBB H
+    d006  da 0f d0   JC SEEK_TO_SECTOR_EXIT (d00f)
+
+    d009  eb         XCHG                       
+    d00a  e1         POP HL
+    d00b  23         INX HL                     ; Increment track number
+
+    d00c  c3 fa cf   JMP SEEK_TO_SECTOR_LOOP2 (cffa); Continue until reached desired track
+
+SEEK_TO_SECTOR_EXIT:
+    d00f  e1         POP HL
+    d010  c5         PUSH BC
+    d011  d5         PUSH DE
+    d012  e5         PUSH HL
+
+    d013  eb         XCHG                       ; Load the reserved track number
+    d014  2a ce d9   LHLD DISK_NUM_RESERVED_TRACKS (d9ce)
+
+    d017  19         DAD DE                     ; Physical track number = logical track + reserved tracks
+
+    d018  44         MOV B, H                   ; Select track
+    d019  4d         MOV C, L
+    d01a  cd 1e da   CALL BIOS_SELECT_TRACK (da1e)
+
+    d01d  d1         POP DE
+    d01e  2a b5 d9   LHLD CUR_TRACK_ADDR (d9b5) ; Store calculated track number
+    d021  73         MOV M, E
+    d022  23         INX HL
+    d023  72         MOV M, D
+    d024  d1         POP DE
+
+    d025  2a b7 d9   LHLD CUR_TRACK_SECTOR_ADDR (d9b7); Store calculated track sector number
+    d028  73         MOV M, E
+    d029  23         INX HL
+    d02a  72         MOV M, D
+    d02b  c1         POP BC
+
+    d02c  79         MOV A, C                   ; Calculate sector number on the track which is a difference
+    d02d  93         SUB E                      ; between requested sector number, and number of the first
+    d02e  4f         MOV C, A                   ; sector on the track (BC = BC - sector number)
+
+    d02f  78         MOV A, B
+    d030  9a         SBB D
+    d031  47         MOV B, A
+
+    d032  2a d0 d9   LHLD SECTOR_TRANS_TABLE (d9d0) ; Translate logical to physical sector number
+    d035  eb         XCHG
+    d036  cd 30 da   CALL BIOS_TRANSLATE_SECTOR (da30)
+
+    d039  4d         MOV C, L                   ; Select the sector
+    d03a  44         MOV B, H
+    d03b  c3 21 da   JMP BIOS_SELECT_SECTOR (da21)
+
+
+
 ????:
-cf47  21 0b cc   LXI HL, DISK_SELECT_ERROR_PTR (cc0b)
-????:
-cf4a  5e         MOV E, M
-cf4b  23         INX HL
-cf4c  56         MOV D, M
-cf4d  eb         XCHG
-cf4e  e9         PCHL
-????:
-cf4f  0c         INR C
-????:
-cf50  0d         DCR C
-cf51  c8         RZ
-cf52  1a         LDAX DE
-cf53  77         MOV M, A
-cf54  13         INX DE
-cf55  23         INX HL
-cf56  c3 50 cf   JMP cf50
-????:
-cf59  3a 42 cf   LDA cf42
-cf5c  4f         MOV C, A
-cf5d  cd 1b da   CALL da1b
-cf60  7c         MOV A, H
-cf61  b5         ORA L
-cf62  c8         RZ
-cf63  5e         MOV E, M
-cf64  23         INX HL
-cf65  56         MOV D, M
-cf66  23         INX HL
-cf67  22 b3 d9   SHLD d9b3
-cf6a  23         INX HL
-cf6b  23         INX HL
-cf6c  22 b5 d9   SHLD d9b5
-cf6f  23         INX HL
-cf70  23         INX HL
-cf71  22 b7 d9   SHLD d9b7
-cf74  23         INX HL
-cf75  23         INX HL
-cf76  eb         XCHG
-cf77  22 d0 d9   SHLD d9d0
-cf7a  21 b9 d9   LXI HL, d9b9
-cf7d  0e 08      MVI C, 08
-cf7f  cd 4f cf   CALL cf4f
-cf82  2a bb d9   LHLD d9bb
-cf85  eb         XCHG
-cf86  21 c1 d9   LXI HL, d9c1
-cf89  0e 0f      MVI C, 0f
-cf8b  cd 4f cf   CALL cf4f
-cf8e  2a c6 d9   LHLD d9c6
-cf91  7c         MOV A, H
-cf92  21 dd d9   LXI HL, d9dd
-cf95  36 ff      MVI M, ff
-cf97  b7         ORA A
-cf98  ca 9d cf   JZ cf9d
-cf9b  36 00      MVI M, 00
-????:
-cf9d  3e ff      MVI A, ff
-cf9f  b7         ORA A
-cfa0  c9         RET
-????:
-cfa1  cd 18 da   CALL da18
-cfa4  af         XRA A
-cfa5  2a b5 d9   LHLD d9b5
-cfa8  77         MOV M, A
-cfa9  23         INX HL
-cfaa  77         MOV M, A
-cfab  2a b7 d9   LHLD d9b7
-cfae  77         MOV M, A
-cfaf  23         INX HL
-cfb0  77         MOV M, A
-cfb1  c9         RET
-????:
-cfb2  cd 27 da   CALL da27
-cfb5  c3 bb cf   JMP cfbb
-????:
-cfb8  cd 2a da   CALL da2a
-????:
-cfbb  b7         ORA A
-cfbc  c8         RZ
-cfbd  21 09 cc   LXI HL, DISK_READ_WRITE_ERROR_PTR (cc09)
-cfc0  c3 4a cf   JMP cf4a
-????:
-cfc3  2a ea d9   LHLD d9ea
-cfc6  0e 02      MVI C, 02
-cfc8  cd ea d0   CALL d0ea
-cfcb  22 e5 d9   SHLD d9e5
-cfce  22 ec d9   SHLD d9ec
-????:
-cfd1  21 e5 d9   LXI HL, d9e5
-cfd4  4e         MOV C, M
-cfd5  23         INX HL
-cfd6  46         MOV B, M
-cfd7  2a b7 d9   LHLD d9b7
-cfda  5e         MOV E, M
-cfdb  23         INX HL
-cfdc  56         MOV D, M
-cfdd  2a b5 d9   LHLD d9b5
-cfe0  7e         MOV A, M
-cfe1  23         INX HL
-cfe2  66         MOV H, M
-cfe3  6f         MOV L, A
-????:
-cfe4  79         MOV A, C
-cfe5  93         SUB E
-cfe6  78         MOV A, B
-cfe7  9a         SBB D
-cfe8  d2 fa cf   JNC cffa
-cfeb  e5         PUSH HL
-cfec  2a c1 d9   LHLD d9c1
-cfef  7b         MOV A, E
-cff0  95         SUB L
-cff1  5f         MOV E, A
-cff2  7a         MOV A, D
-cff3  9c         SBB H
-cff4  57         MOV D, A
-cff5  e1         POP HL
-cff6  2b         DCX HL
-cff7  c3 e4 cf   JMP cfe4
-????:
-cffa  e5         PUSH HL
-cffb  2a c1 d9   LHLD d9c1
-cffe  19         DAD DE
-cfff  da 0f d0   JC d00f
-d002  79         MOV A, C
-d003  95         SUB L
-d004  78         MOV A, B
-d005  9c         SBB H
-d006  da 0f d0   JC d00f
-d009  eb         XCHG
-d00a  e1         POP HL
-d00b  23         INX HL
-d00c  c3 fa cf   JMP cffa
-????:
-d00f  e1         POP HL
-d010  c5         PUSH BC
-d011  d5         PUSH DE
-d012  e5         PUSH HL
-d013  eb         XCHG
-d014  2a ce d9   LHLD d9ce
-d017  19         DAD DE
-d018  44         MOV B, H
-d019  4d         MOV C, L
-d01a  cd 1e da   CALL da1e
-d01d  d1         POP DE
-d01e  2a b5 d9   LHLD d9b5
-d021  73         MOV M, E
-d022  23         INX HL
-d023  72         MOV M, D
-d024  d1         POP DE
-d025  2a b7 d9   LHLD d9b7
-d028  73         MOV M, E
-d029  23         INX HL
-d02a  72         MOV M, D
-d02b  c1         POP BC
-d02c  79         MOV A, C
-d02d  93         SUB E
-d02e  4f         MOV C, A
-d02f  78         MOV A, B
-d030  9a         SBB D
-d031  47         MOV B, A
-d032  2a d0 d9   LHLD d9d0
-d035  eb         XCHG
-d036  cd 30 da   CALL da30
-d039  4d         MOV C, L
-d03a  44         MOV B, H
-d03b  c3 21 da   JMP da21
-????:
-d03e  21 c3 d9   LXI HL, d9c3
+d03e  21 c3 d9   LXI HL, DISK_BLOCK_SHIFT_FACTOR (d9c3)
 d041  4e         MOV C, M
 d042  3a e3 d9   LDA d9e3
 ????:
@@ -1072,7 +1149,7 @@ d05e  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d061  11 10 00   LXI DE, 0010
 d064  19         DAD DE
 d065  09         DAD BC
-d066  3a dd d9   LDA d9dd
+d066  3a dd d9   LDA SINGLE_BYTE_ALLOCATION_MAP (d9dd)
 d069  b7         ORA A
 d06a  ca 71 d0   JZ d071
 d06d  6e         MOV L, M
@@ -1090,34 +1167,36 @@ d077  cd 3e d0   CALL d03e
 d07a  4f         MOV C, A
 d07b  06 00      MVI B, 00
 d07d  cd 5e d0   CALL d05e
-d080  22 e5 d9   SHLD d9e5
+d080  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
 d083  c9         RET
 ????:
-d084  2a e5 d9   LHLD d9e5
+d084  2a e5 d9   LHLD ACTUAL_SECTOR (d9e5)
 d087  7d         MOV A, L
 d088  b4         ORA H
 d089  c9         RET
 ????:
-d08a  3a c3 d9   LDA d9c3
-d08d  2a e5 d9   LHLD d9e5
+d08a  3a c3 d9   LDA DISK_BLOCK_SHIFT_FACTOR (d9c3)
+d08d  2a e5 d9   LHLD ACTUAL_SECTOR (d9e5)
 ????:
 d090  29         DAD HL
 d091  3d         DCR A
 d092  c2 90 d0   JNZ d090
 d095  22 e7 d9   SHLD d9e7
-d098  3a c4 d9   LDA d9c4
+d098  3a c4 d9   LDA DISK_BLOCK_BLM (d9c4)
 d09b  4f         MOV C, A
 d09c  3a e3 d9   LDA d9e3
 d09f  a1         ANA C
 d0a0  b5         ORA L
 d0a1  6f         MOV L, A
-d0a2  22 e5 d9   SHLD d9e5
+d0a2  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
 d0a5  c9         RET
 ????:
 d0a6  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d0a9  11 0c 00   LXI DE, 000c
 d0ac  19         DAD DE
 d0ad  c9         RET
+
+
 ????:
 d0ae  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d0b1  11 0f 00   LXI DE, 000f
@@ -1126,6 +1205,9 @@ d0b5  eb         XCHG
 d0b6  21 11 00   LXI HL, 0011
 d0b9  19         DAD DE
 d0ba  c9         RET
+
+
+
 ????:
 d0bb  cd ae d0   CALL d0ae
 d0be  7e         MOV A, M
@@ -1134,10 +1216,11 @@ d0c2  eb         XCHG
 d0c3  7e         MOV A, M
 d0c4  32 e1 d9   STA d9e1
 d0c7  cd a6 d0   CALL d0a6
-d0ca  3a c5 d9   LDA d9c5
+d0ca  3a c5 d9   LDA DISK_EXTENT_MASK (d9c5)
 d0cd  a6         ANA M
 d0ce  32 e2 d9   STA d9e2
 d0d1  c9         RET
+
 ????:
 d0d2  cd ae d0   CALL d0ae
 d0d5  3a d5 d9   LDA d9d5
@@ -1153,73 +1236,115 @@ d0e4  eb         XCHG
 d0e5  3a e1 d9   LDA d9e1
 d0e8  77         MOV M, A
 d0e9  c9         RET
-????:
-d0ea  0c         INR C
-????:
-d0eb  0d         DCR C
-d0ec  c8         RZ
-d0ed  7c         MOV A, H
-d0ee  b7         ORA A
-d0ef  1f         RAR
-d0f0  67         MOV H, A
-d0f1  7d         MOV A, L
-d0f2  1f         RAR
-d0f3  6f         MOV L, A
-d0f4  c3 eb d0   JMP d0eb
-????:
-d0f7  0e 80      MVI C, 80
-d0f9  2a b9 d9   LHLD d9b9
-d0fc  af         XRA A
-????:
-d0fd  86         ADD M
-d0fe  23         INX HL
-d0ff  0d         DCR C
-d100  c2 fd d0   JNZ d0fd
-d103  c9         RET
-????:
-d104  0c         INR C
-????:
-d105  0d         DCR C
-d106  c8         RZ
-d107  29         DAD HL
-d108  c3 05 d1   JMP d105
-????:
-d10b  c5         PUSH BC
-d10c  3a 42 cf   LDA cf42
-d10f  4f         MOV C, A
-d110  21 01 00   LXI HL, 0001
-d113  cd 04 d1   CALL d104
-d116  c1         POP BC
-d117  79         MOV A, C
-d118  b5         ORA L
-d119  6f         MOV L, A
-d11a  78         MOV A, B
-d11b  b4         ORA H
-d11c  67         MOV H, A
-d11d  c9         RET
-????:
-d11e  2a ad d9   LHLD d9ad
-d121  3a 42 cf   LDA cf42
-d124  4f         MOV C, A
-d125  cd ea d0   CALL d0ea
-d128  7d         MOV A, L
-d129  e6 01      ANI A, 01
-d12b  c9         RET
-????:
-d12c  21 ad d9   LXI HL, d9ad
-d12f  4e         MOV C, M
-d130  23         INX HL
-d131  46         MOV B, M
-d132  cd 0b d1   CALL d10b
-d135  22 ad d9   SHLD d9ad
-d138  2a c8 d9   LHLD d9c8
-d13b  23         INX HL
-d13c  eb         XCHG
-d13d  2a b3 d9   LHLD d9b3
-d140  73         MOV M, E
-d141  23         INX HL
-d142  72         MOV M, D
-d143  c9         RET
+
+
+; Shift HL right C number of times
+SHIFT_HL_RIGHT:
+    d0ea  0c         INR C
+
+SHIFT_HL_RIGHT_LOOP:
+    d0eb  0d         DCR C
+    d0ec  c8         RZ
+
+    d0ed  7c         MOV A, H
+    d0ee  b7         ORA A
+    d0ef  1f         RAR
+    d0f0  67         MOV H, A
+
+    d0f1  7d         MOV A, L
+    d0f2  1f         RAR
+    d0f3  6f         MOV L, A
+
+    d0f4  c3 eb d0   JMP SHIFT_HL_RIGHT_LOOP (d0eb)
+
+; Calculate CRC on the data buffer at DIRECTORY_BUFFER_ADDR
+CALC_DIRECTORY_BUF_CRC:
+    d0f7  0e 80      MVI C, 80
+    d0f9  2a b9 d9   LHLD DIRECTORY_BUFFER_ADDR (d9b9)
+
+    d0fc  af         XRA A
+CALC_DIRECTORY_BUF_CRC_LOOP:
+    d0fd  86         ADD M
+    d0fe  23         INX HL
+    d0ff  0d         DCR C
+    d100  c2 fd d0   JNZ CALC_DIRECTORY_BUF_CRC_LOOP (d0fd)
+
+    d103  c9         RET
+
+
+; Shift HL left C number of times
+SHIFT_HL_LEFT:
+    d104  0c         INR C
+SHIFT_HL_LEFT_LOOP:
+    d105  0d         DCR C
+    d106  c8         RZ
+    d107  29         DAD HL
+    d108  c3 05 d1   JMP SHIFT_HL_LEFT_LOOP (d105)
+
+
+; Calculate disk bitmask
+;
+; Arguments:
+; BC - original bitmask
+;
+; Return:
+; HL - original bitmask with current disk bit set
+SET_DISK_BIT_MASK:
+    d10b  c5         PUSH BC
+    d10c  3a 42 cf   LDA CURRENT_DISK (cf42)    ; Calculate disk bit position
+    d10f  4f         MOV C, A
+    d110  21 01 00   LXI HL, 0001
+    d113  cd 04 d1   CALL SHIFT_HL_LEFT (d104)
+    d116  c1         POP BC
+
+    d117  79         MOV A, C
+    d118  b5         ORA L
+    d119  6f         MOV L, A
+
+    d11a  78         MOV A, B
+    d11b  b4         ORA H
+    d11c  67         MOV H, A
+
+    d11d  c9         RET
+
+IS_DISK_READ_ONLY:
+    d11e  2a ad d9   LHLD READ_ONLY_VECTOR (d9ad)   ; Get read only vector
+
+    d121  3a 42 cf   LDA CURRENT_DISK (cf42)        ; Shift it right up to the current disk bit
+    d124  4f         MOV C, A
+    d125  cd ea d0   CALL SHIFT_HL_RIGHT (d0ea)
+
+    d128  7d         MOV A, L                       ; Check if the disk bit is set
+    d129  e6 01      ANI A, 01
+    d12b  c9         RET
+
+
+; Function 0x1c - Write protect current disk
+;
+; Arguments:
+; E - disk index
+WRITE_PROTECT_DISK:
+    d12c  21 ad d9   LXI HL, READ_ONLY_VECTOR (d9ad); Load read only vector to BC
+    d12f  4e         MOV C, M
+    d130  23         INX HL
+    d131  46         MOV B, M
+
+    d132  cd 0b d1   CALL SET_DISK_BIT_MASK (d10b)  ; Set the bit in the vector
+
+    d135  22 ad d9   SHLD READ_ONLY_VECTOR (d9ad)   ; Store the vector back
+
+    d138  2a c8 d9   LHLD DISK_NUM_DIRECTORY_ENTRIES (d9c8)                  ; ????
+    d13b  23         INX HL
+    d13c  eb         XCHG
+
+    d13d  2a b3 d9   LHLD SCRATCHPAD_ADDR_1 (d9b3)  ; ????
+    d140  73         MOV M, E
+    d141  23         INX HL
+    d142  72         MOV M, D
+
+    d143  c9         RET
+
+
 ????:
 d144  cd 5e d1   CALL d15e
 ????:
@@ -1229,46 +1354,56 @@ d14b  7e         MOV A, M
 d14c  17         RAL
 d14d  d0         RNC
 d14e  21 0f cc   LXI HL, FILE_READ_ONLY_ERROR_PTR (cc0f)
-d151  c3 4a cf   JMP cf4a
+d151  c3 4a cf   JMP ROUTE_TO_ERROR_HANDLER (cf4a)
 ????:
-d154  cd 1e d1   CALL d11e
+d154  cd 1e d1   CALL IS_DISK_READ_ONLY (d11e)
 d157  c8         RZ
 d158  21 0d cc   LXI HL, DISK_READ_ONLY_ERROR_PTR (cc0d)
-d15b  c3 4a cf   JMP cf4a
+d15b  c3 4a cf   JMP ROUTE_TO_ERROR_HANDLER (cf4a)
+
 ????:
-d15e  2a b9 d9   LHLD d9b9
-d161  3a e9 d9   LDA d9e9
+d15e  2a b9 d9   LHLD DIRECTORY_BUFFER_ADDR (d9b9)
+d161  3a e9 d9   LDA DIRECTORY_ENTRY_OFFSET (d9e9)
 ????:
 d164  85         ADD L
 d165  6f         MOV L, A
 d166  d0         RNC
 d167  24         INR H
 d168  c9         RET
+
+
+; return:
+; HL = HL + 0x0e
+; A = [HL]
 ????:
 d169  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d16c  11 0e 00   LXI DE, 000e
 d16f  19         DAD DE
 d170  7e         MOV A, M
 d171  c9         RET
+
 ????:
 d172  cd 69 d1   CALL d169
 d175  36 00      MVI M, 00
 d177  c9         RET
+
 ????:
 d178  cd 69 d1   CALL d169
 d17b  f6 80      ORI A, 80
 d17d  77         MOV M, A
 d17e  c9         RET
+
 ????:
-d17f  2a ea d9   LHLD d9ea
+d17f  2a ea d9   LHLD DIRECTORY_COUNTER (d9ea)
 d182  eb         XCHG
-d183  2a b3 d9   LHLD d9b3
+d183  2a b3 d9   LHLD SCRATCHPAD_ADDR_1 (d9b3)
 d186  7b         MOV A, E
 d187  96         SUB M
 d188  23         INX HL
 d189  7a         MOV A, D
 d18a  9e         SBB M
 d18b  c9         RET
+
 ????:
 d18c  cd 7f d1   CALL d17f
 d18f  d8         RC
@@ -1277,25 +1412,28 @@ d191  72         MOV M, D
 d192  2b         DCX HL
 d193  73         MOV M, E
 d194  c9         RET
-????:
-d195  7b         MOV A, E
-d196  95         SUB L
-d197  6f         MOV L, A
-d198  7a         MOV A, D
-d199  9c         SBB H
-d19a  67         MOV H, A
-d19b  c9         RET
+
+; Compares DE and HL (do DE - HL, and set flags)
+CMP_DE_HL:
+    d195  7b         MOV A, E
+    d196  95         SUB L
+    d197  6f         MOV L, A
+    d198  7a         MOV A, D
+    d199  9c         SBB H
+    d19a  67         MOV H, A
+    d19b  c9         RET
+
 ????:
 d19c  0e ff      MVI C, ff
 ????:
 d19e  2a ec d9   LHLD d9ec
 d1a1  eb         XCHG
-d1a2  2a cc d9   LHLD d9cc
-d1a5  cd 95 d1   CALL d195
+d1a2  2a cc d9   LHLD DISK_DIRECTORY_CHECK_VECT_SIZE (d9cc)
+d1a5  cd 95 d1   CALL CMP_DE_HL (d195)
 d1a8  d0         RNC
 d1a9  c5         PUSH BC
-d1aa  cd f7 d0   CALL d0f7
-d1ad  2a bd d9   LHLD d9bd
+d1aa  cd f7 d0   CALL CALC_DIRECTORY_BUF_CRC (d0f7)
+d1ad  2a bd d9   LHLD SCRATCHPAD_BUF_PTR (d9bd)
 d1b0  eb         XCHG
 d1b1  2a ec d9   LHLD d9ec
 d1b4  19         DAD DE
@@ -1306,68 +1444,88 @@ d1ba  be         CMP M
 d1bb  c8         RZ
 d1bc  cd 7f d1   CALL d17f
 d1bf  d0         RNC
-d1c0  cd 2c d1   CALL d12c
+d1c0  cd 2c d1   CALL WRITE_PROTECT_DISK (d12c)
 d1c3  c9         RET
 ????:
 d1c4  77         MOV M, A
 d1c5  c9         RET
 ????:
 d1c6  cd 9c d1   CALL d19c
-d1c9  cd e0 d1   CALL d1e0
+d1c9  cd e0 d1   CALL SET_DIR_DISK_BUFFER (d1e0)
 d1cc  0e 01      MVI C, 01
-d1ce  cd b8 cf   CALL cfb8
-d1d1  c3 da d1   JMP d1da
+d1ce  cd b8 cf   CALL WRITE_SECTOR (cfb8)
+d1d1  c3 da d1   JMP SET_DATA_DISK_BUFFER (d1da)
 ????:
-d1d4  cd e0 d1   CALL d1e0
-d1d7  cd b2 cf   CALL cfb2
+d1d4  cd e0 d1   CALL SET_DIR_DISK_BUFFER (d1e0)
+d1d7  cd b2 cf   CALL READ_SECTOR (cfb2)
+
+
+
+SET_DATA_DISK_BUFFER:
+    d1da  21 b1 d9   LXI HL, DISK_BUFFER_ADDR (d9b1)
+    d1dd  c3 e3 d1   JMP d1e3
+
+SET_DIR_DISK_BUFFER:
+    d1e0  21 b9 d9   LXI HL, DIRECTORY_BUFFER_ADDR (d9b9)
+
+SET_DISK_BUFFER:
+    d1e3  4e         MOV C, M                   ; Load disk buffer addres from [HL]
+    d1e4  23         INX HL
+    d1e5  46         MOV B, M
+    d1e6  c3 24 da   JMP BIOS_SET_DISK_BUFFER (da24)
+
+
+COPY_DIR_BUF_TO_DISK_BUF:
+    d1e9  2a b9 d9   LHLD DIRECTORY_BUFFER_ADDR (d9b9)
+    d1ec  eb         XCHG
+    d1ed  2a b1 d9   LHLD DISK_BUFFER_ADDR (d9b1)
+    d1f0  0e 80      MVI C, 80
+    d1f2  c3 4f cf   JMP MEMCOPY_DE_HL (cf4f)
+
 ????:
-d1da  21 b1 d9   LXI HL, d9b1
-d1dd  c3 e3 d1   JMP d1e3
-????:
-d1e0  21 b9 d9   LXI HL, d9b9
-????:
-d1e3  4e         MOV C, M
-d1e4  23         INX HL
-d1e5  46         MOV B, M
-d1e6  c3 24 da   JMP da24
-????:
-d1e9  2a b9 d9   LHLD d9b9
-d1ec  eb         XCHG
-d1ed  2a b1 d9   LHLD d9b1
-d1f0  0e 80      MVI C, 80
-d1f2  c3 4f cf   JMP cf4f
-????:
-d1f5  21 ea d9   LXI HL, d9ea
+d1f5  21 ea d9   LXI HL, DIRECTORY_COUNTER (d9ea)
 d1f8  7e         MOV A, M
 d1f9  23         INX HL
 d1fa  be         CMP M
 d1fb  c0         RNZ
 d1fc  3c         INR A
 d1fd  c9         RET
+
+
+; Set the directory entries counter to 0xffff
+RESET_DIRECTORY_COUNTER:
+    d1fe  21 ff ff   LXI HL, ffff               
+    d201  22 ea d9   SHLD DIRECTORY_COUNTER (d9ea)
+    d204  c9         RET
+
+
 ????:
-d1fe  21 ff ff   LXI HL, ffff
-d201  22 ea d9   SHLD d9ea
-d204  c9         RET
+    d205  2a c8 d9   LHLD DISK_NUM_DIRECTORY_ENTRIES (d9c8)
+    d208  eb         XCHG                           ; Load number of directory entries to DE
+
+    d209  2a ea d9   LHLD DIRECTORY_COUNTER (d9ea)  ; Increment directory counter and load it to HL
+    d20c  23         INX HL
+    d20d  22 ea d9   SHLD DIRECTORY_COUNTER (d9ea)
+
+    d210  cd 95 d1   CALL CMP_DE_HL (d195)          ; Check if we reached the last entry
+    d213  d2 19 d2   JNC d219
+
+    d216  c3 fe d1   JMP RESET_DIRECTORY_COUNTER (d1fe) ; If reached - reset the counter
+
 ????:
-d205  2a c8 d9   LHLD d9c8
-d208  eb         XCHG
-d209  2a ea d9   LHLD d9ea
-d20c  23         INX HL
-d20d  22 ea d9   SHLD d9ea
-d210  cd 95 d1   CALL d195
-d213  d2 19 d2   JNC d219
-d216  c3 fe d1   JMP d1fe
+    d219  3a ea d9   LDA DIRECTORY_COUNTER (d9ea)   ; Calculate offset of the directory entry in the sector.
+    d21c  e6 03      ANI A, 03                      
+    d21e  06 05      MVI B, 05                      ; Each entry is 32 bytes (2^5)
+
 ????:
-d219  3a ea d9   LDA d9ea
-d21c  e6 03      ANI A, 03
-d21e  06 05      MVI B, 05
-????:
-d220  87         ADD A
-d221  05         DCR B
-d222  c2 20 d2   JNZ d220
-d225  32 e9 d9   STA d9e9
-d228  b7         ORA A
-d229  c0         RNZ
+    d220  87         ADD A                          ; Multiply 2 LSB of the counter by 32
+    d221  05         DCR B
+    d222  c2 20 d2   JNZ d220
+
+    d225  32 e9 d9   STA DIRECTORY_ENTRY_OFFSET (d9e9)  ; Store the calculated offset
+    d228  b7         ORA A
+    d229  c0         RNZ
+
 d22a  c5         PUSH BC
 d22b  cd c3 cf   CALL cfc3
 d22e  cd d4 d1   CALL d1d4
@@ -1399,7 +1557,7 @@ d24c  0f         RRC
 d24d  0f         RRC
 d24e  e6 1f      ANI A, 1f
 d250  47         MOV B, A
-d251  2a bf d9   LHLD d9bf
+d251  2a bf d9   LHLD DISK_ALLOCATION_VECTOR_PTR (d9bf)
 d254  09         DAD BC
 d255  7e         MOV A, M
 ????:
@@ -1430,7 +1588,7 @@ d275  d1         POP DE
 d276  0d         DCR C
 d277  c8         RZ
 d278  d5         PUSH DE
-d279  3a dd d9   LDA d9dd
+d279  3a dd d9   LDA SINGLE_BYTE_ALLOCATION_MAP (d9dd)
 d27c  b7         ORA A
 d27d  ca 88 d2   JZ d288
 d280  c5         PUSH BC
@@ -1449,7 +1607,7 @@ d28d  e5         PUSH HL
 d28e  79         MOV A, C
 d28f  b0         ORA B
 d290  ca 9d d2   JZ d29d
-d293  2a c6 d9   LHLD d9c6
+d293  2a c6 d9   LHLD DISK_TOTAL_STORAGE_CAPACITY (d9c6)
 d296  7d         MOV A, L
 d297  91         SUB C
 d298  7c         MOV A, H
@@ -1460,43 +1618,53 @@ d29d  e1         POP HL
 d29e  23         INX HL
 d29f  c1         POP BC
 d2a0  c3 75 d2   JMP d275
-????:
-d2a3  2a c6 d9   LHLD d9c6
-d2a6  0e 03      MVI C, 03
-d2a8  cd ea d0   CALL d0ea
-d2ab  23         INX HL
-d2ac  44         MOV B, H
-d2ad  4d         MOV C, L
-d2ae  2a bf d9   LHLD d9bf
-????:
-d2b1  36 00      MVI M, 00
-d2b3  23         INX HL
-d2b4  0b         DCX BC
-d2b5  78         MOV A, B
-d2b6  b1         ORA C
-d2b7  c2 b1 d2   JNZ d2b1
-d2ba  2a ca d9   LHLD d9ca
-d2bd  eb         XCHG
-d2be  2a bf d9   LHLD d9bf
-d2c1  73         MOV M, E
-d2c2  23         INX HL
-d2c3  72         MOV M, D
-d2c4  cd a1 cf   CALL cfa1
-d2c7  2a b3 d9   LHLD d9b3
-d2ca  36 03      MVI M, 03
-d2cc  23         INX HL
-d2cd  36 00      MVI M, 00
-d2cf  cd fe d1   CALL d1fe
+
+DISK_INITIALIZE:
+    d2a3  2a c6 d9   LHLD DISK_TOTAL_STORAGE_CAPACITY (d9c6); ???
+    d2a6  0e 03      MVI C, 03
+    d2a8  cd ea d0   CALL SHIFT_HL_RIGHT (d0ea)
+
+    d2ab  23         INX HL                     ; ??? +1 and store it in BC
+    d2ac  44         MOV B, H                   ; This will be disk allocation vector size in bytes
+    d2ad  4d         MOV C, L
+
+    d2ae  2a bf d9   LHLD DISK_ALLOCATION_VECTOR_PTR (d9bf)
+DISK_INITIALIZE_ALLOC_LOOP:
+    d2b1  36 00      MVI M, 00                  ; Reset the disk allocation vector
+    d2b3  23         INX HL
+    d2b4  0b         DCX BC
+    d2b5  78         MOV A, B
+    d2b6  b1         ORA C
+    d2b7  c2 b1 d2   JNZ DISK_INITIALIZE_ALLOC_LOOP (d2b1)
+
+    d2ba  2a ca d9   LHLD DISK_RESERVED_DIRECTORY_BLOCKS (d9ca)
+    d2bd  eb         XCHG                       ; Load reserved directory blocks number to DE
+
+    d2be  2a bf d9   LHLD DISK_ALLOCATION_VECTOR_PTR (d9bf)
+    d2c1  73         MOV M, E                   ; ????
+    d2c2  23         INX HL
+    d2c3  72         MOV M, D
+
+    d2c4  cd a1 cf   CALL SET_TRACK_ZERO (cfa1) ; Move to track #0, zero track/sector numbers
+
+    d2c7  2a b3 d9   LHLD SCRATCHPAD_ADDR_1 (d9b3)  ; Store 0003 to scratchpad variable ????
+    d2ca  36 03      MVI M, 03
+    d2cc  23         INX HL
+    d2cd  36 00      MVI M, 00
+
+    d2cf  cd fe d1   CALL RESET_DIRECTORY_COUNTER (d1fe); reset directory entries counter
+
 ????:
 d2d2  0e ff      MVI C, ff
 d2d4  cd 05 d2   CALL d205
 d2d7  cd f5 d1   CALL d1f5
 d2da  c8         RZ
+
 d2db  cd 5e d1   CALL d15e
 d2de  3e e5      MVI A, e5
 d2e0  be         CMP M
 d2e1  ca d2 d2   JZ d2d2
-d2e4  3a 41 cf   LDA BDOS_STACK (cf41)
+d2e4  3a 41 cf   LDA USER_CODE (cf41)
 d2e7  be         CMP M
 d2e8  c2 f6 d2   JNZ d2f6
 d2eb  23         INX HL
@@ -1516,7 +1684,7 @@ d304  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ????:
 d307  c5         PUSH BC
 d308  f5         PUSH PSW
-d309  3a c5 d9   LDA d9c5
+d309  3a c5 d9   LDA DISK_EXTENT_MASK (d9c5)
 d30c  2f         CMA
 d30d  47         MOV B, A
 d30e  79         MOV A, C
@@ -1535,8 +1703,8 @@ d31d  21 d8 d9   LXI HL, d9d8
 d320  71         MOV M, C
 d321  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d324  22 d9 d9   SHLD d9d9
-d327  cd fe d1   CALL d1fe
-d32a  cd a1 cf   CALL cfa1
+d327  cd fe d1   CALL RESET_DIRECTORY_COUNTER (d1fe)
+d32a  cd a1 cf   CALL SET_TRACK_ZERO (cfa1)
 ????:
 d32d  0e 00      MVI C, 00
 d32f  cd 05 d2   CALL d205
@@ -1586,7 +1754,7 @@ d37e  04         INR B
 d37f  0d         DCR C
 d380  c3 53 d3   JMP d353
 ????:
-d383  3a ea d9   LDA d9ea
+d383  3a ea d9   LDA DIRECTORY_COUNTER (d9ea)
 d386  e6 03      ANI A, 03
 d388  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
 d38b  21 d4 d9   LXI HL, d9d4
@@ -1597,7 +1765,7 @@ d391  af         XRA A
 d392  77         MOV M, A
 d393  c9         RET
 ????:
-d394  cd fe d1   CALL d1fe
+d394  cd fe d1   CALL RESET_DIRECTORY_COUNTER (d1fe)
 d397  3e ff      MVI A, ff
 d399  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ????:
@@ -1631,7 +1799,7 @@ d3cc  d2 ec d3   JNC d3ec
 d3cf  c1         POP BC
 d3d0  d1         POP DE
 ????:
-d3d1  2a c6 d9   LHLD d9c6
+d3d1  2a c6 d9   LHLD DISK_TOTAL_STORAGE_CAPACITY (d9c6)
 d3d4  7b         MOV A, E
 d3d5  95         SUB L
 d3d6  7a         MOV A, D
@@ -1672,7 +1840,7 @@ d407  09         DAD BC
 d408  eb         XCHG
 d409  cd 5e d1   CALL d15e
 d40c  c1         POP BC
-d40d  cd 4f cf   CALL cf4f
+d40d  cd 4f cf   CALL MEMCOPY_DE_HL (cf4f)
 ????:
 d410  cd c3 cf   CALL cfc3
 d413  c3 c6 d1   JMP d1c6
@@ -1720,7 +1888,7 @@ d463  eb         XCHG
 d464  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d467  0e 20      MVI C, 20
 d469  d5         PUSH DE
-d46a  cd 4f cf   CALL cf4f
+d46a  cd 4f cf   CALL MEMCOPY_DE_HL (cf4f)
 d46d  cd 78 d1   CALL d178
 d470  d1         POP DE
 d471  21 0c 00   LXI HL, 000c
@@ -1763,9 +1931,9 @@ d4a1  c9         RET
 ????:
 d4a2  af         XRA A
 d4a3  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
-d4a6  32 ea d9   STA d9ea
+d4a6  32 ea d9   STA DIRECTORY_COUNTER (d9ea)
 d4a9  32 eb d9   STA d9eb
-d4ac  cd 1e d1   CALL d11e
+d4ac  cd 1e d1   CALL IS_DISK_READ_ONLY (d11e)
 d4af  c0         RNZ
 d4b0  cd 69 d1   CALL d169
 d4b3  e6 80      ANI A, 80
@@ -1782,7 +1950,7 @@ d4c7  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d4ca  09         DAD BC
 d4cb  0e 10      MVI C, 10
 ????:
-d4cd  3a dd d9   LDA d9dd
+d4cd  3a dd d9   LDA SINGLE_BYTE_ALLOCATION_MAP (d9dd)
 d4d0  b7         ORA A
 d4d1  ca e8 d4   JZ d4e8
 d4d4  7e         MOV A, M
@@ -1883,7 +2051,7 @@ d56e  e6 1f      ANI A, 1f
 d570  77         MOV M, A
 d571  ca 83 d5   JZ d583
 d574  47         MOV B, A
-d575  3a c5 d9   LDA d9c5
+d575  3a c5 d9   LDA DISK_EXTENT_MASK (d9c5)
 d578  a0         ANA B
 d579  21 d2 d9   LXI HL, d9d2
 d57c  a6         ANA M
@@ -1942,7 +2110,7 @@ d5e9  cd 84 d0   CALL d084
 d5ec  ca fb d5   JZ d5fb
 d5ef  cd 8a d0   CALL d08a
 d5f2  cd d1 cf   CALL cfd1
-d5f5  cd b2 cf   CALL cfb2
+d5f5  cd b2 cf   CALL READ_SECTOR (cfb2)
 d5f8  c3 d2 d0   JMP d0d2
 ????:
 d5fb  c3 05 cf   JMP cf05
@@ -1981,12 +2149,12 @@ d640  c2 48 d6   JNZ d648
 d643  3e 02      MVI A, 02
 d645  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ????:
-d648  22 e5 d9   SHLD d9e5
+d648  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
 d64b  eb         XCHG
 d64c  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d64f  01 10 00   LXI BC, 0010
 d652  09         DAD BC
-d653  3a dd d9   LDA d9dd
+d653  3a dd d9   LDA SINGLE_BYTE_ALLOCATION_MAP (d9dd)
 d656  b7         ORA A
 d657  3a d7 d9   LDA d9d7
 d65a  ca 64 d6   JZ d664
@@ -2020,38 +2188,38 @@ d682  3d         DCR A
 d683  3d         DCR A
 d684  c2 bb d6   JNZ d6bb
 d687  e5         PUSH HL
-d688  2a b9 d9   LHLD d9b9
+d688  2a b9 d9   LHLD DIRECTORY_BUFFER_ADDR (d9b9)
 d68b  57         MOV D, A
 ????:
 d68c  77         MOV M, A
 d68d  23         INX HL
 d68e  14         INR D
 d68f  f2 8c d6   JP d68c
-d692  cd e0 d1   CALL d1e0
+d692  cd e0 d1   CALL SET_DIR_DISK_BUFFER (d1e0)
 d695  2a e7 d9   LHLD d9e7
 d698  0e 02      MVI C, 02
 ????:
-d69a  22 e5 d9   SHLD d9e5
+d69a  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
 d69d  c5         PUSH BC
 d69e  cd d1 cf   CALL cfd1
 d6a1  c1         POP BC
-d6a2  cd b8 cf   CALL cfb8
-d6a5  2a e5 d9   LHLD d9e5
+d6a2  cd b8 cf   CALL WRITE_SECTOR (cfb8)
+d6a5  2a e5 d9   LHLD ACTUAL_SECTOR (d9e5)
 d6a8  0e 00      MVI C, 00
-d6aa  3a c4 d9   LDA d9c4
+d6aa  3a c4 d9   LDA DISK_BLOCK_BLM (d9c4)
 d6ad  47         MOV B, A
 d6ae  a5         ANA L
 d6af  b8         CMP B
 d6b0  23         INX HL
 d6b1  c2 9a d6   JNZ d69a
 d6b4  e1         POP HL
-d6b5  22 e5 d9   SHLD d9e5
-d6b8  cd da d1   CALL d1da
+d6b5  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
+d6b8  cd da d1   CALL SET_DATA_DISK_BUFFER (d1da)
 ????:
 d6bb  cd d1 cf   CALL cfd1
 d6be  c1         POP BC
 d6bf  c5         PUSH BC
-d6c0  cd b8 cf   CALL cfb8
+d6c0  cd b8 cf   CALL WRITE_SECTOR (cfb8)
 d6c3  c1         POP BC
 d6c4  3a e3 d9   LDA d9e3
 d6c7  21 e1 d9   LXI HL, d9e1
@@ -2277,51 +2445,80 @@ d81d  70         MOV M, B
 d81e  23         INX HL
 d81f  77         MOV M, A
 d820  c9         RET
-????:
-d821  2a af d9   LHLD d9af
-d824  3a 42 cf   LDA cf42
-d827  4f         MOV C, A
-d828  cd ea d0   CALL d0ea
-d82b  e5         PUSH HL
-d82c  eb         XCHG
-d82d  cd 59 cf   CALL cf59
-d830  e1         POP HL
-d831  cc 47 cf   CZ cf47
-d834  7d         MOV A, L
-d835  1f         RAR
-d836  d8         RC
-d837  2a af d9   LHLD d9af
-d83a  4d         MOV C, L
-d83b  44         MOV B, H
-d83c  cd 0b d1   CALL d10b
-d83f  22 af d9   SHLD d9af
-d842  c3 a3 d2   JMP d2a3
-????:
-d845  3a d6 d9   LDA FUNCTION_BYTE_ARGUMENT (d9d6)
-d848  21 42 cf   LXI HL, cf42
-d84b  be         CMP M
-d84c  c8         RZ
-d84d  77         MOV M, A
-d84e  c3 21 d8   JMP d821
+
+
+
+SELECT_DISK:
+    d821  2a af d9   LHLD LOGIN_VECTOR (d9af)   ; Get login vector anf shift it right, so that LSB
+    d824  3a 42 cf   LDA CURRENT_DISK (cf42)    ; corresponds to the current disk
+    d827  4f         MOV C, A
+    d828  cd ea d0   CALL SHIFT_HL_RIGHT (d0ea)
+
+    d82b  e5         PUSH HL                    ; Move login vector to DE
+    d82c  eb         XCHG
+
+    d82d  cd 59 cf   CALL DO_SELECT_DISK (cf59) ; Perform disk selection and loading all the descriptors
+    d830  e1         POP HL
+
+    d831  cc 47 cf   CZ HANDLE_DISK_SELECT_ERROR (cf47) ; Handle errors if needed
+
+    d834  7d         MOV A, L                   ; Return if disk is already online (corresponding bit is set)
+    d835  1f         RAR
+    d836  d8         RC
+
+    d837  2a af d9   LHLD LOGIN_VECTOR (d9af)   ; Set the bit in login vector
+    d83a  4d         MOV C, L
+    d83b  44         MOV B, H
+    d83c  cd 0b d1   CALL SET_DISK_BIT_MASK (d10b)
+
+    d83f  22 af d9   SHLD LOGIN_VECTOR (d9af)   ; Store the login vector
+
+    d842  c3 a3 d2   JMP DISK_INITIALIZE (d2a3)
+
+
+
+; Function 0x0e - Select disk
+;
+; Arguments:
+; E - disk number (0 for A, 1 for B, and so on)
+;
+; Return: ????
+SELECT_DISK_FUNC:
+    d845  3a d6 d9   LDA FUNCTION_BYTE_ARGUMENT (d9d6)  ; Get the disk number argument
+
+    d848  21 42 cf   LXI HL, CURRENT_DISK (cf42); Check if the disk has been already selected
+    d84b  be         CMP M
+    d84c  c8         RZ
+
+    d84d  77         MOV M, A                   ; Store the new disk index
+
+    d84e  c3 21 d8   JMP SELECT_DISK (d821)
+
 ????:
 d851  3e ff      MVI A, ff
 d853  32 de d9   STA d9de
+
 d856  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d859  7e         MOV A, M
+
 d85a  e6 1f      ANI A, 1f
 d85c  3d         DCR A
 d85d  32 d6 d9   STA FUNCTION_BYTE_ARGUMENT (d9d6)
+
 d860  fe 1e      CPI A, 1e
 d862  d2 75 d8   JNC d875
-d865  3a 42 cf   LDA cf42
+
+d865  3a 42 cf   LDA CURRENT_DISK (cf42)
 d868  32 df d9   STA d9df
+
 d86b  7e         MOV A, M
 d86c  32 e0 d9   STA d9e0
+
 d86f  e6 e0      ANI A, e0
 d871  77         MOV M, A
-d872  cd 45 d8   CALL d845
+d872  cd 45 d8   CALL SELECT_DISK_FUNC (d845)
 ????:
-d875  3a 41 cf   LDA BDOS_STACK (cf41)
+d875  3a 41 cf   LDA USER_CODE (cf41)
 d878  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d87b  b6         ORA M
 d87c  77         MOV M, A
@@ -2337,15 +2534,29 @@ GET_BDOS_VERSION:
     d880  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 
 
-d883  21 00 00   LXI HL, 0000
-d886  22 ad d9   SHLD d9ad
-d889  22 af d9   SHLD d9af
-d88c  af         XRA A
-d88d  32 42 cf   STA cf42
-d890  21 80 00   LXI HL, 0080
-d893  22 b1 d9   SHLD d9b1
-d896  cd da d1   CALL d1da
-d899  c3 21 d8   JMP d821
+; Function 0x0d - Reset disk system
+;
+; Arguments: None
+;
+; Returns: nothing
+RESET_DISK_SYSTEM:
+    d883  21 00 00   LXI HL, 0000               ; Reset read only and login vectors. All disks are offline.
+    d886  22 ad d9   SHLD READ_ONLY_VECTOR (d9ad)
+    d889  22 af d9   SHLD LOGIN_VECTOR (d9af)
+
+    d88c  af         XRA A                      ; Set current disk to A
+    d88d  32 42 cf   STA CURRENT_DISK (cf42)
+
+    d890  21 80 00   LXI HL, 0080               ; Set default disk buffer address
+    d893  22 b1 d9   SHLD DISK_BUFFER_ADDR (d9b1)
+
+    d896  cd da d1   CALL SET_DATA_DISK_BUFFER (d1da)   ; Set the disk buffer
+
+    d899  c3 21 d8   JMP SELECT_DISK (d821)
+
+
+
+
 d89c  cd 72 d1   CALL d172
 d89f  cd 51 d8   CALL d851
 d8a2  c3 51 d4   JMP d451
@@ -2364,12 +2575,12 @@ d8bd  cd 51 d8   CALL d851
 d8c0  0e 0f      MVI C, 0f
 ????:
 d8c2  cd 18 d3   CALL d318
-d8c5  c3 e9 d1   JMP d1e9
+d8c5  c3 e9 d1   JMP COPY_DIR_BUF_TO_DISK_BUF (d1e9)
 d8c8  2a d9 d9   LHLD d9d9
 d8cb  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
 d8ce  cd 51 d8   CALL d851
 d8d1  cd 2d d3   CALL d32d
-d8d4  c3 e9 d1   JMP d1e9
+d8d4  c3 e9 d1   JMP COPY_DIR_BUF_TO_DISK_BUF (d1e9)
 d8d7  cd 51 d8   CALL d851
 d8da  cd 9c d3   CALL d39c
 d8dd  c3 01 d3   JMP d301
@@ -2383,35 +2594,91 @@ d8f2  c3 24 d5   JMP d524
 d8f5  cd 51 d8   CALL d851
 d8f8  cd 16 d4   CALL d416
 d8fb  c3 01 d3   JMP d301
-d8fe  2a af d9   LHLD d9af
-d901  c3 29 d9   JMP d929
-d904  3a 42 cf   LDA cf42
-d907  c3 01 cf   JMP FUNCTION_EXIT (cf01)
-d90a  eb         XCHG
-d90b  22 b1 d9   SHLD d9b1
-d90e  c3 da d1   JMP d1da
-d911  2a bf d9   LHLD d9bf
-d914  c3 29 d9   JMP d929
-d917  2a ad d9   LHLD d9ad
-d91a  c3 29 d9   JMP d929
+
+; Function 0x18 - Return disk login vector
+;
+; Return: HL - login vector
+;              LSB corresponds to drive A, MSB - drive P.
+;              0 - disk offline, 1 - disk online
+GET_LOGIN_VECTOR:
+    d8fe  2a af d9   LHLD LOGIN_VECTOR (d9af)
+    d901  c3 29 d9   JMP RETURN_HL (d929)
+
+; Function 0x19 - return current disk number
+;
+; Arguments: None
+;
+; Return: A - current disk number
+GET_CURRENT_DISK:
+    d904  3a 42 cf   LDA CURRENT_DISK (cf42)
+    d907  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+
+
+; Function 0x1a - Set DMA buffer address for sector read/write operations
+;
+; Arguments:
+; DE - buffer address to set
+SET_BUFFER_ADDR:
+    d90a  eb         XCHG                       ; Store the buffer address
+    d90b  22 b1 d9   SHLD DISK_BUFFER_ADDR (d9b1)  
+
+    d90e  c3 da d1   JMP SET_DATA_DISK_BUFFER (d1da); Let BIOS know about the new address
+
+
+; Function 0x1b - Get current disk allocation vector
+;
+; Return: Pointer to the allocation vector
+GET_ALLOCATION_VECTOR:
+    d911  2a bf d9   LHLD DISK_ALLOCATION_VECTOR_PTR (d9bf)
+    d914  c3 29 d9   JMP RETURN_HL (d929)
+
+; Function 0x1d - Get pointer to read only vector
+;
+; Return: Pointer to the read only vector. LSB correspond to drive A, MSB - to drive P
+GET_READ_ONLY_VECTOR:
+    d917  2a ad d9   LHLD READ_ONLY_VECTOR (d9ad)
+    d91a  c3 29 d9   JMP RETURN_HL (d929)
+
 d91d  cd 51 d8   CALL d851
 d920  cd 3b d4   CALL d43b
 d923  c3 01 d3   JMP d301
-d926  2a bb d9   LHLD d9bb
-????:
-d929  22 45 cf   SHLD FUNCTION_RETURN_VALUE (cf45)
-d92c  c9         RET
-d92d  3a d6 d9   LDA FUNCTION_BYTE_ARGUMENT (d9d6)
-d930  fe ff      CPI A, ff
-d932  c2 3b d9   JNZ d93b
-d935  3a 41 cf   LDA BDOS_STACK (cf41)
-d938  c3 01 cf   JMP FUNCTION_EXIT (cf01)
-????:
-d93b  e6 1f      ANI A, 1f
-d93d  32 41 cf   STA BDOS_STACK (cf41)
-d940  c9         RET
+
+; Function 0x1f - Get Address of Disk Params Block
+;
+; Returns: HL - address of DPB
+GET_DISK_PARAMS:
+    d926  2a bb d9   LHLD DISK_PARAMS_BLOCK_ADDR (d9bb)
+
+RETURN_HL:
+    d929  22 45 cf   SHLD FUNCTION_RETURN_VALUE (cf45)  ; Save the HL as a return value
+    d92c  c9         RET
+
+
+; Function 0x20 - Get or Set User code
+;
+; Arguments:
+; - 0xff to get user code
+; - other values - set the value
+;
+; Return:
+; 
+GET_SET_USER_CODE:
+    d92d  3a d6 d9   LDA FUNCTION_BYTE_ARGUMENT (d9d6)  ; Get the argument
+    d930  fe ff      CPI A, ff                  ; Compare argument with 0xff
+    d932  c2 3b d9   JNZ GET_SET_USER_CODE_1 (d93b)
+
+    d935  3a 41 cf   LDA USER_CODE (cf41)       ; Load and return user code
+    d938  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+
+GET_SET_USER_CODE_1:
+    d93b  e6 1f      ANI A, 1f                  ; Save the user code
+    d93d  32 41 cf   STA USER_CODE (cf41)
+    d940  c9         RET
+
+
 d941  cd 51 d8   CALL d851
 d944  c3 93 d7   JMP d793
+
 d947  cd 51 d8   CALL d851
 d94a  c3 9c d7   JMP d79c
 d94d  cd 51 d8   CALL d851
@@ -2422,22 +2689,22 @@ d957  2f         CMA
 d958  5f         MOV E, A
 d959  7c         MOV A, H
 d95a  2f         CMA
-d95b  2a af d9   LHLD d9af
+d95b  2a af d9   LHLD LOGIN_VECTOR (d9af)
 d95e  a4         ANA H
 d95f  57         MOV D, A
 d960  7d         MOV A, L
 d961  a3         ANA E
 d962  5f         MOV E, A
-d963  2a ad d9   LHLD d9ad
+d963  2a ad d9   LHLD READ_ONLY_VECTOR (d9ad)
 d966  eb         XCHG
-d967  22 af d9   SHLD d9af
+d967  22 af d9   SHLD LOGIN_VECTOR (d9af)
 d96a  7d         MOV A, L
 d96b  a3         ANA E
 d96c  6f         MOV L, A
 d96d  7c         MOV A, H
 d96e  a2         ANA D
 d96f  67         MOV H, A
-d970  22 ad d9   SHLD d9ad
+d970  22 ad d9   SHLD READ_ONLY_VECTOR (d9ad)
 d973  c9         RET
 
 BDOS_HANDLER_RETURN:
@@ -2452,7 +2719,7 @@ d984  ca 91 d9   JZ d991
 d987  77         MOV M, A
 d988  3a df d9   LDA d9df
 d98b  32 d6 d9   STA FUNCTION_BYTE_ARGUMENT (d9d6)
-d98e  cd 45 d8   CALL d845
+d98e  cd 45 d8   CALL SELECT_DISK_FUNC (d845)
 ????:
 d991  2a 0f cf   LHLD BDOS_SAVE_SP (cf0f)
 d994  f9         SPHL
@@ -2471,7 +2738,89 @@ d9ab  c9         RET
 ????:
 d9ac  e5         PUSH HL
 
+READ_ONLY_VECTOR:
+    d9ad 00 00        dw 0000
 
+LOGIN_VECTOR:
+    d9af 00 00        dw 0000 
+
+DISK_BUFFER_ADDR:
+    d9b1 00 00        dw 0000
+
+SCRATCHPAD_ADDR_1:
+    d9b3 00 00        dw 0000
+
+CUR_TRACK_ADDR:
+    d9b5 00 00        dw 0000
+
+CUR_TRACK_SECTOR_ADDR:
+    d9b7 00 00        dw 0000                   ; Address of the variable that indicates currently selected
+                                                ; sector. Despite the name, this is not an index of the 
+                                                ; sector. This rather an index of first sector on the selected
+                                                ; track, counting from very first sector on the disk
+
+DIRECTORY_BUFFER_ADDR:
+    d9b9 00 00        dw 0000
+
+DISK_PARAMS_BLOCK_ADDR:
+    d9bb 00 00        dw 0000
+
+SCRATCHPAD_BUF_PTR:
+    d9bd 00 00        dw 0000
+
+DISK_ALLOCATION_VECTOR_PTR:
+    d9bf 00 00        dw 0000
+
+
+DISK_PARAMETER_BLOCK:
+DISK_SECTORS_PER_TRACK:
+    d9c1  00 00      dw 0000                    ; Sectors per table (8)
+
+DISK_BLOCK_SHIFT_FACTOR:
+    d9c3  03         db 03                      ; Block shift factor
+
+DISK_BLOCK_BLM:
+    d9c4  07         db 07                      ; BLM ???
+
+DISK_EXTENT_MASK:
+    d9c5  00         db 00                      ; Extent mask ????
+
+DISK_TOTAL_STORAGE_CAPACITY:
+    d9c6  39 00      dw 0039                    ; Total storage capacity ????
+
+DISK_NUM_DIRECTORY_ENTRIES:
+    d9c8  1f 00      dw 001f                    ; Number of directory entries
+
+DISK_RESERVED_DIRECTORY_BLOCKS:
+    d9ca  80 00      dw 0080                    ; AL0 & AL1 ???? Reserved directory blocks
+
+DISK_DIRECTORY_CHECK_VECT_SIZE:
+    d9cc  08 00      dw 0008                    ; Size of the directory check vector
+
+DISK_NUM_RESERVED_TRACKS:
+    d9ce  06 00      dw 0006                    ; Number of reserved tracks in the beginning
+
+SECTOR_TRANS_TABLE:
+    ded0 00 00        dw 0000                   ; Pointer to the sector translation table
 
 FUNCTION_BYTE_ARGUMENT:
     d9d6 00           db 00 
+
+SINGLE_BYTE_ALLOCATION_MAP:
+    d9dd 00           db 00                     ; Flag indicating that total disk capacity high byte is 0
+
+
+ACTUAL_SECTOR:
+    d9e5 00           db 00                     ; Actual sector number - a logical sector index starting from 
+                                                ; very first sector on the disk, counting through all the
+                                                ; tracks on the disk. Though it does not count reserved tracks. 
+                                                ; Overall this is something line a LBA on modern computers)
+
+DIRECTORY_ENTRY_OFFSET:
+    d9e9 00           db 00                     ; ????
+
+DIRECTORY_COUNTER:
+    d9ea 00 00        dw 0000                   ; ??????
+
+????:
+    d9ec 00           db 00                     ; ???? current directory record
