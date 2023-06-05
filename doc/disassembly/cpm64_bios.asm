@@ -17,11 +17,23 @@
 ; selection (as well as disconnection from the stack read/write operations) is performed by writing a
 ; configuration byte to 0x40 port.
 ; 
-; Quasi Disk logical configuration is: 
+; Quasi Disk "physical" configuration is: 
 ; - 256 tracks
 ; - 8 sectors per track
 ; - 128 bytes per sector
 ;
+; This gives the disk of size 256k, which is logically distributed as follows:
+; - First 6 tracks are reserved for the system (see last field of the DISK_PARAMETER_BLOCK structure).
+;   Bootloader is responsible for storing there CP/M system components during cols start. On warm boot
+;   BIOS will load BDOS and CCP parts from these tracks to the memory.
+; - Remaining 250 tracks are data tracks, each track represents a single data block of size 1k
+; - Reserved directory blocks data field of DISK_PARAMETER_BLOCK structure allocates the first data block
+;   for the files directory (which in turn will contain 32 directory entries 32 bytes each)
+;
+; Note: Surprisingly, CP/M OS does not measure disk size in tracks. Instead it is measured in blocks.
+; In UT-88 case each block conincidentally matches full track, but this is not true for real diskettes
+; with 77 tracks and 26 sectors. In that case first 2 tracks are reserved, while remaining 75 tracks
+; 26 sectors each provide 243 one kilobyte blocks, and 6 sectors remaining unused.
 ;
 ; The module provides the following entry points:
 ; 0xda00    - Cold boot (assuming that CP/M is loaded to the memory by a bootloader)
@@ -104,11 +116,11 @@ SECTOR_TRANSLATION_TABLE:
     
 DISK_PARAMETER_BLOCK:
     da4b  08 00      dw 0x0008                  ; Sectors per table (8)
-    da4d  03         db 03                      ; Block shift factor
-    da4e  07         db 07                      ; BLM ???
-    da4f  00         db 00                      ; Extent mask ????
-    da50  39 00      dw 0039                    ; Total storage capacity ????
-    da52  1f 00      dw 001f                    ; Number of directory entries
+    da4d  03         db 03                      ; BSH (Block shift factor)
+    da4e  07         db 07                      ; BLM (Block mask). BSH and BLM determine block size as 1k
+    da4f  00         db 00                      ; Extent mask
+    da50  f9 00      dw 00f9                    ; Total number of blocks - 1
+    da52  1f 00      dw 001f                    ; Number of directory entries - 1
     da54  80         db 80                      ; AL0 ???? Reserved directory blocks
     da55  00         db 00                      ; AL1 ???? Reserved directory blocks
     da56  08 00      dw 0008                    ; Size of the directory checksum vector

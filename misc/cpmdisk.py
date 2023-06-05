@@ -7,6 +7,7 @@ StandardDiskParams = {
                            1, 7, 13, 19, 25, 5, 11, 17, 23, 3, 9, 15, 21], # Skew factor 6
     'reserved_tracks': 2,
     'num_blocks': 243,
+    'block_size': 1024,
     'num_dir_entries': 64,
     'extent_mask': 0 
 }
@@ -16,7 +17,8 @@ UT88DiskParams = {
     'tracks_count': 256,
     'sector_translation': [0, 1, 2, 3, 4, 5, 6, 7], # No sector translation
     'reserved_tracks': 6,
-    'num_blocks': 58,
+    'num_blocks': 250,
+    'block_size': 1024,
     'num_dir_entries': 32,
     'extent_mask': 0
 }
