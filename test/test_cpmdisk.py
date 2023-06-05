@@ -32,6 +32,13 @@ def test_create(tmp_disk_file):
     assert tmp_disk_file.stat().st_size == 256256 # 77 tracks * 26 sectors * 128 bytes in sector
 
 
-def test_list_dir(standard_disk_file):
+def test_list_dir_raw(standard_disk_file):
     disk = CPMDisk(standard_disk_file)
-    disk.list_dir()
+    entries = disk.list_dir_raw()
+
+    entry2 = entries[1]
+    assert entry2['name'] == 'OS2CCP'
+    assert entry2['ext'] == 'ASM'
+    assert entry2['entry'] == 0 
+    assert entry2['num_records'] == 128
+    assert entry2['allocation'] == [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]

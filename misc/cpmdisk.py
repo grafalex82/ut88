@@ -7,7 +7,8 @@ StandardDiskParams = {
                            1, 7, 13, 19, 25, 5, 11, 17, 23, 3, 9, 15, 21], # Skew factor 6
     'reserved_tracks': 2,
     'num_blocks': 243,
-    'num_dir_entries': 64
+    'num_dir_entries': 64,
+    'extent_mask': 0 
 }
 
 UT88DiskParams = {
@@ -16,7 +17,8 @@ UT88DiskParams = {
     'sector_translation': [0, 1, 2, 3, 4, 5, 6, 7], # No sector translation
     'reserved_tracks': 6,
     'num_blocks': 58,
-    'num_dir_entries': 32    
+    'num_dir_entries': 32,
+    'extent_mask': 0
 }
 
 class CPMDisk():
@@ -58,7 +60,26 @@ class CPMDisk():
             f.write(bytearray(self.do_sector_translation(self.data, True)))
 
 
-    def list_dir(self):
+    def list_dir_raw(self):
         dir_offset = self.params['reserved_tracks'] * self.params['sectors_per_track'] * 128
+        res = []
+        for i in range(self.params['num_dir_entries']):
+            entry_offset = i * 32   # Each entry is 32 byte
+            entry = self.data[dir_offset + entry_offset : dir_offset + entry_offset + 32] 
 
-        #for i in range(self.params['num_dir_entries'])
+            code = self.data[dir_offset + entry_offset + 0]
+            if code == 0xe5:        # Entries that start with 0xe5 byte are deleted/empty
+                continue
+
+            record = {}
+            record['code'] = code
+            record['name'] = ''.join(chr(code) for code in entry[1:9]).strip()
+            record['ext'] = ''.join(chr(code) for code in entry[9:12]).strip()
+            record['EX'] = entry[12]
+            record['S2'] = entry[14]
+            record['entry'] = ((32 * entry[14]) + entry[12]) // (self.params['extent_mask'] + 1)
+            record['num_records'] = (entry[12] & self.params['extent_mask']) * 128 + entry[15]
+            record['allocation'] = [x for x in entry[16:32] if x != 0]
+            res.append(record)
+
+        return res
