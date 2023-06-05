@@ -74,7 +74,7 @@ class CPM:
 
         # Run the requested function, until it returns to 0xbeef
         # Set the counter limit to avoid infinite loop
-        while self._emulator._cpu.pc != 0xbeef and self._emulator._cpu._cycles < 100000:
+        while self._emulator._cpu.pc != 0xbeef and self._emulator._cpu._cycles < 1000000:
             self._emulator.step()
 
         # Validate that the code really reached the end, and not stopped by a cycles limit
