@@ -23,6 +23,8 @@ UT88DiskParams = {
     'extent_mask': 0
 }
 
+SECTOR_SIZE = 128
+
 class CPMDisk():
     def __init__(self, filename, params=StandardDiskParams):
         self.filename = filename
@@ -38,22 +40,22 @@ class CPMDisk():
                 self.data = self.do_sector_translation(f.read(), False)
                 
         else:
-            self.data = [0] * (self.params['tracks_count'] * self.params['sectors_per_track'] * 128)
+            self.data = [0] * (self.params['tracks_count'] * self.params['sectors_per_track'] * SECTOR_SIZE)
 
 
     def do_sector_translation(self, data, reverse=False):
         sector_translation = self.reverse_translation if reverse else self.sector_translation
         
-        assert len(data) == self.params['tracks_count'] * self.params['sectors_per_track'] * 128
+        assert len(data) == self.params['tracks_count'] * self.params['sectors_per_track'] * SECTOR_SIZE
 
         sectors_per_track = self.params['sectors_per_track']
 
         res = []
         for track in range(self.params['tracks_count']):
             for sector in range(sectors_per_track):
-                track_offset = track * sectors_per_track * 128
-                sector_offset = sector_translation[sector] * 128
-                res.extend(data[track_offset + sector_offset:track_offset + sector_offset+128])
+                track_offset = track * sectors_per_track * SECTOR_SIZE
+                sector_offset = sector_translation[sector] * SECTOR_SIZE
+                res.extend(data[track_offset + sector_offset : track_offset + sector_offset + SECTOR_SIZE])
 
         return res
 
@@ -63,7 +65,7 @@ class CPMDisk():
 
 
     def list_dir_raw(self):
-        dir_offset = self.params['reserved_tracks'] * self.params['sectors_per_track'] * 128
+        dir_offset = self.params['reserved_tracks'] * self.params['sectors_per_track'] * SECTOR_SIZE
         res = []
         for i in range(self.params['num_dir_entries']):
             entry_offset = i * 32   # Each entry is 32 byte
@@ -106,4 +108,22 @@ class CPMDisk():
                 }
                 res[filename] = record
 
-        return list(res.values())
+        return res
+    
+
+    def get_block(self, block):
+        data_start = self.params['sectors_per_track'] * self.params['reserved_tracks'] * SECTOR_SIZE
+        block_size = self.params['block_size']
+        block_offset = block_size * block
+        return self.data[data_start + block_offset : data_start + block_offset + block_size]
+
+
+    def read_file(self, filename):
+        entry = self.list_dir()[filename]
+        num_records = entry['num_records']
+
+        data = []
+        for block in entry['allocation']:
+            data.extend(self.get_block(block))
+
+        return data[0:num_records*128]

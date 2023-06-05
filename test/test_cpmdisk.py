@@ -48,8 +48,27 @@ def test_list_dir(standard_disk_file):
     disk = CPMDisk(standard_disk_file)
     entries = disk.list_dir()
 
-    os2cpp_asm = entries[1]
+    os2cpp_asm = entries['OS2CCP.ASM']
     assert os2cpp_asm['filename'] == "OS2CCP.ASM"
     assert os2cpp_asm['num_records'] == 200
     assert os2cpp_asm['allocation'] == list(range(5, 30))
 
+
+def test_read_small_file(standard_disk_file):
+    disk = CPMDisk(standard_disk_file)
+    data = disk.read_file('OS5TRINT.SRC')
+    data_str = ''.join(chr(code) for code in data)
+
+    print(''.join(chr(code) for code in data))
+    assert "PIP INTERFACE" in data_str
+    assert "DEFAULT BUFFER" in data_str
+
+
+def test_read_big_file(standard_disk_file):
+    disk = CPMDisk(standard_disk_file)
+    data = disk.read_file('OS3BDOS.ASM')
+    data_str = ''.join(chr(code) for code in data)
+
+    print(''.join(chr(code) for code in data))
+    assert "Bdos Interface, Bdos, Version 2.2 Feb, 1980" in data_str        # A line at the beginning
+    assert "directory record 0,1,...,dirmax/4" in data_str                  # A line at the end
