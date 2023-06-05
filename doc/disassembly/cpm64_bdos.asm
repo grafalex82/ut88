@@ -6,6 +6,13 @@
 ; ?????????????? Description TBD
 ;
 ;
+; Directory entry format:
+; 1 byte    - 0xe5 if entry is empty, or user code ????
+; 8 bytes   - file name (padded with 0x20 space symbols)
+; 3 bytes   - file extension
+; 4 bytes   - ????
+; 16 bytes  - disk allocation map
+;
 ; Important variables:
 ; 0003  - I/O Byte ?????
 ; cf0a  - Flag indicating that no char printing needed, only computing cursor position
@@ -20,17 +27,18 @@
 ; d9ad  - Pointer to read only vector
 ; d9af  - Disk Login Vector
 ; d9b1  - ???? Disk buffer address
-; d9b3  - Disk scratchpad address 1
+; d9b3  - Address of the variable containing last directory entry number
 ; d9b5  - Address of the variable containing current track number
 ; d9b7  - Address of the variable containing current track first sector number
 ; d9b9  - Pointer to the directory buffer
 ; d9bb  - Address of Disk Params Block (DPB)
-; d9bd  - Address of scratchpad value for software check ????
+; d9bd  - Address of CRC vector for directory sectors
 ; d9bf  - Address of disk allocation information ????
 ; d9d6  - function argument (low byte)
 ; d9e5  - Actual sector number (similar to LBA concept)
-; d9e9  - ???? Directory entry offset (on the current sector)
+; d9e9  - Directory entry offset (on the current sector)
 ; d9ea  - ???? Directory counter
+; d9ec  - Sector number of the current directory entry (LBA)
 cc00  f9         SPHL
 cc01  16 00      MVI D, 00
 cc03  00         NOP
@@ -905,13 +913,13 @@ DO_SELECT_DISK:
     cf65  56         MOV D, M
     cf66  23         INX HL
 
-    cf67  22 b3 d9   SHLD SCRATCHPAD_ADDR_1 (d9b3)  ; Store scratchpad addr 1
+    cf67  22 b3 d9   SHLD LAST_DIR_ENTRY_NUM_ADDR (d9b3)  ; Store the poitner last directory entry number
 
-    cf6a  23         INX HL                     ; Store the current track variable address
+    cf6a  23         INX HL                     ; Store the pointer to current track variable
     cf6b  23         INX HL
     cf6c  22 b5 d9   SHLD CUR_TRACK_ADDR (d9b5)
 
-    cf6f  23         INX HL                     ; Store the current sector variable address
+    cf6f  23         INX HL                     ; Store the pointer to current sector variable
     cf70  23         INX HL
     cf71  22 b7 d9   SHLD CUR_TRACK_SECTOR_ADDR (d9b7)
 
@@ -934,10 +942,10 @@ DO_SELECT_DISK:
     cf8e  2a c6 d9   LHLD DISK_TOTAL_STORAGE_CAPACITY (d9c6)    ; Check if disk capacity is small enough
     cf91  7c         MOV A, H
     cf92  21 dd d9   LXI HL, SINGLE_BYTE_ALLOCATION_MAP (d9dd)
-    cf95  36 ff      MVI M, ff                          ; if small - set the single byte allocation mode
-    cf97  b7         ORA A
+    cf95  36 ff      MVI M, ff                          ; if small - use the single byte records for file
+    cf97  b7         ORA A                              ; allocation table
     cf98  ca 9d cf   JZ DO_SELECT_DISK_EXIT (cf9d)
-    cf9b  36 00      MVI M, 00                          ; otherwise it will be double byte allocation mode
+    cf9b  36 00      MVI M, 00                          ; otherwise it will be double byte records
 
 DO_SELECT_DISK_EXIT:
     cf9d  3e ff      MVI A, ff                  ; Indicate success of the disk selection
@@ -977,13 +985,14 @@ CHECK_READ_WRITE_ERROR:
     cfc0  c3 4a cf   JMP ROUTE_TO_ERROR_HANDLER (cf4a)
 
 
-; Seek dir ????
-????:   
+; Seek to directory entry
+SEEK_TO_DIR_ENTRY:
     cfc3  2a ea d9   LHLD DIRECTORY_COUNTER (d9ea)  ; Calculate sector number of the directory entry
-    cfc6  0e 02      MVI C, 02
-    cfc8  cd ea d0   CALL SHIFT_HL_RIGHT (d0ea)
-    cfcb  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
-    cfce  22 ec d9   SHLD d9ec 
+    cfc6  0e 02      MVI C, 02                      ; (having just 4 entries on the sector, the sector number
+    cfc8  cd ea d0   CALL SHIFT_HL_RIGHT (d0ea)     ; is entry number divided by 4)
+
+    cfcb  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)      ; Set the desired sector
+    cfce  22 ec d9   SHLD CURRENT_DIR_ENTRY_SECTOR (d9ec)
 
 
 ; Seek to selected sector
@@ -1333,12 +1342,12 @@ WRITE_PROTECT_DISK:
 
     d135  22 ad d9   SHLD READ_ONLY_VECTOR (d9ad)   ; Store the vector back
 
-    d138  2a c8 d9   LHLD DISK_NUM_DIRECTORY_ENTRIES (d9c8)                  ; ????
+    d138  2a c8 d9   LHLD DISK_NUM_DIRECTORY_ENTRIES (d9c8) ; Get the maximum number of dir entries to DE
     d13b  23         INX HL
     d13c  eb         XCHG
 
-    d13d  2a b3 d9   LHLD SCRATCHPAD_ADDR_1 (d9b3)  ; ????
-    d140  73         MOV M, E
+    d13d  2a b3 d9   LHLD LAST_DIR_ENTRY_NUM_ADDR (d9b3)  ; Set the last directory entry number as max+1
+    d140  73         MOV M, E                       ; so that no more entries can be written
     d141  23         INX HL
     d142  72         MOV M, D
 
@@ -1346,7 +1355,7 @@ WRITE_PROTECT_DISK:
 
 
 ????:
-d144  cd 5e d1   CALL d15e
+d144  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
 ????:
 d147  11 09 00   LXI DE, 0009
 d14a  19         DAD DE
@@ -1361,15 +1370,20 @@ d157  c8         RZ
 d158  21 0d cc   LXI HL, DISK_READ_ONLY_ERROR_PTR (cc0d)
 d15b  c3 4a cf   JMP ROUTE_TO_ERROR_HANDLER (cf4a)
 
-????:
-d15e  2a b9 d9   LHLD DIRECTORY_BUFFER_ADDR (d9b9)
-d161  3a e9 d9   LDA DIRECTORY_ENTRY_OFFSET (d9e9)
-????:
-d164  85         ADD L
-d165  6f         MOV L, A
-d166  d0         RNC
-d167  24         INR H
-d168  c9         RET
+; Calculate directory entry address
+;
+; HL = dir buffer + dir entry offset
+GET_DIR_ENTRY_ADDR:
+    d15e  2a b9 d9   LHLD DIRECTORY_BUFFER_ADDR (d9b9)
+    d161  3a e9 d9   LDA DIRECTORY_ENTRY_OFFSET (d9e9)
+
+; HL += A
+HL_ADD_A:
+    d164  85         ADD L
+    d165  6f         MOV L, A
+    d166  d0         RNC
+    d167  24         INR H
+    d168  c9         RET
 
 
 ; return:
@@ -1393,25 +1407,31 @@ d17b  f6 80      ORI A, 80
 d17d  77         MOV M, A
 d17e  c9         RET
 
-????:
-d17f  2a ea d9   LHLD DIRECTORY_COUNTER (d9ea)
-d182  eb         XCHG
-d183  2a b3 d9   LHLD SCRATCHPAD_ADDR_1 (d9b3)
-d186  7b         MOV A, E
-d187  96         SUB M
-d188  23         INX HL
-d189  7a         MOV A, D
-d18a  9e         SBB M
-d18b  c9         RET
+; Compare current directory counter and the last dir entry number. Set corresponding flags.
+CMP_DIR_COUNTER_WITH_MAX:
+    d17f  2a ea d9   LHLD DIRECTORY_COUNTER (d9ea)  ; Load directory entries counter to DE
+    d182  eb         XCHG
 
-????:
-d18c  cd 7f d1   CALL d17f
-d18f  d8         RC
-d190  13         INX DE
-d191  72         MOV M, D
-d192  2b         DCX HL
-d193  73         MOV M, E
-d194  c9         RET
+    d183  2a b3 d9   LHLD LAST_DIR_ENTRY_NUM_ADDR (d9b3)  ; Load last directory entry number ptr to HL
+
+    d186  7b         MOV A, E                   ; Compare the 2 values (DE - [HL])
+    d187  96         SUB M
+    d188  23         INX HL
+    d189  7a         MOV A, D
+    d18a  9e         SBB M
+
+    d18b  c9         RET
+
+
+UPDATE_LAST_DIR_ENTRY_NUMBER:
+    d18c  cd 7f d1   CALL CMP_DIR_COUNTER_WITH_MAX (d17f)   ; Check if dir entry counter reached the last
+    d18f  d8         RC                                     ; value
+
+    d190  13         INX DE                     ; If yes - update the last entry number with the current
+    d191  72         MOV M, D                   ; entry + 1
+    d192  2b         DCX HL
+    d193  73         MOV M, E
+    d194  c9         RET
 
 ; Compares DE and HL (do DE - HL, and set flags)
 CMP_DE_HL:
@@ -1423,51 +1443,85 @@ CMP_DE_HL:
     d19a  67         MOV H, A
     d19b  c9         RET
 
+
+; Calculate and store directory checksum
+UPDATE_DIR_CHECKSUM:   
+    d19c  0e ff      MVI C, ff
+
+; Calculate check or store directory sector checksum
+;
+; The function calculates the CRC for current directory sector, and compares it to one stored
+; in the CRC vector. If does not match - the disk will be marked as read only to avoid further corruption.
+;
+; Each byte of the CRC vector matches a whole directory sector (which is located at the beginning of the
+; disk, if not counting reserved tracks)
+;
+; Arguments: 
+; C = 0xff - calculate and store checksum
+; other C value - check the disk entry checksum
+CHECK_UPDATE_DIR_CHECKSUM:
+    d19e  2a ec d9   LHLD CURRENT_DIR_ENTRY_SECTOR (d9ec)   ; Load current dir entry sector number to DE
+    d1a1  eb         XCHG
+
+    d1a2  2a cc d9   LHLD DISK_DIRECTORY_CHECK_VECT_SIZE (d9cc) ; Compare it with directory vector size,
+    d1a5  cd 95 d1   CALL CMP_DE_HL (d195)                      ; meaning we reached the end of directory
+    d1a8  d0         RNC
+
+    d1a9  c5         PUSH BC
+    d1aa  cd f7 d0   CALL CALC_DIRECTORY_BUF_CRC (d0f7) ; Calculate the directory buffer CRC to A
+
+    d1ad  2a bd d9   LHLD DIR_CRC_VECTOR_PTR (d9bd)     ; Load address of the CRC vector
+    d1b0  eb         XCHG
+
+    d1b1  2a ec d9   LHLD CURRENT_DIR_ENTRY_SECTOR (d9ec)   ; Add the current dir sector number
+    d1b4  19         DAD DE
+    d1b5  c1         POP BC
+
+    d1b6  0c         INR C                      ; Check the argument flag
+    d1b7  ca c4 d1   JZ STORE_NEW_CHECKSUM (d1c4)   ; If flag is 0xff - store the calculated checksum
+
+    d1ba  be         CMP M                      ; Compare checksum otherwise
+    d1bb  c8         RZ                         ; Exit if checksum has not changed
+
+    d1bc  cd 7f d1   CALL CMP_DIR_COUNTER_WITH_MAX (d17f)   ; Checksum check failed, but that is ok if
+    d1bf  d0         RNC                        ; we reached end of the entries list. If yes - just return
+
+    d1c0  cd 2c d1   CALL WRITE_PROTECT_DISK (d12c) ; Checksum failed for normal entries - write protect the
+    d1c3  c9         RET                        ; disk, just in case
+
+STORE_NEW_CHECKSUM:
+    d1c4  77         MOV M, A                   ; Store checksum at previously calculated location
+    d1c5  c9         RET
+
+
+
+
 ????:
-d19c  0e ff      MVI C, ff
-????:
-d19e  2a ec d9   LHLD d9ec
-d1a1  eb         XCHG
-d1a2  2a cc d9   LHLD DISK_DIRECTORY_CHECK_VECT_SIZE (d9cc)
-d1a5  cd 95 d1   CALL CMP_DE_HL (d195)
-d1a8  d0         RNC
-d1a9  c5         PUSH BC
-d1aa  cd f7 d0   CALL CALC_DIRECTORY_BUF_CRC (d0f7)
-d1ad  2a bd d9   LHLD SCRATCHPAD_BUF_PTR (d9bd)
-d1b0  eb         XCHG
-d1b1  2a ec d9   LHLD d9ec
-d1b4  19         DAD DE
-d1b5  c1         POP BC
-d1b6  0c         INR C
-d1b7  ca c4 d1   JZ d1c4
-d1ba  be         CMP M
-d1bb  c8         RZ
-d1bc  cd 7f d1   CALL d17f
-d1bf  d0         RNC
-d1c0  cd 2c d1   CALL WRITE_PROTECT_DISK (d12c)
-d1c3  c9         RET
-????:
-d1c4  77         MOV M, A
-d1c5  c9         RET
-????:
-d1c6  cd 9c d1   CALL d19c
+d1c6  cd 9c d1   CALL UPDATE_DIR_CHECKSUM (d19c)
 d1c9  cd e0 d1   CALL SET_DIR_DISK_BUFFER (d1e0)
 d1cc  0e 01      MVI C, 01
 d1ce  cd b8 cf   CALL WRITE_SECTOR (cfb8)
 d1d1  c3 da d1   JMP SET_DATA_DISK_BUFFER (d1da)
-????:
-d1d4  cd e0 d1   CALL SET_DIR_DISK_BUFFER (d1e0)
-d1d7  cd b2 cf   CALL READ_SECTOR (cfb2)
 
 
+; Read a single sector in directory area
+;
+; Function sets the directory buffer, reads the sector, and sets the buffer back to data buffer
+READ_DIR_SECTOR:
+    d1d4  cd e0 d1   CALL SET_DIR_DISK_BUFFER (d1e0)
+    d1d7  cd b2 cf   CALL READ_SECTOR (cfb2)
 
+
+; Set the BIOS Disk buffer to the data buffer
 SET_DATA_DISK_BUFFER:
     d1da  21 b1 d9   LXI HL, DISK_BUFFER_ADDR (d9b1)
-    d1dd  c3 e3 d1   JMP d1e3
+    d1dd  c3 e3 d1   JMP SET_DISK_BUFFER (d1e3)
 
+; Set the BIOS Disk buffer to the directory buffer
 SET_DIR_DISK_BUFFER:
     d1e0  21 b9 d9   LXI HL, DIRECTORY_BUFFER_ADDR (d9b9)
 
+; Set the BIOS Disk buffer to the value pointed by [HL]
 SET_DISK_BUFFER:
     d1e3  4e         MOV C, M                   ; Load disk buffer addres from [HL]
     d1e4  23         INX HL
@@ -1482,14 +1536,17 @@ COPY_DIR_BUF_TO_DISK_BUF:
     d1f0  0e 80      MVI C, 80
     d1f2  c3 4f cf   JMP MEMCOPY_DE_HL (cf4f)
 
-????:
-d1f5  21 ea d9   LXI HL, DIRECTORY_COUNTER (d9ea)
-d1f8  7e         MOV A, M
-d1f9  23         INX HL
-d1fa  be         CMP M
-d1fb  c0         RNZ
-d1fc  3c         INR A
-d1fd  c9         RET
+; Check if directory counter is 0xffff
+;
+; Returns Z flag if directory counter is 0xffff
+IS_DIR_COUNTER_RESET:
+    d1f5  21 ea d9   LXI HL, DIRECTORY_COUNTER (d9ea)
+    d1f8  7e         MOV A, M
+    d1f9  23         INX HL
+    d1fa  be         CMP M
+    d1fb  c0         RNZ
+    d1fc  3c         INR A
+    d1fd  c9         RET
 
 
 ; Set the directory entries counter to 0xffff
@@ -1499,7 +1556,21 @@ RESET_DIRECTORY_COUNTER:
     d204  c9         RET
 
 
-????:
+; Advance to the next directory entry
+;
+; The function advances to the next directory entry, calculating the offset in the buffer.
+; The function reads the next directory sector if needed.
+;
+; Arguments:
+; C = 0xff - calculate and set directory sector CRC, 0x00 - to check CRC
+;
+; Input variables:
+; - DIRECTORY_COUNTER 
+;
+; Updated variables:
+; - DIRECTORY_COUNTER 
+; - DIRECTORY_ENTRY_OFFSET
+GET_NEXT_DIR_ENTRY:
     d205  2a c8 d9   LHLD DISK_NUM_DIRECTORY_ENTRIES (d9c8)
     d208  eb         XCHG                           ; Load number of directory entries to DE
 
@@ -1508,116 +1579,176 @@ RESET_DIRECTORY_COUNTER:
     d20d  22 ea d9   SHLD DIRECTORY_COUNTER (d9ea)
 
     d210  cd 95 d1   CALL CMP_DE_HL (d195)          ; Check if we reached the last entry
-    d213  d2 19 d2   JNC d219
+    d213  d2 19 d2   JNC GET_NEXT_DIR_ENTRY_1 (d219)
 
-    d216  c3 fe d1   JMP RESET_DIRECTORY_COUNTER (d1fe) ; If reached - reset the counter
+    d216  c3 fe d1   JMP RESET_DIRECTORY_COUNTER (d1fe) ; If reached - reset the counter and exit
 
-????:
+GET_NEXT_DIR_ENTRY_1:
     d219  3a ea d9   LDA DIRECTORY_COUNTER (d9ea)   ; Calculate offset of the directory entry in the sector.
     d21c  e6 03      ANI A, 03                      
     d21e  06 05      MVI B, 05                      ; Each entry is 32 bytes (2^5)
 
-????:
+GET_NEXT_DIR_ENTRY_LOOP:
     d220  87         ADD A                          ; Multiply 2 LSB of the counter by 32
     d221  05         DCR B
-    d222  c2 20 d2   JNZ d220
+    d222  c2 20 d2   JNZ GET_NEXT_DIR_ENTRY_LOOP (d220)
 
     d225  32 e9 d9   STA DIRECTORY_ENTRY_OFFSET (d9e9)  ; Store the calculated offset
-    d228  b7         ORA A
-    d229  c0         RNZ
 
-d22a  c5         PUSH BC
-d22b  cd c3 cf   CALL cfc3
-d22e  cd d4 d1   CALL d1d4
-d231  c1         POP BC
-d232  c3 9e d1   JMP d19e
-????:
-d235  79         MOV A, C
-d236  e6 07      ANI A, 07
-d238  3c         INR A
-d239  5f         MOV E, A
-d23a  57         MOV D, A
-d23b  79         MOV A, C
-d23c  0f         RRC
-d23d  0f         RRC
-d23e  0f         RRC
-d23f  e6 1f      ANI A, 1f
-d241  4f         MOV C, A
-d242  78         MOV A, B
-d243  87         ADD A
-d244  87         ADD A
-d245  87         ADD A
-d246  87         ADD A
-d247  87         ADD A
-d248  b1         ORA C
-d249  4f         MOV C, A
-d24a  78         MOV A, B
-d24b  0f         RRC
-d24c  0f         RRC
-d24d  0f         RRC
-d24e  e6 1f      ANI A, 1f
-d250  47         MOV B, A
-d251  2a bf d9   LHLD DISK_ALLOCATION_VECTOR_PTR (d9bf)
-d254  09         DAD BC
-d255  7e         MOV A, M
-????:
-d256  07         RLC
-d257  1d         DCR E
-d258  c2 56 d2   JNZ d256
-d25b  c9         RET
-????:
-d25c  d5         PUSH DE
-d25d  cd 35 d2   CALL d235
-d260  e6 fe      ANI A, fe
-d262  c1         POP BC
-d263  b1         ORA C
-????:
-d264  0f         RRC
-d265  15         DCR D
-d266  c2 64 d2   JNZ d264
-d269  77         MOV M, A
-d26a  c9         RET
-????:
-d26b  cd 5e d1   CALL d15e
-d26e  11 10 00   LXI DE, 0010
-d271  19         DAD DE
-d272  c5         PUSH BC
-d273  0e 11      MVI C, 11
-????:
-d275  d1         POP DE
-d276  0d         DCR C
-d277  c8         RZ
-d278  d5         PUSH DE
-d279  3a dd d9   LDA SINGLE_BYTE_ALLOCATION_MAP (d9dd)
-d27c  b7         ORA A
-d27d  ca 88 d2   JZ d288
-d280  c5         PUSH BC
-d281  e5         PUSH HL
-d282  4e         MOV C, M
-d283  06 00      MVI B, 00
-d285  c3 8e d2   JMP d28e
-????:
-d288  0d         DCR C
-d289  c5         PUSH BC
-d28a  4e         MOV C, M
-d28b  23         INX HL
-d28c  46         MOV B, M
-d28d  e5         PUSH HL
-????:
-d28e  79         MOV A, C
-d28f  b0         ORA B
-d290  ca 9d d2   JZ d29d
-d293  2a c6 d9   LHLD DISK_TOTAL_STORAGE_CAPACITY (d9c6)
-d296  7d         MOV A, L
-d297  91         SUB C
-d298  7c         MOV A, H
-d299  98         SBB B
-d29a  d4 5c d2   CNC d25c
-????:
-d29d  e1         POP HL
-d29e  23         INX HL
-d29f  c1         POP BC
-d2a0  c3 75 d2   JMP d275
+    d228  b7         ORA A                          ; Check if we need to read the next sector
+    d229  c0         RNZ                            ; if not - we are done
+
+    d22a  c5         PUSH BC                        ; Read the directory sector to the dir buffer
+    d22b  cd c3 cf   CALL SEEK_TO_DIR_ENTRY (cfc3)
+    d22e  cd d4 d1   CALL READ_DIR_SECTOR (d1d4)
+    d231  c1         POP BC
+
+    d232  c3 9e d1   JMP CHECK_UPDATE_DIR_CHECKSUM (d19e)   ; Check/Update directory sector checksum
+
+
+; Get the disk allocation vector entry for the given block number
+;
+; This function calculates the address of the bit in the allocation vector, that corresponds
+; to the given block index. The function returns current bit value in the vector, and the value
+; address so that the caller may update the record.
+;
+; Arguments:
+; BC    - disk map block index
+;
+; Return:
+; HL    - address of the allocation vector byte
+; D     - bit index in the allocation vector byte
+; A     - disk map entry shifted right so that LSB corresponds to the selected block
+GET_DISK_ALLOCATION_BIT:
+    d235  79         MOV A, C                   ; Calculate the bit number that correspond the block 
+    d236  e6 07      ANI A, 07                  ; D = E = (BC % 8 + 1)
+    d238  3c         INR A
+    d239  5f         MOV E, A
+    d23a  57         MOV D, A
+
+    d23b  79         MOV A, C                   ; Shift remaining 5 bits of C right to the lowest position
+    d23c  0f         RRC
+    d23d  0f         RRC
+    d23e  0f         RRC
+    d23f  e6 1f      ANI A, 1f
+    d241  4f         MOV C, A
+
+    d242  78         MOV A, B                   ; Add lowest 3 bits of B
+    d243  87         ADD A
+    d244  87         ADD A
+    d245  87         ADD A
+    d246  87         ADD A
+    d247  87         ADD A
+    d248  b1         ORA C
+    d249  4f         MOV C, A
+
+    d24a  78         MOV A, B                   ; Take 5 bits of B so that BC now looks like follows:
+    d24b  0f         RRC                        ; 000bbbbb bbbccccc (lowest 3 bits of C are in D and E)
+    d24c  0f         RRC
+    d24d  0f         RRC
+    d24e  e6 1f      ANI A, 1f
+    d250  47         MOV B, A
+
+    d251  2a bf d9   LHLD DISK_ALLOCATION_VECTOR_PTR (d9bf)
+    d254  09         DAD BC                     ; Calculate the address in the allocation vector
+
+    d255  7e         MOV A, M                   ; Load the value in the vector
+
+GET_DISK_ALLOCATION_BIT_LOOP:
+    d256  07         RLC                        ; Shift value right, so that LSB correspond to the 
+    d257  1d         DCR E                      ; required block
+    d258  c2 56 d2   JNZ GET_DISK_ALLOCATION_BIT_LOOP (d256)
+
+    d25b  c9         RET
+
+
+
+; Set disk allocation bit
+;
+; The function updates the bit in the disk allocation map. The bit correspond to the given disk block number.
+;
+; Arguments
+; BC    - block number
+; E     - bit to set
+SET_DISK_ALLOCATION_BIT:
+    d25c  d5         PUSH DE                    ; Get the map entry that correspond the disk block
+    d25d  cd 35 d2   CALL GET_DISK_ALLOCATION_BIT (d235)
+    
+    d260  e6 fe      ANI A, fe                  ; Clear the bit
+    d262  c1         POP BC
+
+    d263  b1         ORA C                      ; And set the requested one
+
+SET_DISK_ALLOCATION_BIT_LOOP:
+    d264  0f         RRC                        ; Restore the map entry bit position
+    d265  15         DCR D
+    d266  c2 64 d2   JNZ SET_DISK_ALLOCATION_BIT_LOOP (d264)
+
+    d269  77         MOV M, A                   ; Store the map entry
+    d26a  c9         RET
+
+
+; Update disk map
+;
+; For the given file (current directory entry) the function will go over the file allocation vector,
+; and update disk allocation map bits with the given value.
+;
+; Arguments:
+; C - 0x00 or 0x01 to clear or set the allocation map bit
+UPDATE_DISK_MAP:
+    d26b  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e) ; Get the disk map address for the current dir entry
+    d26e  11 10 00   LXI DE, 0010
+    d271  19         DAD DE
+
+    d272  c5         PUSH BC
+    d273  0e 11      MVI C, 11                  ; Size of the map field + 1
+
+UPDATE_DISK_MAP_LOOP:
+    d275  d1         POP DE                     ; Recall the parity parameter ????
+    d276  0d         DCR C                      ; Continue until all bytes of the map are processed
+    d277  c8         RZ
+
+    d278  d5         PUSH DE                    ; Save the parity parameter until the next cycle
+
+    d279  3a dd d9   LDA SINGLE_BYTE_ALLOCATION_MAP (d9dd)  ; Check map contains 1-byte values
+    d27c  b7         ORA A
+    d27d  ca 88 d2   JZ UPDATE_DISK_MAP_DOUBLE (d288)
+
+    d280  c5         PUSH BC                    ; Load the map record to BC (high byte is 0 for one
+    d281  e5         PUSH HL                    ; byte entries)
+    d282  4e         MOV C, M
+    d283  06 00      MVI B, 00
+    d285  c3 8e d2   JMP UPDATE_DISK_MAP_1 (d28e)
+
+UPDATE_DISK_MAP_DOUBLE:
+    d288  0d         DCR C                      ; Load the 2 byte map record to BC (for two byte entries)
+    d289  c5         PUSH BC
+    d28a  4e         MOV C, M
+    d28b  23         INX HL
+    d28c  46         MOV B, M
+    d28d  e5         PUSH HL
+
+UPDATE_DISK_MAP_1:
+    d28e  79         MOV A, C                   ; Check if the record is zero
+    d28f  b0         ORA B
+    d290  ca 9d d2   JZ UPDATE_DISK_MAP_NEXT (d29d)
+
+    d293  2a c6 d9   LHLD DISK_TOTAL_STORAGE_CAPACITY (d9c6)
+    d296  7d         MOV A, L                   ; Compare total number of blocks with map record
+    d297  91         SUB C
+    d298  7c         MOV A, H
+    d299  98         SBB B
+
+    d29a  d4 5c d2   CNC SET_DISK_ALLOCATION_BIT (d25c) ; Set the corresponding allocation map bit
+
+UPDATE_DISK_MAP_NEXT:
+    d29d  e1         POP HL                     ; Advance to the next record in the map
+    d29e  23         INX HL
+    d29f  c1         POP BC
+    d2a0  c3 75 d2   JMP UPDATE_DISK_MAP_LOOP (d275)
+
+
+
 
 DISK_INITIALIZE:
     d2a3  2a c6 d9   LHLD DISK_TOTAL_STORAGE_CAPACITY (d9c6); ???
@@ -1647,40 +1778,53 @@ DISK_INITIALIZE_ALLOC_LOOP:
 
     d2c4  cd a1 cf   CALL SET_TRACK_ZERO (cfa1) ; Move to track #0, zero track/sector numbers
 
-    d2c7  2a b3 d9   LHLD SCRATCHPAD_ADDR_1 (d9b3)  ; Store 0003 to scratchpad variable ????
+    d2c7  2a b3 d9   LHLD LAST_DIR_ENTRY_NUM_ADDR (d9b3)  ; Store 0003 as a last directory entry number
     d2ca  36 03      MVI M, 03
     d2cc  23         INX HL
     d2cd  36 00      MVI M, 00
 
     d2cf  cd fe d1   CALL RESET_DIRECTORY_COUNTER (d1fe); reset directory entries counter
 
-????:
-d2d2  0e ff      MVI C, ff
-d2d4  cd 05 d2   CALL d205
-d2d7  cd f5 d1   CALL d1f5
-d2da  c8         RZ
+DISK_INITIALIZE_NEXT_FILE:
+    d2d2  0e ff      MVI C, ff                  ; Initialize CRC vectory by reading all directory entries
+    d2d4  cd 05 d2   CALL GET_NEXT_DIR_ENTRY (d205)
 
-d2db  cd 5e d1   CALL d15e
-d2de  3e e5      MVI A, e5
-d2e0  be         CMP M
-d2e1  ca d2 d2   JZ d2d2
-d2e4  3a 41 cf   LDA USER_CODE (cf41)
-d2e7  be         CMP M
-d2e8  c2 f6 d2   JNZ d2f6
-d2eb  23         INX HL
-d2ec  7e         MOV A, M
-d2ed  d6 24      SUI A, 24
-d2ef  c2 f6 d2   JNZ d2f6
-d2f2  3d         DCR A
-d2f3  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
-????:
-d2f6  0e 01      MVI C, 01
-d2f8  cd 6b d2   CALL d26b
-d2fb  cd 8c d1   CALL d18c
-d2fe  c3 d2 d2   JMP d2d2
+    d2d7  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
+    d2da  c8         RZ                         ; Return when reached the end of the directory
+
+    d2db  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e) ; Get the directory entry address to HL
+
+    d2de  3e e5      MVI A, e5                  ; Check if the entry starts with 0xe5 (empty record)
+    d2e0  be         CMP M
+    d2e1  ca d2 d2   JZ DISK_INITIALIZE_NEXT_FILE (d2d2); If yes - advance to the next record
+
+    d2e4  3a 41 cf   LDA USER_CODE (cf41)       ; Check if the entry starts with the user code
+    d2e7  be         CMP M
+    d2e8  c2 f6 d2   JNZ DISK_INITIALIZE_1 (d2f6)
+
+    d2eb  23         INX HL                     ; Advance to the file name field
+    d2ec  7e         MOV A, M                   ; Check if file name starts with '$' symbol
+    d2ed  d6 24      SUI A, 24
+    d2ef  c2 f6 d2   JNZ DISK_INITIALIZE_1 (d2f6)
+
+    d2f2  3d         DCR A                      ; Set return code to 0xff ????
+    d2f3  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
+
+DISK_INITIALIZE_1:
+    d2f6  0e 01      MVI C, 01                  ; Update the disk map, by setting bits in the allocation map
+    d2f8  cd 6b d2   CALL UPDATE_DISK_MAP (d26b)
+
+    d2fb  cd 8c d1   CALL UPDATE_LAST_DIR_ENTRY_NUMBER (d18c)
+    d2fe  c3 d2 d2   JMP DISK_INITIALIZE_NEXT_FILE (d2d2)
+
+
+
+
 ????:
 d301  3a d4 d9   LDA d9d4
 d304  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+
+
 ????:
 d307  c5         PUSH BC
 d308  f5         PUSH PSW
@@ -1696,6 +1840,7 @@ d313  91         SUB C
 d314  e6 1f      ANI A, 1f
 d316  c1         POP BC
 d317  c9         RET
+
 ????:
 d318  3e ff      MVI A, ff
 d31a  32 d4 d9   STA d9d4
@@ -1707,8 +1852,8 @@ d327  cd fe d1   CALL RESET_DIRECTORY_COUNTER (d1fe)
 d32a  cd a1 cf   CALL SET_TRACK_ZERO (cfa1)
 ????:
 d32d  0e 00      MVI C, 00
-d32f  cd 05 d2   CALL d205
-d332  cd f5 d1   CALL d1f5
+d32f  cd 05 d2   CALL GET_NEXT_DIR_ENTRY (d205)
+d332  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d335  ca 94 d3   JZ d394
 d338  2a d9 d9   LHLD d9d9
 d33b  eb         XCHG
@@ -1716,11 +1861,11 @@ d33c  1a         LDAX DE
 d33d  fe e5      CPI A, e5
 d33f  ca 4a d3   JZ d34a
 d342  d5         PUSH DE
-d343  cd 7f d1   CALL d17f
+d343  cd 7f d1   CALL CMP_DIR_COUNTER_WITH_MAX (d17f)
 d346  d1         POP DE
 d347  d2 94 d3   JNC d394
 ????:
-d34a  cd 5e d1   CALL d15e
+d34a  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
 d34d  3a d8 d9   LDA d9d8
 d350  4f         MOV C, A
 d351  06 00      MVI B, 00
@@ -1773,13 +1918,13 @@ d39c  cd 54 d1   CALL d154
 d39f  0e 0c      MVI C, 0c
 d3a1  cd 18 d3   CALL d318
 ????:
-d3a4  cd f5 d1   CALL d1f5
+d3a4  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d3a7  c8         RZ
 d3a8  cd 44 d1   CALL d144
-d3ab  cd 5e d1   CALL d15e
+d3ab  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
 d3ae  36 e5      MVI M, e5
 d3b0  0e 00      MVI C, 00
-d3b2  cd 6b d2   CALL d26b
+d3b2  cd 6b d2   CALL UPDATE_DISK_MAP (d26b)
 d3b5  cd c6 d1   CALL d1c6
 d3b8  cd 2d d3   CALL d32d
 d3bb  c3 a4 d3   JMP d3a4
@@ -1793,7 +1938,7 @@ d3c2  ca d1 d3   JZ d3d1
 d3c5  0b         DCX BC
 d3c6  d5         PUSH DE
 d3c7  c5         PUSH BC
-d3c8  cd 35 d2   CALL d235
+d3c8  cd 35 d2   CALL GET_DISK_ALLOCATION_BIT (d235)
 d3cb  1f         RAR
 d3cc  d2 ec d3   JNC d3ec
 d3cf  c1         POP BC
@@ -1810,7 +1955,7 @@ d3dc  c5         PUSH BC
 d3dd  d5         PUSH DE
 d3de  42         MOV B, D
 d3df  4b         MOV C, E
-d3e0  cd 35 d2   CALL d235
+d3e0  cd 35 d2   CALL GET_DISK_ALLOCATION_BIT (d235)
 d3e3  1f         RAR
 d3e4  d2 ec d3   JNC d3ec
 d3e7  d1         POP DE
@@ -1838,11 +1983,11 @@ d402  06 00      MVI B, 00
 d404  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d407  09         DAD BC
 d408  eb         XCHG
-d409  cd 5e d1   CALL d15e
+d409  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
 d40c  c1         POP BC
 d40d  cd 4f cf   CALL MEMCOPY_DE_HL (cf4f)
 ????:
-d410  cd c3 cf   CALL cfc3
+d410  cd c3 cf   CALL SEEK_TO_DIR_ENTRY (cfc3)
 d413  c3 c6 d1   JMP d1c6
 ????:
 d416  cd 54 d1   CALL d154
@@ -1854,7 +1999,7 @@ d422  11 10 00   LXI DE, 0010
 d425  19         DAD DE
 d426  77         MOV M, A
 ????:
-d427  cd f5 d1   CALL d1f5
+d427  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d42a  c8         RZ
 d42b  cd 44 d1   CALL d144
 d42e  0e 10      MVI C, 10
@@ -1866,7 +2011,7 @@ d438  c3 27 d4   JMP d427
 d43b  0e 0c      MVI C, 0c
 d43d  cd 18 d3   CALL d318
 ????:
-d440  cd f5 d1   CALL d1f5
+d440  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d443  c8         RZ
 d444  0e 00      MVI C, 00
 d446  1e 0c      MVI E, 0c
@@ -1876,14 +2021,14 @@ d44e  c3 40 d4   JMP d440
 ????:
 d451  0e 0f      MVI C, 0f
 d453  cd 18 d3   CALL d318
-d456  cd f5 d1   CALL d1f5
+d456  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d459  c8         RZ
 ????:
 d45a  cd a6 d0   CALL d0a6
 d45d  7e         MOV A, M
 d45e  f5         PUSH PSW
 d45f  e5         PUSH HL
-d460  cd 5e d1   CALL d15e
+d460  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
 d463  eb         XCHG
 d464  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d467  0e 20      MVI C, 20
@@ -1940,10 +2085,10 @@ d4b3  e6 80      ANI A, 80
 d4b5  c0         RNZ
 d4b6  0e 0f      MVI C, 0f
 d4b8  cd 18 d3   CALL d318
-d4bb  cd f5 d1   CALL d1f5
+d4bb  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d4be  c8         RZ
 d4bf  01 10 00   LXI BC, 0010
-d4c2  cd 5e d1   CALL d15e
+d4c2  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
 d4c5  09         DAD BC
 d4c6  eb         XCHG
 d4c7  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
@@ -2016,7 +2161,7 @@ d52b  21 ac d9   LXI HL, d9ac
 d52e  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
 d531  0e 01      MVI C, 01
 d533  cd 18 d3   CALL d318
-d536  cd f5 d1   CALL d1f5
+d536  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d539  e1         POP HL
 d53a  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
 d53d  c8         RZ
@@ -2033,14 +2178,14 @@ d549  c2 46 d5   JNZ d546
 d54c  21 0d 00   LXI HL, 000d
 d54f  19         DAD DE
 d550  77         MOV M, A
-d551  cd 8c d1   CALL d18c
+d551  cd 8c d1   CALL UPDATE_LAST_DIR_ENTRY_NUMBER (d18c)
 d554  cd fd d3   CALL d3fd
 d557  c3 78 d1   JMP d178
 ????:
 d55a  af         XRA A
 d55b  32 d2 d9   STA d9d2
 d55e  cd a2 d4   CALL d4a2
-d561  cd f5 d1   CALL d1f5
+d561  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d564  c8         RZ
 d565  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d568  01 0c 00   LXI BC, 000c
@@ -2067,13 +2212,13 @@ d58b  ca b6 d5   JZ d5b6
 ????:
 d58e  0e 0f      MVI C, 0f
 d590  cd 18 d3   CALL d318
-d593  cd f5 d1   CALL d1f5
+d593  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d596  c2 ac d5   JNZ d5ac
 d599  3a d3 d9   LDA d9d3
 d59c  3c         INR A
 d59d  ca b6 d5   JZ d5b6
 d5a0  cd 24 d5   CALL d524
-d5a3  cd f5 d1   CALL d1f5
+d5a3  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d5a6  ca b6 d5   JZ d5b6
 d5a9  c3 af d5   JMP d5af
 ????:
@@ -2109,7 +2254,7 @@ d5e6  cd 77 d0   CALL d077
 d5e9  cd 84 d0   CALL d084
 d5ec  ca fb d5   JZ d5fb
 d5ef  cd 8a d0   CALL d08a
-d5f2  cd d1 cf   CALL cfd1
+d5f2  cd d1 cf   CALL SEEK_TO_SECTOR (cfd1)
 d5f5  cd b2 cf   CALL READ_SECTOR (cfb2)
 d5f8  c3 d2 d0   JMP d0d2
 ????:
@@ -2158,7 +2303,7 @@ d653  3a dd d9   LDA SINGLE_BYTE_ALLOCATION_MAP (d9dd)
 d656  b7         ORA A
 d657  3a d7 d9   LDA d9d7
 d65a  ca 64 d6   JZ d664
-d65d  cd 64 d1   CALL d164
+d65d  cd 64 d1   CALL HL_ADD_A (d164)
 d660  73         MOV M, E
 d661  c3 6c d6   JMP d66c
 ????:
@@ -2201,7 +2346,7 @@ d698  0e 02      MVI C, 02
 ????:
 d69a  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
 d69d  c5         PUSH BC
-d69e  cd d1 cf   CALL cfd1
+d69e  cd d1 cf   CALL SEEK_TO_SECTOR (cfd1)
 d6a1  c1         POP BC
 d6a2  cd b8 cf   CALL WRITE_SECTOR (cfb8)
 d6a5  2a e5 d9   LHLD ACTUAL_SECTOR (d9e5)
@@ -2216,7 +2361,7 @@ d6b4  e1         POP HL
 d6b5  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
 d6b8  cd da d1   CALL SET_DATA_DISK_BUFFER (d1da)
 ????:
-d6bb  cd d1 cf   CALL cfd1
+d6bb  cd d1 cf   CALL SEEK_TO_SECTOR (cfd1)
 d6be  c1         POP BC
 d6bf  c5         PUSH BC
 d6c0  cd b8 cf   CALL WRITE_SECTOR (cfb8)
@@ -2406,9 +2551,9 @@ d7e1  72         MOV M, D
 d7e2  23         INX HL
 d7e3  72         MOV M, D
 ????:
-d7e4  cd f5 d1   CALL d1f5
+d7e4  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d7e7  ca 0c d8   JZ d80c
-d7ea  cd 5e d1   CALL d15e
+d7ea  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
 d7ed  11 0f 00   LXI DE, 000f
 d7f0  cd a5 d7   CALL d7a5
 d7f3  e1         POP HL
@@ -2747,14 +2892,14 @@ LOGIN_VECTOR:
 DISK_BUFFER_ADDR:
     d9b1 00 00        dw 0000
 
-SCRATCHPAD_ADDR_1:
-    d9b3 00 00        dw 0000
+LAST_DIR_ENTRY_NUM_ADDR:
+    d9b3 00 00        dw 0000                   ; Pointer to latest directory entry number
 
 CUR_TRACK_ADDR:
-    d9b5 00 00        dw 0000
+    d9b5 00 00        dw 0000                   ; Pointer to current track number
 
 CUR_TRACK_SECTOR_ADDR:
-    d9b7 00 00        dw 0000                   ; Address of the variable that indicates currently selected
+    d9b7 00 00        dw 0000                   ; Pointer of the variable that indicates currently selected
                                                 ; sector. Despite the name, this is not an index of the 
                                                 ; sector. This rather an index of first sector on the selected
                                                 ; track, counting from very first sector on the disk
@@ -2765,7 +2910,7 @@ DIRECTORY_BUFFER_ADDR:
 DISK_PARAMS_BLOCK_ADDR:
     d9bb 00 00        dw 0000
 
-SCRATCHPAD_BUF_PTR:
+DIR_CRC_VECTOR_PTR:
     d9bd 00 00        dw 0000
 
 DISK_ALLOCATION_VECTOR_PTR:
@@ -2817,10 +2962,11 @@ ACTUAL_SECTOR:
                                                 ; Overall this is something line a LBA on modern computers)
 
 DIRECTORY_ENTRY_OFFSET:
-    d9e9 00           db 00                     ; ????
+    d9e9 00           db 00                     ; Offset of the current directory entry from the beginning of
+                                                ; current directory sector
 
 DIRECTORY_COUNTER:
     d9ea 00 00        dw 0000                   ; ??????
 
-????:
-    d9ec 00           db 00                     ; ???? current directory record
+CURRENT_DIR_ENTRY_SECTOR:
+    d9ec 00           db 00                     ; Sector number of the current directory entry

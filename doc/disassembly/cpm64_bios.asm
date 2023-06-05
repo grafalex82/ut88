@@ -91,12 +91,12 @@ ENTRY_POINTS:
 
 DISK_DESCRIPTION:
     da33  43 da      dw SECTOR_TRANSLATION_TABLE (da43) ; Pointer to the sector translation table, or 0000
-    da35  00 00      dw 0000                            ; Scratchpad values ????
+    da35  00 00      dw 0000                            ; Last directory entry number
     da37  00 00      dw 0000                            ; Currently selected track
     da39  00 00      dw 0000                            ; Currently selected sector
     da3b  f6 db      dw DIRECTORY_BUFFER (dbf6)         ; Pointer to the 128b buffer for directory operations
     da3d  4b da      dw DISK_PARAMETER_BLOCK (da4b)     ; Pointer to the Disk Parameter Block (DPB)
-    da3f  95 dc      dw dc95                            ; Address of scratchpad value for software check ????
+    da3f  95 dc      dw DIR_ENTRY_CRC_VECTOR (dc95)     ; Address of directory sectors CRC vector
     da41  76 dc      dw dc76                            ; Address of disk allocation information ????
     
 SECTOR_TRANSLATION_TABLE:
@@ -111,7 +111,7 @@ DISK_PARAMETER_BLOCK:
     da52  1f 00      dw 001f                    ; Number of directory entries
     da54  80         db 80                      ; AL0 ???? Reserved directory blocks
     da55  00         db 00                      ; AL1 ???? Reserved directory blocks
-    da56  08 00      dw 0008                    ; Size of the directory check vector
+    da56  08 00      dw 0008                    ; Size of the directory checksum vector
     da58  06 00      dw 0006                    ; Number of reserved tracks in the beginning
 
 WELCOME_STR:
@@ -501,5 +501,5 @@ DIRECTORY_BUFFER:
 DISK_ALLOCATION_INFO:
     dc76  00         db 00
 
-????:
-    dc95  00         db 00
+DIR_ENTRY_CRC_VECTOR:
+    dc95  8 x 00     db 8 x 00                  ; CRC of 8 directory sectors

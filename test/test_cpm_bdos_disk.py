@@ -41,10 +41,26 @@ def test_reset_disk_system(cpm, disk):
     call_bdos_function(cpm, 0x0d)
 
 
+def test_write_protect_disk(cpm, disk):
+    cpm._emulator._machine.set_quasi_disk(disk)
+    call_bdos_function(cpm, 0x0d)
+
+    # Check starting conditions
+    assert cpm.get_word(0xd9ad) == 0x0000   # Write protect bit is not set for any disk
+
+    # Write protect disk A (0)
+    call_bdos_function(cpm, 0x1c, 0)
+
+    # Check new conditions
+    assert cpm.get_word(0xd9ad) == 0x0001   # Write protect bit is set for disk A
+    assert cpm.get_word(0xda35) == 32       # Last entry number is set to maximum dir entries number
+
+
 def test_seek(cpm, disk):
     cpm._emulator._machine.set_quasi_disk(disk)
     call_bdos_function(cpm, 0x0d)
 
+    # Seek in forward direction, compared to current track
     cpm.set_word(0xd9e5, 0x0342)    # Set expected sector number to 0x342
     cpm.run_function(0xcfd1)        # Call seek function
 
@@ -58,8 +74,8 @@ def test_seek(cpm, disk):
     assert cpm.get_byte(0xdbee) == 0x03 # Sector #3 (Logical track #2, physical track #3 since 1-based)
 
 
-
-    cpm.set_word(0xd9e5, 0x073)    # Set expected sector number to 0x342
+    # Seek in backward direction, compared to current track
+    cpm.set_word(0xd9e5, 0x073)     # Set expected sector number to 0x342
     cpm.run_function(0xcfd1)        # Call seek function
 
     assert cpm.get_byte(0xdbec) == 0xfe
