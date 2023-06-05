@@ -42,3 +42,14 @@ def test_list_dir_raw(standard_disk_file):
     assert entry2['entry'] == 0 
     assert entry2['num_records'] == 128
     assert entry2['allocation'] == [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+
+
+def test_list_dir(standard_disk_file):
+    disk = CPMDisk(standard_disk_file)
+    entries = disk.list_dir()
+
+    os2cpp_asm = entries[1]
+    assert os2cpp_asm['filename'] == "OS2CCP.ASM"
+    assert os2cpp_asm['num_records'] == 200
+    assert os2cpp_asm['allocation'] == list(range(5, 30))
+

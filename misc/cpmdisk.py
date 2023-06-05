@@ -83,3 +83,25 @@ class CPMDisk():
             res.append(record)
 
         return res
+    
+
+    def list_dir(self):
+        entries = sorted(self.list_dir_raw(), key=lambda x: x['entry'], reverse=False)
+
+        res = {}
+        for entry in entries:
+            filename = entry['name'] + '.' + entry['ext']
+
+            if filename in res:
+                record = res[filename]
+                record['allocation'].extend(entry['allocation'])
+                record['num_records'] += entry['num_records']
+            else:
+                record = {
+                    'filename': filename,
+                    'num_records': entry['num_records'],
+                    'allocation': entry['allocation']
+                }
+                res[filename] = record
+
+        return list(res.values())
