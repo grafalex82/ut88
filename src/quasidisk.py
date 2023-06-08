@@ -19,6 +19,10 @@ class QuasiDisk(IODevice, StackDevice):
             self._data = bytearray(256*1024)
 
 
+    @property
+    def filename(self):
+        return self._fname
+
     def write_io(self, addr, value):
         self.validate_io_addr(addr)
 

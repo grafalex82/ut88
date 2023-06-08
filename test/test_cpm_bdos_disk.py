@@ -8,10 +8,15 @@
 #
 # Tests run an emulator, load CP/M components, and run required functions with certain arguments.
 
+import sys
 import pytest
+
+sys.path.append('../misc')
 
 from cpm_helper import CPM
 from quasidisk import QuasiDisk
+from cpmdisk import *
+
 
 @pytest.fixture
 def cpm():
@@ -22,7 +27,7 @@ def cpm():
 def disk(tmp_path):
     # Create and install an empty quasi disk
     f = tmp_path / "test.bin"
-    f.write_bytes(bytearray(256*1024))
+    f.write_bytes(bytearray([0xe5] * (256*1024)))
     disk = QuasiDisk(f)
     return disk
 
@@ -33,6 +38,21 @@ def call_bdos_function(cpm, func, arg = 0):
     cpm.run_function(0xcc06)
     return (cpm.cpu._b << 8) | cpm.cpu._a
 
+
+def fill_fcb(cpm, addr, filename):
+    # Zero the file control block
+    for i in range(33):
+        cpm.set_byte(addr + i, 0x00)
+
+    # Set name
+    name = f"{filename.split('.')[0]:8s}"
+    for i in range(8):
+        cpm.set_byte(addr + 1 + i, ord(name[i]))
+
+    # Set extension
+    ext = f"{filename.split('.')[1]:3s}"
+    for i in range(3):
+        cpm.set_byte(addr + 9 + i, ord(ext[i]))
 
 
 def test_reset_disk_system(cpm, disk):
@@ -82,3 +102,25 @@ def test_seek(cpm, disk):
     assert cpm.get_byte(0xdbed) == 0x14
     assert cpm.get_byte(0xdbee) == 0x04
 
+
+def test_create_file(cpm, disk):
+    cpm._emulator._machine.set_quasi_disk(disk)
+    call_bdos_function(cpm, 0x0d)
+
+    fill_fcb(cpm, 0x1000, 'ABC.TXT')
+
+    code = call_bdos_function(cpm, 0x16, 0x1000)
+    assert code == 0
+
+    code = call_bdos_function(cpm, 0x10, 0x1000)
+    assert code == 0
+
+    disk.update()
+    loader = CPMDisk(disk.filename, params=UT88DiskParams)
+    entries = loader.list_dir()
+
+    assert len(entries) == 1
+    assert entries['ABC.TXT']['num_records'] == 0
+
+
+# Test create a file on a read only disk
