@@ -24,6 +24,7 @@
 ; cf42  - current disk
 ; cf43  - function arguments (2 byte)
 ; cf45  - function return code or return value(2 byte)
+; d9ac  - ????
 ; d9ad  - Pointer to read only vector
 ; d9af  - Disk Login Vector
 ; d9b1  - ???? Disk buffer address
@@ -87,9 +88,9 @@ REAL_BDOS_ENTRY:
 
     cc24  31 41 cf   LXI SP, BDOS_STACK (cf41)  ; And set our own stack
 
-    cc27  af         XRA A                      ; ????
-    cc28  32 e0 d9   STA d9e0
-    cc2b  32 de d9   STA d9de
+    cc27  af         XRA A                      ; Do not do drive selection unless explicitly requested
+    cc28  32 e0 d9   STA FCB_DRIVE_CODE (d9e0)  ; in FCB
+    cc2b  32 de d9   STA RESELECT_DISK_ON_EXIT (d9de)
 
     cc2e  21 74 d9   LXI HL, BDOS_HANDLER_RETURN (d974) ; Set the return address
     cc31  e5         PUSH HL
@@ -133,32 +134,32 @@ FUNCTION_HANDLERS_TABLE:
     cc5f  7e d8      dw GET_BDOS_VERSION (d87e)     ; Function 0x0c - get version
     cc61  83 d8      dw RESET_DISK_SYSTEM (d883)    ; Function 0x0d - reset disk system
     cc63  45 d8      dw SELECT_DISK_FUNC (d845)     ; Function 0x0e - select disk
-cc65  9c d8
-cc67  a5 d8
-cc69  ab d8
-cc6b  c8 d8
-cc6d  d7 d8
-cc6f  e0 d8
-cc71  e6 d8
-cc73  ec d8
-cc75  f5 d8
-    cc77  fe d8     dw GET_LOGIN_VECTOR (d8fe)      ; Function 0x18 - Return disk login vector
-    cc79  04 d9     dw GET_CURRENT_DISK (d904)      ; Function 0x19 - Return current disk
-    cc7b  0a d9     dw SET_BUFFER_ADDR (d90a)       ; Function 0x1a - Set DMA buffer address
-    cc7d  11 d9     dw GET_ALLOCATION_VECTOR (d911) ; Function 0x1b - Get current disk allocation vector
-    cc7f  2c d1     dw WRITE_PROTECT_DISK (d12c)    ; Function 0x1c - Write protect disk
-    cc81  17 d9     dw GET_READ_ONLY_VECTOR (d917)  ; Function 0x1d - Get Read Only vector
-cc83  1d d9
-    cc85  26 d9     dw GET_DISK_PARAMS (d926)       ; Function 0x1f - Get address of Disk Params Block (DPB)
-    cc87  2d d9     dw GET_SET_USER_CODE (d92d)     ; Function 0x20 - Get or set user code
-cc89  41 d9
-cc8b  47 d9
-cc8d  4d d9
-cc8f  0e d8
-cc91  53 d9
-cc93  04 cf
-cc95  04 cf
-cc97  9b d9
+    cc65  9c d8      dw OPEN_FILE_FUNC (d89c)       ; Function 0x0f - open existing file
+    cc67  a5 d8      dw CLOSE_FILE_FUNC (d8a5)      ; Function 0x10 - close file
+    cc69  ab d8      dw SEARCH_FIRST_FUNC (d8ab)    ; Function 0x11 - search first match
+    cc6b  c8 d8      dw SEARCH_NEXT_FUNC (d8c8)     ; Function 0x12 - search next match
+    cc6d  d7 d8      dw DELETE_FILE_FUNC (d8d7)     ; Function 0x13 - delete file
+    cc6f  e0 d8      dw READ_SEQUENTAL_FUNC (d8e0)  ; Function 0x14 - read sequentally
+    cc71  e6 d8      dw WRITE_SEQUENTAL_FUNC (d8e6) ; Function 0x15 - write sequentally
+    cc73  ec d8      dw CREATE_FILE_FUNC (d8ec)     ; Function 0x16 - create file
+    cc75  f5 d8      dw RENAME_FILE_FUNC (d8f5)     ; Function 0x17 - rename file
+    cc77  fe d8      dw GET_LOGIN_VECTOR (d8fe)     ; Function 0x18 - Return disk login vector
+    cc79  04 d9      dw GET_CURRENT_DISK (d904)     ; Function 0x19 - Return current disk
+    cc7b  0a d9      dw SET_BUFFER_ADDR (d90a)      ; Function 0x1a - Set DMA buffer address
+    cc7d  11 d9      dw GET_ALLOCATION_VECTOR (d911); Function 0x1b - Get current disk allocation vector
+    cc7f  2c d1      dw WRITE_PROTECT_DISK (d12c)   ; Function 0x1c - Write protect disk
+    cc81  17 d9      dw GET_READ_ONLY_VECTOR (d917) ; Function 0x1d - Get Read Only vector
+    cc83  1d d9      dw SET_FILE_ATTRS_FUNC (d91d)  ; Function 0x1e - Set file attribites
+    cc85  26 d9      dw GET_DISK_PARAMS (d926)      ; Function 0x1f - Get address of Disk Params Block (DPB)
+    cc87  2d d9      dw GET_SET_USER_CODE (d92d)    ; Function 0x20 - Get or set user code
+    cc89  41 d9      dw READ_RANDOM_FUNC (d941)     ; Function 0x21 - Read random
+    cc8b  47 d9      dw WRITE_RANDOM_FUNC (d947)    ; Function 0x22 - Write random
+    cc8d  4d d9      dw GET_FILE_SIZE_FUNC (d94d)   ; Function 0x23 - Compute file size
+    cc8f  0e d8      dw SET_RANDOM_REC_FUNC (d80e)  ; Function 0x24 - Set random record
+    cc91  53 d9      dw FUNC_25 (d953)
+    cc93  04 cf      dw FUNC_26 (cf04)
+    cc95  04 cf      dw FUNC_27 (cf04)
+    cc97  9b d9      dw FUNC_28 (d99b)
 
 
 DISK_READ_WRITE_ERROR:
@@ -739,7 +740,7 @@ DIRECT_CONSOLE_IO:
 DIRECT_CONSOLE_INPUT:
     cee0  cd 06 da   CALL BIOS_IS_KEY_PRESSED (da06); Check if a character is ready
     cee3  b7         ORA A
-    cee4  ca 91 d9   JZ d991
+    cee4  ca 91 d9   JZ BDOS_HANDLER_RETURN_EXIT (d991)
 
     cee7  cd 09 da   CALL BIOS_CONSOLE_INPUT (da09) ; Input the character. No echo is performed.
     ceea  c3 01 cf   JMP FUNCTION_EXIT (cf01)
@@ -781,6 +782,9 @@ GET_CONSOLE_STATUS:
 
 FUNCTION_EXIT:
     cf01  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)   ; Store A in the predefined variable
+
+FUNC_26:
+FUNC_27:
     cf04  c9         RET
 
 ????:
@@ -1199,18 +1203,23 @@ d0a0  b5         ORA L
 d0a1  6f         MOV L, A
 d0a2  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
 d0a5  c9         RET
-????:
-d0a6  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d0a9  11 0c 00   LXI DE, 000c
-d0ac  19         DAD DE
-d0ad  c9         RET
+
+; HL = FCB pointer + 0x0c (extent number offset in the FCB)
+GET_FCB_EXTENT_NUMBER:
+    d0a6  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
+    d0a9  11 0c 00   LXI DE, 000c
+    d0ac  19         DAD DE
+    d0ad  c9         RET
 
 
+; DE = FCB pointer + 0xf (record count)
+; HL = FCB pointer + 0x20 (current record)
 ????:
 d0ae  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d0b1  11 0f 00   LXI DE, 000f
 d0b4  19         DAD DE
 d0b5  eb         XCHG
+
 d0b6  21 11 00   LXI HL, 0011
 d0b9  19         DAD DE
 d0ba  c9         RET
@@ -1224,7 +1233,7 @@ d0bf  32 e3 d9   STA d9e3
 d0c2  eb         XCHG
 d0c3  7e         MOV A, M
 d0c4  32 e1 d9   STA d9e1
-d0c7  cd a6 d0   CALL d0a6
+d0c7  cd a6 d0   CALL GET_FCB_EXTENT_NUMBER (d0a6)
 d0ca  3a c5 d9   LDA DISK_EXTENT_MASK (d9c5)
 d0cd  a6         ANA M
 d0ce  32 e2 d9   STA d9e2
@@ -1364,11 +1373,13 @@ d14c  17         RAL
 d14d  d0         RNC
 d14e  21 0f cc   LXI HL, FILE_READ_ONLY_ERROR_PTR (cc0f)
 d151  c3 4a cf   JMP ROUTE_TO_ERROR_HANDLER (cf4a)
-????:
-d154  cd 1e d1   CALL IS_DISK_READ_ONLY (d11e)
-d157  c8         RZ
-d158  21 0d cc   LXI HL, DISK_READ_ONLY_ERROR_PTR (cc0d)
-d15b  c3 4a cf   JMP ROUTE_TO_ERROR_HANDLER (cf4a)
+
+; Check if the disk is read only, and report an error
+CHECK_DISK_READ_ONLY:
+    d154  cd 1e d1   CALL IS_DISK_READ_ONLY (d11e)
+    d157  c8         RZ
+    d158  21 0d cc   LXI HL, DISK_READ_ONLY_ERROR_PTR (cc0d)
+    d15b  c3 4a cf   JMP ROUTE_TO_ERROR_HANDLER (cf4a)
 
 ; Calculate directory entry address
 ;
@@ -1386,26 +1397,30 @@ HL_ADD_A:
     d168  c9         RET
 
 
-; return:
+; Get S2 byte of the File Control Block (FCB)
+;
+; Returns:
 ; HL = HL + 0x0e
 ; A = [HL]
-????:
-d169  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d16c  11 0e 00   LXI DE, 000e
-d16f  19         DAD DE
-d170  7e         MOV A, M
-d171  c9         RET
+GET_FCB_S2:
+    d169  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
+    d16c  11 0e 00   LXI DE, 000e
+    d16f  19         DAD DE
+    d170  7e         MOV A, M
+    d171  c9         RET
 
-????:
-d172  cd 69 d1   CALL d169
-d175  36 00      MVI M, 00
-d177  c9         RET
+; Clear the S2 byte in the File Control Block (FCB)
+CLEAR_FCB_S2:
+    d172  cd 69 d1   CALL GET_FCB_S2 (d169)
+    d175  36 00      MVI M, 00
+    d177  c9         RET
 
-????:
-d178  cd 69 d1   CALL d169
-d17b  f6 80      ORI A, 80
-d17d  77         MOV M, A
-d17e  c9         RET
+; Set the high bit in S2 byte of the File Control Block (FCB)
+SET_FCB_S2:
+    d178  cd 69 d1   CALL GET_FCB_S2 (d169)
+    d17b  f6 80      ORI A, 80
+    d17d  77         MOV M, A
+    d17e  c9         RET
 
 ; Compare current directory counter and the last dir entry number. Set corresponding flags.
 CMP_DIR_COUNTER_WITH_MAX:
@@ -1828,12 +1843,15 @@ d304  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ????:
 d307  c5         PUSH BC
 d308  f5         PUSH PSW
+
 d309  3a c5 d9   LDA DISK_EXTENT_MASK (d9c5)
 d30c  2f         CMA
 d30d  47         MOV B, A
+
 d30e  79         MOV A, C
 d30f  a0         ANA B
 d310  4f         MOV C, A
+
 d311  f1         POP PSW
 d312  a0         ANA B
 d313  91         SUB C
@@ -1841,80 +1859,110 @@ d314  e6 1f      ANI A, 1f
 d316  c1         POP BC
 d317  c9         RET
 
+
+
+; ????
+;
+; Arguments:
+; C - ????
 ????:
-d318  3e ff      MVI A, ff
-d31a  32 d4 d9   STA d9d4
-d31d  21 d8 d9   LXI HL, d9d8
-d320  71         MOV M, C
-d321  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d324  22 d9 d9   SHLD d9d9
-d327  cd fe d1   CALL RESET_DIRECTORY_COUNTER (d1fe)
-d32a  cd a1 cf   CALL SET_TRACK_ZERO (cfa1)
+    d318  3e ff      MVI A, ff                  ; ????? set the flag ???
+    d31a  32 d4 d9   STA d9d4
+
+    d31d  21 d8 d9   LXI HL, d9d8               ; ??? Store argument at d9d8
+    d320  71         MOV M, C
+
+    d321  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Store pointer to FCB ????
+    d324  22 d9 d9   SHLD d9d9
+
+    d327  cd fe d1   CALL RESET_DIRECTORY_COUNTER (d1fe); Prepare for iterating over directory entries
+    d32a  cd a1 cf   CALL SET_TRACK_ZERO (cfa1)
+
+SEARCH_NEXT:
+    d32d  0e 00      MVI C, 00                  ; Get next entry, check CRC (not update)
+    d32f  cd 05 d2   CALL GET_NEXT_DIR_ENTRY (d205)
+
+    d332  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)   ; Have we reached the end of directory?
+    d335  ca 94 d3   JZ d394
+
+    d338  2a d9 d9   LHLD d9d9                  ; Get the pointer to FCB, and put it to DE
+    d33b  eb         XCHG
+
+    d33c  1a         LDAX DE                    ; Load the first byte of the FCB, check if the file is deleted
+    d33d  fe e5      CPI A, e5
+    d33f  ca 4a d3   JZ d34a
+
+    d342  d5         PUSH DE                    ; Check if we reached the end of the directory
+    d343  cd 7f d1   CALL CMP_DIR_COUNTER_WITH_MAX (d17f)
+    d346  d1         POP DE
+    d347  d2 94 d3   JNC d394
+
 ????:
-d32d  0e 00      MVI C, 00
-d32f  cd 05 d2   CALL GET_NEXT_DIR_ENTRY (d205)
-d332  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
-d335  ca 94 d3   JZ d394
-d338  2a d9 d9   LHLD d9d9
-d33b  eb         XCHG
-d33c  1a         LDAX DE
-d33d  fe e5      CPI A, e5
-d33f  ca 4a d3   JZ d34a
-d342  d5         PUSH DE
-d343  cd 7f d1   CALL CMP_DIR_COUNTER_WITH_MAX (d17f)
-d346  d1         POP DE
-d347  d2 94 d3   JNC d394
+    d34a  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
+
+    d34d  3a d8 d9   LDA d9d8                   ; Load the func argument ????
+    d350  4f         MOV C, A
+    d351  06 00      MVI B, 00
+
 ????:
-d34a  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
-d34d  3a d8 d9   LDA d9d8
-d350  4f         MOV C, A
-d351  06 00      MVI B, 00
-????:
-d353  79         MOV A, C
-d354  b7         ORA A
-d355  ca 83 d3   JZ d383
-d358  1a         LDAX DE
-d359  fe 3f      CPI A, 3f
-d35b  ca 7c d3   JZ d37c
-d35e  78         MOV A, B
-d35f  fe 0d      CPI A, 0d
-d361  ca 7c d3   JZ d37c
-d364  fe 0c      CPI A, 0c
-d366  1a         LDAX DE
-d367  ca 73 d3   JZ d373
+    d353  79         MOV A, C                   ; Argument is zero ????        
+    d354  b7         ORA A
+    d355  ca 83 d3   JZ d383
+
+    d358  1a         LDAX DE                    ; Check for '?' symbol ?????
+    d359  fe 3f      CPI A, 3f
+    d35b  ca 7c d3   JZ d37c
+
+    d35e  78         MOV A, B                   ; Max offset in FCB ???? Extent number ??? S1 byte
+    d35f  fe 0d      CPI A, 0d
+    d361  ca 7c d3   JZ d37c
+
+    d364  fe 0c      CPI A, 0c                  ; Max offset in FCB ???? extension ??? extent number ???
+    d366  1a         LDAX DE
+    d367  ca 73 d3   JZ d373
+
 d36a  96         SUB M
 d36b  e6 7f      ANI A, 7f
-d36d  c2 2d d3   JNZ d32d
+d36d  c2 2d d3   JNZ SEARCH_NEXT (d32d)
+
 d370  c3 7c d3   JMP d37c
+
 ????:
 d373  c5         PUSH BC
 d374  4e         MOV C, M
 d375  cd 07 d3   CALL d307
 d378  c1         POP BC
-d379  c2 2d d3   JNZ d32d
+d379  c2 2d d3   JNZ SEARCH_NEXT (d32d)
 ????:
 d37c  13         INX DE
 d37d  23         INX HL
 d37e  04         INR B
 d37f  0d         DCR C
 d380  c3 53 d3   JMP d353
+
 ????:
-d383  3a ea d9   LDA DIRECTORY_COUNTER (d9ea)
-d386  e6 03      ANI A, 03
-d388  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
-d38b  21 d4 d9   LXI HL, d9d4
-d38e  7e         MOV A, M
-d38f  17         RAL
-d390  d0         RNC
-d391  af         XRA A
-d392  77         MOV M, A
-d393  c9         RET
+    d383  3a ea d9   LDA DIRECTORY_COUNTER (d9ea)   ; Return the index of the directory entry within the
+    d386  e6 03      ANI A, 03                      ; current directory sector ????
+    d388  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
+
+    d38b  21 d4 d9   LXI HL, d9d4               ; Return if flag is not set ????
+    d38e  7e         MOV A, M
+    d38f  17         RAL
+    d390  d0         RNC
+
+    d391  af         XRA A                      ; Otherwise clear the flag  ????
+    d392  77         MOV M, A
+    d393  c9         RET
+
+
 ????:
-d394  cd fe d1   CALL RESET_DIRECTORY_COUNTER (d1fe)
-d397  3e ff      MVI A, ff
-d399  c3 01 cf   JMP FUNCTION_EXIT (cf01)
-????:
-d39c  cd 54 d1   CALL d154
+    d394  cd fe d1   CALL RESET_DIRECTORY_COUNTER (d1fe); Reset the counter
+    d397  3e ff      MVI A, ff                  ; And report that no more entries left
+    d399  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+
+
+DELETE_FILE:
+d39c  cd 54 d1   CALL CHECK_DISK_READ_ONLY (d154)
 d39f  0e 0c      MVI C, 0c
 d3a1  cd 18 d3   CALL d318
 ????:
@@ -1926,8 +1974,10 @@ d3ae  36 e5      MVI M, e5
 d3b0  0e 00      MVI C, 00
 d3b2  cd 6b d2   CALL UPDATE_DISK_MAP (d26b)
 d3b5  cd c6 d1   CALL d1c6
-d3b8  cd 2d d3   CALL d32d
+d3b8  cd 2d d3   CALL SEARCH_NEXT (d32d)
 d3bb  c3 a4 d3   JMP d3a4
+
+
 ????:
 d3be  50         MOV D, B
 d3bf  59         MOV E, C
@@ -1974,6 +2024,8 @@ d3f5  b0         ORA B
 d3f6  c2 c0 d3   JNZ d3c0
 d3f9  21 00 00   LXI HL, 0000
 d3fc  c9         RET
+
+
 ????:
 d3fd  0e 00      MVI C, 00
 d3ff  1e 20      MVI E, 20
@@ -1989,8 +2041,10 @@ d40d  cd 4f cf   CALL MEMCOPY_DE_HL (cf4f)
 ????:
 d410  cd c3 cf   CALL SEEK_TO_DIR_ENTRY (cfc3)
 d413  c3 c6 d1   JMP d1c6
-????:
-d416  cd 54 d1   CALL d154
+
+
+RENAME_FILE:
+d416  cd 54 d1   CALL CHECK_DISK_READ_ONLY (d154)
 d419  0e 0c      MVI C, 0c
 d41b  cd 18 d3   CALL d318
 d41e  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
@@ -2005,9 +2059,11 @@ d42b  cd 44 d1   CALL d144
 d42e  0e 10      MVI C, 10
 d430  1e 0c      MVI E, 0c
 d432  cd 01 d4   CALL d401
-d435  cd 2d d3   CALL d32d
+d435  cd 2d d3   CALL SEARCH_NEXT (d32d)
 d438  c3 27 d4   JMP d427
-????:
+
+
+SET_FILE_ATTRS:
 d43b  0e 0c      MVI C, 0c
 d43d  cd 18 d3   CALL d318
 ????:
@@ -2016,15 +2072,16 @@ d443  c8         RZ
 d444  0e 00      MVI C, 00
 d446  1e 0c      MVI E, 0c
 d448  cd 01 d4   CALL d401
-d44b  cd 2d d3   CALL d32d
+d44b  cd 2d d3   CALL SEARCH_NEXT (d32d)
 d44e  c3 40 d4   JMP d440
-????:
+
+OPEN_FILE:
 d451  0e 0f      MVI C, 0f
 d453  cd 18 d3   CALL d318
 d456  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d459  c8         RZ
 ????:
-d45a  cd a6 d0   CALL d0a6
+d45a  cd a6 d0   CALL GET_FCB_EXTENT_NUMBER (d0a6)
 d45d  7e         MOV A, M
 d45e  f5         PUSH PSW
 d45f  e5         PUSH HL
@@ -2034,7 +2091,7 @@ d464  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d467  0e 20      MVI C, 20
 d469  d5         PUSH DE
 d46a  cd 4f cf   CALL MEMCOPY_DE_HL (cf4f)
-d46d  cd 78 d1   CALL d178
+d46d  cd 78 d1   CALL SET_FCB_S2 (d178)
 d470  d1         POP DE
 d471  21 0c 00   LXI HL, 000c
 d474  19         DAD DE
@@ -2073,14 +2130,15 @@ d49e  77         MOV M, A
 d49f  1b         DCX DE
 d4a0  2b         DCX HL
 d4a1  c9         RET
-????:
+
+CLOSE_FILE:
 d4a2  af         XRA A
 d4a3  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
 d4a6  32 ea d9   STA DIRECTORY_COUNTER (d9ea)
 d4a9  32 eb d9   STA d9eb
 d4ac  cd 1e d1   CALL IS_DISK_READ_ONLY (d11e)
 d4af  c0         RNZ
-d4b0  cd 69 d1   CALL d169
+d4b0  cd 69 d1   CALL GET_FCB_S2 (d169)
 d4b3  e6 80      ANI A, 80
 d4b5  c0         RNZ
 d4b6  0e 0f      MVI C, 0f
@@ -2153,14 +2211,19 @@ d51c  c3 10 d4   JMP d410
 d51f  21 45 cf   LXI HL, FUNCTION_RETURN_VALUE (cf45)
 d522  35         DCR M
 d523  c9         RET
-????:
-d524  cd 54 d1   CALL d154
-d527  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d52a  e5         PUSH HL
-d52b  21 ac d9   LXI HL, d9ac
-d52e  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
-d531  0e 01      MVI C, 01
-d533  cd 18 d3   CALL d318
+
+CREATE_FILE:
+    d524  cd 54 d1   CALL CHECK_DISK_READ_ONLY (d154)   ; Check if operation is possible
+
+    d527  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)     ; Load the pointer to FCB
+    d52a  e5         PUSH HL
+
+    d52b  21 ac d9   LXI HL, d9ac               ; ??????
+    d52e  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
+
+    d531  0e 01      MVI C, 01
+    d533  cd 18 d3   CALL d318
+
 d536  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d539  e1         POP HL
 d53a  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
@@ -2180,11 +2243,13 @@ d54f  19         DAD DE
 d550  77         MOV M, A
 d551  cd 8c d1   CALL UPDATE_LAST_DIR_ENTRY_NUMBER (d18c)
 d554  cd fd d3   CALL d3fd
-d557  c3 78 d1   JMP d178
+d557  c3 78 d1   JMP SET_FCB_S2 (d178)
+
+
 ????:
 d55a  af         XRA A
 d55b  32 d2 d9   STA d9d2
-d55e  cd a2 d4   CALL d4a2
+d55e  cd a2 d4   CALL CLOSE_FILE (d4a2)
 d561  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d564  c8         RZ
 d565  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
@@ -2217,7 +2282,7 @@ d596  c2 ac d5   JNZ d5ac
 d599  3a d3 d9   LDA d9d3
 d59c  3c         INR A
 d59d  ca b6 d5   JZ d5b6
-d5a0  cd 24 d5   CALL d524
+d5a0  cd 24 d5   CALL CREATE_FILE (d524)
 d5a3  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d5a6  ca b6 d5   JZ d5b6
 d5a9  c3 af d5   JMP d5af
@@ -2229,8 +2294,9 @@ d5b2  af         XRA A
 d5b3  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ????:
 d5b6  cd 05 cf   CALL cf05
-d5b9  c3 78 d1   JMP d178
-????:
+d5b9  c3 78 d1   JMP SET_FCB_S2 (d178)
+
+READ_SEQUENTAL:
 d5bc  3e 01      MVI A, 01
 d5be  32 d5 d9   STA d9d5
 ????:
@@ -2259,13 +2325,15 @@ d5f5  cd b2 cf   CALL READ_SECTOR (cfb2)
 d5f8  c3 d2 d0   JMP d0d2
 ????:
 d5fb  c3 05 cf   JMP cf05
-????:
+
+
+WRITE_SEQUENTAL:
 d5fe  3e 01      MVI A, 01
 d600  32 d5 d9   STA d9d5
 ????:
 d603  3e 00      MVI A, 00
 d605  32 d3 d9   STA d9d3
-d608  cd 54 d1   CALL d154
+d608  cd 54 d1   CALL CHECK_DISK_READ_ONLY (d154)
 d60b  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d60e  cd 47 d1   CALL d147
 d611  cd bb d0   CALL d0bb
@@ -2378,7 +2446,7 @@ d6d2  0d         DCR C
 d6d3  0d         DCR C
 d6d4  c2 df d6   JNZ d6df
 d6d7  f5         PUSH PSW
-d6d8  cd 69 d1   CALL d169
+d6d8  cd 69 d1   CALL GET_FCB_S2 (d169)
 d6db  e6 7f      ANI A, 7f
 d6dd  77         MOV M, A
 d6de  f1         POP PSW
@@ -2450,7 +2518,7 @@ d744  ca 7f d7   JZ d77f
 ????:
 d747  c5         PUSH BC
 d748  d5         PUSH DE
-d749  cd a2 d4   CALL d4a2
+d749  cd a2 d4   CALL CLOSE_FILE (d4a2)
 d74c  d1         POP DE
 d74d  c1         POP BC
 d74e  2e 03      MVI L, 03
@@ -2463,7 +2531,7 @@ d75b  71         MOV M, C
 d75c  21 0e 00   LXI HL, 000e
 d75f  19         DAD DE
 d760  70         MOV M, B
-d761  cd 51 d4   CALL d451
+d761  cd 51 d4   CALL OPEN_FILE (d451)
 d764  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)
 d767  3c         INR A
 d768  c2 7f d7   JNZ d77f
@@ -2472,7 +2540,7 @@ d76c  c5         PUSH BC
 d76d  2e 04      MVI L, 04
 d76f  0c         INR C
 d770  ca 84 d7   JZ d784
-d773  cd 24 d5   CALL d524
+d773  cd 24 d5   CALL CREATE_FILE (d524)
 d776  2e 05      MVI L, 05
 d778  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)
 d77b  3c         INR A
@@ -2483,24 +2551,39 @@ d780  af         XRA A
 d781  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 ????:
 d784  e5         PUSH HL
-d785  cd 69 d1   CALL d169
+d785  cd 69 d1   CALL GET_FCB_S2 (d169)
 d788  36 c0      MVI M, c0
 d78a  e1         POP HL
 ????:
 d78b  c1         POP BC
 d78c  7d         MOV A, L
 d78d  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
-d790  c3 78 d1   JMP d178
-????:
+d790  c3 78 d1   JMP SET_FCB_S2 (d178)
+
+
+READ_RANDOM:
 d793  0e ff      MVI C, ff
 d795  cd 03 d7   CALL d703
 d798  cc c1 d5   CZ d5c1
 d79b  c9         RET
-????:
+
+WRITE_RANDOM:
 d79c  0e 00      MVI C, 00
 d79e  cd 03 d7   CALL d703
 d7a1  cc 03 d6   CZ d603
 d7a4  c9         RET
+
+
+
+; ????
+; Arguments:
+; DE - ??? 0x0f or 0x20 offset 
+; HL - ??? directory entry or FCB address
+;
+; Returns:
+; A
+; B
+; C
 ????:
 d7a5  eb         XCHG
 d7a6  19         DAD DE
@@ -2538,7 +2621,8 @@ d7cd  e1         POP HL
 d7ce  b5         ORA L
 d7cf  e6 01      ANI A, 01
 d7d1  c9         RET
-????:
+
+GET_FILE_SIZE:
 d7d2  0e 0c      MVI C, 0c
 d7d4  cd 18 d3   CALL d318
 d7d7  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
@@ -2574,11 +2658,13 @@ d803  70         MOV M, B
 d804  2b         DCX HL
 d805  71         MOV M, C
 ????:
-d806  cd 2d d3   CALL d32d
+d806  cd 2d d3   CALL SEARCH_NEXT (d32d)
 d809  c3 e4 d7   JMP d7e4
 ????:
 d80c  e1         POP HL
 d80d  c9         RET
+
+SET_RANDOM_REC_FUNC:
 d80e  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d811  11 20 00   LXI DE, 0020
 d814  cd a5 d7   CALL d7a5
@@ -2639,35 +2725,46 @@ SELECT_DISK_FUNC:
 
     d84e  c3 21 d8   JMP SELECT_DISK (d821)
 
-????:
-d851  3e ff      MVI A, ff
-d853  32 de d9   STA d9de
+; Switch to a drive requested in FCB, if needed
+;
+; Some functions may request an operation on a different disk drive, compared to the current one.
+; In this case the function saves the current drive, and selects the desired one. Drive will be
+; restored on exiting from BDOS to the caller
+;
+; The desired drive is specified in the first byte of the FCB.
+RESELECT_DISK:
+    d851  3e ff      MVI A, ff                  ; Set flag that disk was reselected, and needs to be restored
+    d853  32 de d9   STA RESELECT_DISK_ON_EXIT (d9de)   ; on exit
 
-d856  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d859  7e         MOV A, M
+    d856  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Get file drive code
+    d859  7e         MOV A, M
 
-d85a  e6 1f      ANI A, 1f
-d85c  3d         DCR A
-d85d  32 d6 d9   STA FUNCTION_BYTE_ARGUMENT (d9d6)
+    d85a  e6 1f      ANI A, 1f                  ; Set the code to 0xff if default drive is used
+    d85c  3d         DCR A                      ; Normal disk codes will start from 0
+    d85d  32 d6 d9   STA FUNCTION_BYTE_ARGUMENT (d9d6)  ; Anyway set the disk code to be used by other funcs
 
-d860  fe 1e      CPI A, 1e
-d862  d2 75 d8   JNC d875
+    d860  fe 1e      CPI A, 1e                  ; Check if a drive was specified, or use default drive
+    d862  d2 75 d8   JNC RESELECT_DISK_1 (d875)
 
-d865  3a 42 cf   LDA CURRENT_DISK (cf42)
-d868  32 df d9   STA d9df
+    d865  3a 42 cf   LDA CURRENT_DISK (cf42)    ; Load currently selected drive, and remember it to be
+    d868  32 df d9   STA PREV_SELECTED_DRIVE (d9df) ; restored on exit
 
-d86b  7e         MOV A, M
-d86c  32 e0 d9   STA d9e0
+    d86b  7e         MOV A, M                   ; Load requested drive and store it to be restored on exit
+    d86c  32 e0 d9   STA FCB_DRIVE_CODE (d9e0)
 
-d86f  e6 e0      ANI A, e0
-d871  77         MOV M, A
-d872  cd 45 d8   CALL SELECT_DISK_FUNC (d845)
-????:
-d875  3a 41 cf   LDA USER_CODE (cf41)
-d878  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d87b  b6         ORA M
-d87c  77         MOV M, A
-d87d  c9         RET
+    d86f  e6 e0      ANI A, e0                  ; Make the disk code in FCB as 'current disk' as we are 
+    d871  77         MOV M, A                   ; selecting the disk in the next line
+
+    d872  cd 45 d8   CALL SELECT_DISK_FUNC (d845)   ; Select the disk
+
+RESELECT_DISK_1:
+    d875  3a 41 cf   LDA USER_CODE (cf41)       ; We do not need disk code anymore. Place user code instead
+    d878  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; in the first byte of the FCB
+    d87b  b6         ORA M
+    d87c  77         MOV M, A
+
+    d87d  c9         RET
+
 
 ; Function 0x0c - get BDOS version
 ;
@@ -2701,43 +2798,68 @@ RESET_DISK_SYSTEM:
 
 
 
+OPEN_FILE_FUNC:
+d89c  cd 72 d1   CALL CLEAR_FCB_S2 (d172)
+d89f  cd 51 d8   CALL RESELECT_DISK (d851)
+d8a2  c3 51 d4   JMP OPEN_FILE (d451)
 
-d89c  cd 72 d1   CALL d172
-d89f  cd 51 d8   CALL d851
-d8a2  c3 51 d4   JMP d451
-d8a5  cd 51 d8   CALL d851
-d8a8  c3 a2 d4   JMP d4a2
+
+CLOSE_FILE_FUNC:
+d8a5  cd 51 d8   CALL RESELECT_DISK (d851)
+d8a8  c3 a2 d4   JMP CLOSE_FILE (d4a2)
+
+
+SEARCH_FIRST_FUNC:
 d8ab  0e 00      MVI C, 00
 d8ad  eb         XCHG
 d8ae  7e         MOV A, M
 d8af  fe 3f      CPI A, 3f
 d8b1  ca c2 d8   JZ d8c2
-d8b4  cd a6 d0   CALL d0a6
+d8b4  cd a6 d0   CALL GET_FCB_EXTENT_NUMBER (d0a6)
 d8b7  7e         MOV A, M
 d8b8  fe 3f      CPI A, 3f
-d8ba  c4 72 d1   CNZ d172
-d8bd  cd 51 d8   CALL d851
+d8ba  c4 72 d1   CNZ CLEAR_FCB_S2 (d172)
+d8bd  cd 51 d8   CALL RESELECT_DISK (d851)
 d8c0  0e 0f      MVI C, 0f
 ????:
 d8c2  cd 18 d3   CALL d318
 d8c5  c3 e9 d1   JMP COPY_DIR_BUF_TO_DISK_BUF (d1e9)
+
+SEARCH_NEXT_FUNC:
 d8c8  2a d9 d9   LHLD d9d9
 d8cb  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
-d8ce  cd 51 d8   CALL d851
-d8d1  cd 2d d3   CALL d32d
+d8ce  cd 51 d8   CALL RESELECT_DISK (d851)
+d8d1  cd 2d d3   CALL SEARCH_NEXT (d32d)
 d8d4  c3 e9 d1   JMP COPY_DIR_BUF_TO_DISK_BUF (d1e9)
-d8d7  cd 51 d8   CALL d851
-d8da  cd 9c d3   CALL d39c
+
+DELETE_FILE_FUNC:
+d8d7  cd 51 d8   CALL RESELECT_DISK (d851)
+d8da  cd 9c d3   CALL DELETE_FILE (d39c)
 d8dd  c3 01 d3   JMP d301
-d8e0  cd 51 d8   CALL d851
-d8e3  c3 bc d5   JMP d5bc
-d8e6  cd 51 d8   CALL d851
-d8e9  c3 fe d5   JMP d5fe
-d8ec  cd 72 d1   CALL d172
-d8ef  cd 51 d8   CALL d851
-d8f2  c3 24 d5   JMP d524
-d8f5  cd 51 d8   CALL d851
-d8f8  cd 16 d4   CALL d416
+
+READ_SEQUENTAL_FUNC:
+d8e0  cd 51 d8   CALL RESELECT_DISK (d851)
+d8e3  c3 bc d5   JMP READ_SEQUENTAL (d5bc)
+
+WRITE_SEQUENTAL_FUNC:
+d8e6  cd 51 d8   CALL RESELECT_DISK (d851)
+d8e9  c3 fe d5   JMP WRITE_SEQUENTAL (d5fe)
+
+; Function 0x16 - Create a file
+;
+; Arguments:
+; DE - pointer to the File Control Block (FCB)
+;
+; Return:
+; A - directory code
+CREATE_FILE_FUNC:
+    d8ec  cd 72 d1   CALL CLEAR_FCB_S2 (d172)
+    d8ef  cd 51 d8   CALL RESELECT_DISK (d851)
+    d8f2  c3 24 d5   JMP CREATE_FILE (d524)
+
+RENAME_FILE_FUNC:
+d8f5  cd 51 d8   CALL RESELECT_DISK (d851)
+d8f8  cd 16 d4   CALL RENAME_FILE (d416)
 d8fb  c3 01 d3   JMP d301
 
 ; Function 0x18 - Return disk login vector
@@ -2784,8 +2906,11 @@ GET_READ_ONLY_VECTOR:
     d917  2a ad d9   LHLD READ_ONLY_VECTOR (d9ad)
     d91a  c3 29 d9   JMP RETURN_HL (d929)
 
-d91d  cd 51 d8   CALL d851
-d920  cd 3b d4   CALL d43b
+
+
+SET_FILE_ATTRS_FUNC:
+d91d  cd 51 d8   CALL RESELECT_DISK (d851)
+d920  cd 3b d4   CALL SET_FILE_ATTRS (d43b)
 d923  c3 01 d3   JMP d301
 
 ; Function 0x1f - Get Address of Disk Params Block
@@ -2821,13 +2946,20 @@ GET_SET_USER_CODE_1:
     d940  c9         RET
 
 
-d941  cd 51 d8   CALL d851
-d944  c3 93 d7   JMP d793
+READ_RANDOM_FUNC:
+d941  cd 51 d8   CALL RESELECT_DISK (d851)
+d944  c3 93 d7   JMP READ_RANDOM (d793)
 
-d947  cd 51 d8   CALL d851
-d94a  c3 9c d7   JMP d79c
-d94d  cd 51 d8   CALL d851
-d950  c3 d2 d7   JMP d7d2
+WRITE_RANDOM_FUNC:
+d947  cd 51 d8   CALL RESELECT_DISK (d851)
+d94a  c3 9c d7   JMP WRITE_RANDOM (d79c)
+
+GET_FILE_SIZE_FUNC:
+d94d  cd 51 d8   CALL RESELECT_DISK (d851)
+d950  c3 d2 d7   JMP GET_FILE_SIZE (d7d2)
+
+
+FUNC_25:
 d953  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d956  7d         MOV A, L
 d957  2f         CMA
@@ -2852,27 +2984,40 @@ d96f  67         MOV H, A
 d970  22 ad d9   SHLD READ_ONLY_VECTOR (d9ad)
 d973  c9         RET
 
+
+
+
 BDOS_HANDLER_RETURN:
-d974  3a de d9   LDA d9de
-d977  b7         ORA A
-d978  ca 91 d9   JZ d991
-d97b  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d97e  36 00      MVI M, 00
-d980  3a e0 d9   LDA d9e0
-d983  b7         ORA A
-d984  ca 91 d9   JZ d991
-d987  77         MOV M, A
-d988  3a df d9   LDA d9df
-d98b  32 d6 d9   STA FUNCTION_BYTE_ARGUMENT (d9d6)
-d98e  cd 45 d8   CALL SELECT_DISK_FUNC (d845)
-????:
-d991  2a 0f cf   LHLD BDOS_SAVE_SP (cf0f)
-d994  f9         SPHL
-d995  2a 45 cf   LHLD FUNCTION_RETURN_VALUE (cf45)
-d998  7d         MOV A, L
-d999  44         MOV B, H
-d99a  c9         RET
-d99b  cd 51 d8   CALL d851
+    d974  3a de d9   LDA RESELECT_DISK_ON_EXIT (d9de)   ; Check if the disk was changed, and needs to be
+    d977  b7         ORA A                              ; re-selected back
+    d978  ca 91 d9   JZ BDOS_HANDLER_RETURN_EXIT (d991)
+
+    d97b  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
+    d97e  36 00      MVI M, 00
+
+    d980  3a e0 d9   LDA FCB_DRIVE_CODE (d9e0)      ; FCB shares the first byte for drive code externally
+    d983  b7         ORA A                          ; and user code internally. Restore the drive code 
+    d984  ca 91 d9   JZ BDOS_HANDLER_RETURN_EXIT (d991) ; previously passed in FCB
+
+    d987  77         MOV M, A                       ; Store the drive code
+
+    d988  3a df d9   LDA PREV_SELECTED_DRIVE (d9df) ; Restore previously selected disk
+    d98b  32 d6 d9   STA FUNCTION_BYTE_ARGUMENT (d9d6)
+    d98e  cd 45 d8   CALL SELECT_DISK_FUNC (d845)
+
+BDOS_HANDLER_RETURN_EXIT:
+    d991  2a 0f cf   LHLD BDOS_SAVE_SP (cf0f)       ; Restore SO
+    d994  f9         SPHL
+
+    d995  2a 45 cf   LHLD FUNCTION_RETURN_VALUE (cf45)  ; Load function return value to AB
+    d998  7d         MOV A, L
+    d999  44         MOV B, H
+
+    d99a  c9         RET                            ; and go back to the caller
+
+
+FUNC_28:
+d99b  cd 51 d8   CALL RESELECT_DISK (d851)
 d99e  3e 02      MVI A, 02
 d9a0  32 d5 d9   STA d9d5
 d9a3  0e 00      MVI C, 00
@@ -2881,7 +3026,7 @@ d9a8  cc 03 d6   CZ d603
 d9ab  c9         RET
 
 ????:
-d9ac  e5         PUSH HL
+    d9ac  e5          db e5
 
 READ_ONLY_VECTOR:
     d9ad 00 00        dw 0000
@@ -2946,10 +3091,21 @@ DISK_NUM_RESERVED_TRACKS:
     d9ce  06 00      dw 0006                    ; Number of reserved tracks in the beginning
 
 SECTOR_TRANS_TABLE:
-    ded0 00 00        dw 0000                   ; Pointer to the sector translation table
+    d9d0 00 00        dw 0000                   ; Pointer to the sector translation table
+
+
+?????:
+    d9d4 00           db 00                     ; ????? flag
 
 FUNCTION_BYTE_ARGUMENT:
     d9d6 00           db 00 
+
+????:
+    d9d8 00           db 00                     ; ?????
+
+
+?????:
+    d9d9 00 00        dw 0000                   ; Pointer to FCB ????
 
 SINGLE_BYTE_ALLOCATION_MAP:
     d9dd 00           db 00                     ; Flag indicating that total disk capacity high byte is 0
@@ -2970,3 +3126,12 @@ DIRECTORY_COUNTER:
 
 CURRENT_DIR_ENTRY_SECTOR:
     d9ec 00           db 00                     ; Sector number of the current directory entry
+
+RESELECT_DISK_ON_EXIT:
+    d9de 00           db 00                     ; Flag indicating that disk needs to be re-selected on exit
+
+PREV_SELECTED_DRIVE:
+    d9df 00           db 00                     ; Previously selected disk
+
+FCB_DRIVE_CODE:
+    d9e0 00           db 00                     ; Drive code passed as a first byte of FCB
