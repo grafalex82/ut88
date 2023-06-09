@@ -24,11 +24,16 @@ def cpm():
 
 
 @pytest.fixture
-def disk(tmp_path):
+def disk(tmp_path, cpm):
     # Create and install an empty quasi disk
     f = tmp_path / "test.bin"
     f.write_bytes(bytearray([0xe5] * (256*1024)))
     disk = QuasiDisk(f)
+
+    # Register the disk at CPM and initialize the disk system
+    cpm._emulator._machine.set_quasi_disk(disk)
+    call_bdos_function(cpm, 0x0d)
+
     return disk
 
 
@@ -55,21 +60,42 @@ def fill_fcb(cpm, addr, filename):
         cpm.set_byte(addr + 9 + i, ord(ext[i]))
 
 
-def test_reset_disk_system(cpm, disk):
-    cpm._emulator._machine.set_quasi_disk(disk)
+def write_protect_disk(cpm, disk_no):
+    call_bdos_function(cpm, 0x1c, 0)
 
-    call_bdos_function(cpm, 0x0d)
+
+def create_file(cpm, name):
+    fill_fcb(cpm, 0x1000, name)
+
+    # Call create file function
+    code = call_bdos_function(cpm, 0x16, 0x1000)
+    if code > 0:
+        return code
+
+    # Call close file function
+    code = call_bdos_function(cpm, 0x10, 0x1000)
+    return code
+
+
+def search_first(cpm, name):
+    fill_fcb(cpm, 0x1000, name)
+    return call_bdos_function(cpm, 0x11, 0x1000)
+
+
+def search_next(cpm):
+    return call_bdos_function(cpm, 0x12, 0x1000)
+
+
+def test_reset_disk_system(cpm, disk):
+    pass
 
 
 def test_write_protect_disk(cpm, disk):
-    cpm._emulator._machine.set_quasi_disk(disk)
-    call_bdos_function(cpm, 0x0d)
-
     # Check starting conditions
     assert cpm.get_word(0xd9ad) == 0x0000   # Write protect bit is not set for any disk
 
     # Write protect disk A (0)
-    call_bdos_function(cpm, 0x1c, 0)
+    write_protect_disk(cpm, 0)
 
     # Check new conditions
     assert cpm.get_word(0xd9ad) == 0x0001   # Write protect bit is set for disk A
@@ -77,9 +103,6 @@ def test_write_protect_disk(cpm, disk):
 
 
 def test_seek(cpm, disk):
-    cpm._emulator._machine.set_quasi_disk(disk)
-    call_bdos_function(cpm, 0x0d)
-
     # Seek in forward direction, compared to current track
     cpm.set_word(0xd9e5, 0x0342)    # Set expected sector number to 0x342
     cpm.run_function(0xcfd1)        # Call seek function
@@ -104,15 +127,7 @@ def test_seek(cpm, disk):
 
 
 def test_create_file(cpm, disk):
-    cpm._emulator._machine.set_quasi_disk(disk)
-    call_bdos_function(cpm, 0x0d)
-
-    fill_fcb(cpm, 0x1000, 'ABC.TXT')
-
-    code = call_bdos_function(cpm, 0x16, 0x1000)
-    assert code == 0
-
-    code = call_bdos_function(cpm, 0x10, 0x1000)
+    code = create_file(cpm, 'ABC.TXT')
     assert code == 0
 
     disk.update()
@@ -123,4 +138,25 @@ def test_create_file(cpm, disk):
     assert entries['ABC.TXT']['num_records'] == 0
 
 
-# Test create a file on a read only disk
+def test_search_specific_file(cpm, disk):
+    create_file(cpm, 'FOO.TXT')
+    create_file(cpm, 'BAR.ASM')
+    create_file(cpm, 'ZOO.COM')
+    
+    index = search_first(cpm, 'BAR.ASM')
+    assert index == 1   # Index of the BAR.ASM in the directory
+
+
+def test_search_by_pattern(cpm, disk):
+    create_file(cpm, 'BAR.TXT')
+    create_file(cpm, 'FOO.TXT')
+    create_file(cpm, 'FAA.TXT')
+    
+    index = search_first(cpm, 'F??.TXT')
+    assert index == 1   # Index of the first match
+
+    index = search_next(cpm)
+    assert index == 2   # Index of the first match
+
+# TODO: delete the file, and see that search with '?' as a drive code returns all the entries
+

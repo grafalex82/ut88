@@ -1836,44 +1836,67 @@ DISK_INITIALIZE_1:
 
 
 ????:
-d301  3a d4 d9   LDA d9d4
-d304  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+    d301  3a d4 d9   LDA SEARCH_IN_PROGRESS (d9d4)  ; Return error if file not found
+    d304  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 
 
-????:
-d307  c5         PUSH BC
-d308  f5         PUSH PSW
-
-d309  3a c5 d9   LDA DISK_EXTENT_MASK (d9c5)
-d30c  2f         CMA
-d30d  47         MOV B, A
-
-d30e  79         MOV A, C
-d30f  a0         ANA B
-d310  4f         MOV C, A
-
-d311  f1         POP PSW
-d312  a0         ANA B
-d313  91         SUB C
-d314  e6 1f      ANI A, 1f
-d316  c1         POP BC
-d317  c9         RET
-
-
-
-; ????
+; Compare and match extent bytes of FCB and directory entry
 ;
 ; Arguments:
-; C - ????
-????:
-    d318  3e ff      MVI A, ff                  ; ????? set the flag ???
-    d31a  32 d4 d9   STA d9d4
+; A - extent byte of the FCB
+; C - extent byte of the directory entry
+;
+; Return:
+; Zero flag if entries match
+MATCH_EXTENT_BYTE:
+    d307  c5         PUSH BC
+    d308  f5         PUSH PSW
 
-    d31d  21 d8 d9   LXI HL, d9d8               ; ??? Store argument at d9d8
-    d320  71         MOV M, C
+    d309  3a c5 d9   LDA DISK_EXTENT_MASK (d9c5); Extent mask is stored negated. Negate it back
+    d30c  2f         CMA
+    d30d  47         MOV B, A
 
-    d321  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Store pointer to FCB ????
-    d324  22 d9 d9   SHLD d9d9
+    d30e  79         MOV A, C                   ; Apply the mask to the dir entry's extent number
+    d30f  a0         ANA B
+    d310  4f         MOV C, A
+
+    d311  f1         POP PSW
+    d312  a0         ANA B                      ; Apply the mask to the FCB's extent number
+
+    d313  91         SUB C                      ; Compare the numbers (low 5 bits)
+    d314  e6 1f      ANI A, 1f
+
+    d316  c1         POP BC
+    d317  c9         RET
+
+
+
+; Search for a directory entry, that matches a pattern in FCB
+;
+; Arguments:
+; DE - pointer to FCB
+; C - number of bytes to match
+;
+; The function iterates over the directory entries, and compares them with FCB byte-by-byte. The '?' is
+; respected during the match, so that a particular symbol is skipped for match.
+;
+; The function ignores the byte with offset 0x0d (S1 byte) during match. And matching thr extent number
+; byte (offset 0x0c) is performed according to the extent mask applied for the drive.
+; 
+; Returns:
+; A = 0xff if not matches found, or 0x00 if there was a match
+;
+; Also, in case of match, the function loads the directory entry sector, and sets FUNCTION_RETURN_VALUE to 
+; the record number of the entry on this sector, that corresponds to the found file
+SEARCH_FIRST:
+    d318  3e ff      MVI A, ff                  ; Set the Search in progress flag
+    d31a  32 d4 d9   STA SEARCH_IN_PROGRESS (d9d4)
+
+    d31d  21 d8 d9   LXI HL, NUM_BYTES_TO_MATCH (d9d8)  ; Remember the number of bytes to match for 
+    d320  71         MOV M, C                           ; SEARCH_NEXT calls
+
+    d321  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Store pointer to FCB to be used in SEARCH_NEXT calls
+    d324  22 d9 d9   SHLD CURRENT_SEARCH_FCB (d9d9)
 
     d327  cd fe d1   CALL RESET_DIRECTORY_COUNTER (d1fe); Prepare for iterating over directory entries
     d32a  cd a1 cf   CALL SET_TRACK_ZERO (cfa1)
@@ -1883,88 +1906,94 @@ SEARCH_NEXT:
     d32f  cd 05 d2   CALL GET_NEXT_DIR_ENTRY (d205)
 
     d332  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)   ; Have we reached the end of directory?
-    d335  ca 94 d3   JZ d394
+    d335  ca 94 d3   JZ SEARCH_NEXT_NO_MORE_ENTRIES (d394)
 
-    d338  2a d9 d9   LHLD d9d9                  ; Get the pointer to FCB, and put it to DE
+    d338  2a d9 d9   LHLD CURRENT_SEARCH_FCB (d9d9) ; Restore the FCB pointer, load it to DE
     d33b  eb         XCHG
 
-    d33c  1a         LDAX DE                    ; Load the first byte of the FCB, check if the file is deleted
-    d33d  fe e5      CPI A, e5
-    d33f  ca 4a d3   JZ d34a
+    d33c  1a         LDAX DE                    ; Load the first byte of the FCB
+    
+    d33d  fe e5      CPI A, e5                  ; Keep matching empty records
+    d33f  ca 4a d3   JZ SEARCH_NEXT_1 (d34a)
 
     d342  d5         PUSH DE                    ; Check if we reached the end of the directory
     d343  cd 7f d1   CALL CMP_DIR_COUNTER_WITH_MAX (d17f)
     d346  d1         POP DE
-    d347  d2 94 d3   JNC d394
+    d347  d2 94 d3   JNC SEARCH_NEXT_NO_MORE_ENTRIES (d394)
 
-????:
-    d34a  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
+SEARCH_NEXT_1:
+    d34a  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e) ; Get the entry address
 
-    d34d  3a d8 d9   LDA d9d8                   ; Load the func argument ????
+    d34d  3a d8 d9   LDA NUM_BYTES_TO_MATCH (d9d8)  ; Load the number of bytes to match, store in C
     d350  4f         MOV C, A
-    d351  06 00      MVI B, 00
+    d351  06 00      MVI B, 00                  ; Reset bytes counter (offset)
 
-????:
-    d353  79         MOV A, C                   ; Argument is zero ????        
-    d354  b7         ORA A
-    d355  ca 83 d3   JZ d383
+SEARCH_NEXT_SYMBOL_LOOP:
+    d353  79         MOV A, C                   ; Check if all bytes are matched (and match still did
+    d354  b7         ORA A                      ; not fail) - exit with success
+    d355  ca 83 d3   JZ SEARCH_MATCHED (d383)
 
-    d358  1a         LDAX DE                    ; Check for '?' symbol ?????
-    d359  fe 3f      CPI A, 3f
-    d35b  ca 7c d3   JZ d37c
+    d358  1a         LDAX DE                    ; If the search mask contains '?' - match any symbol
+    d359  fe 3f      CPI A, 3f                  ; which technically means we can advance to the next char
+    d35b  ca 7c d3   JZ SEARCH_NEXT_ADVANCE (d37c)
 
-    d35e  78         MOV A, B                   ; Max offset in FCB ???? Extent number ??? S1 byte
+    d35e  78         MOV A, B                   ; S1 byte does not participate in match - skip it
     d35f  fe 0d      CPI A, 0d
-    d361  ca 7c d3   JZ d37c
+    d361  ca 7c d3   JZ SEARCH_NEXT_ADVANCE (d37c)
 
-    d364  fe 0c      CPI A, 0c                  ; Max offset in FCB ???? extension ??? extent number ???
-    d366  1a         LDAX DE
-    d367  ca 73 d3   JZ d373
+    d364  fe 0c      CPI A, 0c                  ; Compare extent byte separately
+    d366  1a         LDAX DE                    ; Load FCB extent byte
+    d367  ca 73 d3   JZ SEARCH_NEXT_COMPARE_EXTENT (d373)
 
-d36a  96         SUB M
-d36b  e6 7f      ANI A, 7f
-d36d  c2 2d d3   JNZ SEARCH_NEXT (d32d)
+    d36a  96         SUB M                      ; Compare symbols, but mask (ignore) the MSB
+    d36b  e6 7f      ANI A, 7f
+    d36d  c2 2d d3   JNZ SEARCH_NEXT (d32d)     ; If not matched - advance to the next directory entry
 
-d370  c3 7c d3   JMP d37c
+    d370  c3 7c d3   JMP SEARCH_NEXT_ADVANCE (d37c) ; Current characters match. Advance to the next char.
 
-????:
-d373  c5         PUSH BC
-d374  4e         MOV C, M
-d375  cd 07 d3   CALL d307
-d378  c1         POP BC
-d379  c2 2d d3   JNZ SEARCH_NEXT (d32d)
-????:
-d37c  13         INX DE
-d37d  23         INX HL
-d37e  04         INR B
-d37f  0d         DCR C
-d380  c3 53 d3   JMP d353
+SEARCH_NEXT_COMPARE_EXTENT:
+    d373  c5         PUSH BC
+    d374  4e         MOV C, M
+    d375  cd 07 d3   CALL MATCH_EXTENT_BYTE (d307)  ; Extent byte is matched in a separate function
+    d378  c1         POP BC
+    d379  c2 2d d3   JNZ SEARCH_NEXT (d32d)
 
-????:
+SEARCH_NEXT_ADVANCE:
+    d37c  13         INX DE                     ; Advance to the next char in FCB and directory entry
+    d37d  23         INX HL
+
+    d37e  04         INR B                      ; Increment dir entry offset
+    d37f  0d         DCR C                      ; Decrement characters counter
+
+    d380  c3 53 d3   JMP SEARCH_NEXT_SYMBOL_LOOP  (d353)
+
+SEARCH_MATCHED:
     d383  3a ea d9   LDA DIRECTORY_COUNTER (d9ea)   ; Return the index of the directory entry within the
     d386  e6 03      ANI A, 03                      ; current directory sector ????
     d388  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
 
-    d38b  21 d4 d9   LXI HL, d9d4               ; Return if flag is not set ????
+    d38b  21 d4 d9   LXI HL, SEARCH_IN_PROGRESS (d9d4)  ; Return if file was found previously
     d38e  7e         MOV A, M
     d38f  17         RAL
     d390  d0         RNC
 
-    d391  af         XRA A                      ; Otherwise clear the flag  ????
+    d391  af         XRA A                      ; File matched, clear the search in progress flag
     d392  77         MOV M, A
     d393  c9         RET
 
 
-????:
+SEARCH_NEXT_NO_MORE_ENTRIES:
     d394  cd fe d1   CALL RESET_DIRECTORY_COUNTER (d1fe); Reset the counter
     d397  3e ff      MVI A, ff                  ; And report that no more entries left
     d399  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 
 
+
+
 DELETE_FILE:
 d39c  cd 54 d1   CALL CHECK_DISK_READ_ONLY (d154)
 d39f  0e 0c      MVI C, 0c
-d3a1  cd 18 d3   CALL d318
+d3a1  cd 18 d3   CALL SEARCH_FIRST (d318)
 ????:
 d3a4  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d3a7  c8         RZ
@@ -2046,7 +2075,7 @@ d413  c3 c6 d1   JMP d1c6
 RENAME_FILE:
 d416  cd 54 d1   CALL CHECK_DISK_READ_ONLY (d154)
 d419  0e 0c      MVI C, 0c
-d41b  cd 18 d3   CALL d318
+d41b  cd 18 d3   CALL SEARCH_FIRST (d318)
 d41e  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d421  7e         MOV A, M
 d422  11 10 00   LXI DE, 0010
@@ -2065,7 +2094,7 @@ d438  c3 27 d4   JMP d427
 
 SET_FILE_ATTRS:
 d43b  0e 0c      MVI C, 0c
-d43d  cd 18 d3   CALL d318
+d43d  cd 18 d3   CALL SEARCH_FIRST (d318)
 ????:
 d440  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d443  c8         RZ
@@ -2077,7 +2106,7 @@ d44e  c3 40 d4   JMP d440
 
 OPEN_FILE:
 d451  0e 0f      MVI C, 0f
-d453  cd 18 d3   CALL d318
+d453  cd 18 d3   CALL SEARCH_FIRST (d318)
 d456  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d459  c8         RZ
 ????:
@@ -2142,7 +2171,7 @@ d4b0  cd 69 d1   CALL GET_FCB_S2 (d169)
 d4b3  e6 80      ANI A, 80
 d4b5  c0         RNZ
 d4b6  0e 0f      MVI C, 0f
-d4b8  cd 18 d3   CALL d318
+d4b8  cd 18 d3   CALL SEARCH_FIRST (d318)
 d4bb  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d4be  c8         RZ
 d4bf  01 10 00   LXI BC, 0010
@@ -2222,7 +2251,7 @@ CREATE_FILE:
     d52e  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
 
     d531  0e 01      MVI C, 01
-    d533  cd 18 d3   CALL d318
+    d533  cd 18 d3   CALL SEARCH_FIRST (d318)
 
 d536  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d539  e1         POP HL
@@ -2276,7 +2305,7 @@ d589  e6 0f      ANI A, 0f
 d58b  ca b6 d5   JZ d5b6
 ????:
 d58e  0e 0f      MVI C, 0f
-d590  cd 18 d3   CALL d318
+d590  cd 18 d3   CALL SEARCH_FIRST (d318)
 d593  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d596  c2 ac d5   JNZ d5ac
 d599  3a d3 d9   LDA d9d3
@@ -2624,7 +2653,7 @@ d7d1  c9         RET
 
 GET_FILE_SIZE:
 d7d2  0e 0c      MVI C, 0c
-d7d4  cd 18 d3   CALL d318
+d7d4  cd 18 d3   CALL SEARCH_FIRST (d318)
 d7d7  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d7da  11 21 00   LXI DE, 0021
 d7dd  19         DAD DE
@@ -2809,28 +2838,63 @@ d8a5  cd 51 d8   CALL RESELECT_DISK (d851)
 d8a8  c3 a2 d4   JMP CLOSE_FILE (d4a2)
 
 
+; Function 0x11 - Search first match
+;
+; The function searches for a file record in the directory entry, that matches the pattern in FCB
+;
+; Arguments:
+; DE - pointer to the FCB that contains match pattern
+;
+; Return:
+; - In case of match, A = 0, 1, 2, or 3 representing the file record number in a loaded directory entry sector
+; - If no files matched - A = 0xff
 SEARCH_FIRST_FUNC:
-d8ab  0e 00      MVI C, 00
-d8ad  eb         XCHG
-d8ae  7e         MOV A, M
-d8af  fe 3f      CPI A, 3f
-d8b1  ca c2 d8   JZ d8c2
-d8b4  cd a6 d0   CALL GET_FCB_EXTENT_NUMBER (d0a6)
-d8b7  7e         MOV A, M
-d8b8  fe 3f      CPI A, 3f
-d8ba  c4 72 d1   CNZ CLEAR_FCB_S2 (d172)
-d8bd  cd 51 d8   CALL RESELECT_DISK (d851)
-d8c0  0e 0f      MVI C, 0f
-????:
-d8c2  cd 18 d3   CALL d318
-d8c5  c3 e9 d1   JMP COPY_DIR_BUF_TO_DISK_BUF (d1e9)
+    d8ab  0e 00      MVI C, 00                  ; Match all the entries, if the drive code is '?'
 
+    d8ad  eb         XCHG                       ; Load drive code (first byte of the FCB)
+    d8ae  7e         MOV A, M
+
+    d8af  fe 3f      CPI A, 3f                  ; Check if the drive code is '?' (then C=00 and all entries
+    d8b1  ca c2 d8   JZ SEARCH_FIRST_FUNC_1 (d8c2)  ; on the drive will be returned as matched)
+
+    d8b4  cd a6 d0   CALL GET_FCB_EXTENT_NUMBER (d0a6)  ; Get the FCB extent number
+    d8b7  7e         MOV A, M
+
+    d8b8  fe 3f      CPI A, 3f                  ; If the extent number is '?', then S2 code will be cleared
+    d8ba  c4 72 d1   CNZ CLEAR_FCB_S2 (d172)
+
+    d8bd  cd 51 d8   CALL RESELECT_DISK (d851)  ; Re-select disk if needed
+
+    d8c0  0e 0f      MVI C, 0f                  ; Match full FCB record (disk code, name/extension, extent byte, etc)
+
+SEARCH_FIRST_FUNC_1:
+    d8c2  cd 18 d3   CALL SEARCH_FIRST (d318)   ; Do the actual search
+
+    d8c5  c3 e9 d1   JMP COPY_DIR_BUF_TO_DISK_BUF (d1e9); Return directory sector so that caller can
+                                                        ; parse the directory entry
+
+
+; Function 0x11 - Search first match
+;
+; The function searches for a file record in the directory entry, that matches the pattern in FCB
+;
+; The function does not have any arguments. However, it will use FCB record, and number of bytes to match
+; in each record used for the previous SEARCH_FIRST calls.
+;
+; Return:
+; - In case of match, A = 0, 1, 2, or 3 representing the file record number in a loaded directory entry sector
+; - If no files matched - A = 0xff
 SEARCH_NEXT_FUNC:
-d8c8  2a d9 d9   LHLD d9d9
-d8cb  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
-d8ce  cd 51 d8   CALL RESELECT_DISK (d851)
-d8d1  cd 2d d3   CALL SEARCH_NEXT (d32d)
-d8d4  c3 e9 d1   JMP COPY_DIR_BUF_TO_DISK_BUF (d1e9)
+    d8c8  2a d9 d9   LHLD CURRENT_SEARCH_FCB (d9d9) ; Restore the previous FCB pointer
+    d8cb  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
+
+    d8ce  cd 51 d8   CALL RESELECT_DISK (d851)      ; Reselect disk if needed
+
+    d8d1  cd 2d d3   CALL SEARCH_NEXT (d32d)        ; Continue the search
+
+    d8d4  c3 e9 d1   JMP COPY_DIR_BUF_TO_DISK_BUF (d1e9); Return the result
+
+
 
 DELETE_FILE_FUNC:
 d8d7  cd 51 d8   CALL RESELECT_DISK (d851)
@@ -3094,18 +3158,17 @@ SECTOR_TRANS_TABLE:
     d9d0 00 00        dw 0000                   ; Pointer to the sector translation table
 
 
-?????:
-    d9d4 00           db 00                     ; ????? flag
+SEARCH_IN_PROGRESS:
+    d9d4 00           db 00                     ; Search in progress flag (file has not yet been found)
 
 FUNCTION_BYTE_ARGUMENT:
     d9d6 00           db 00 
 
-????:
-    d9d8 00           db 00                     ; ?????
+NUM_BYTES_TO_MATCH:
+    d9d8 00           db 00                     ; Number of bytes of FCB to match while doing file search
 
-
-?????:
-    d9d9 00 00        dw 0000                   ; Pointer to FCB ????
+CURRENT_SEARCH_FCB:
+    d9d9 00 00        dw 0000                   ; Current search FCB (used for subsequent SEARCH_NEXT calls)
 
 SINGLE_BYTE_ALLOCATION_MAP:
     d9dd 00           db 00                     ; Flag indicating that total disk capacity high byte is 0
