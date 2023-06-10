@@ -1362,17 +1362,23 @@ WRITE_PROTECT_DISK:
 
     d143  c9         RET
 
+; Load the directory entry, check the first byte of the file extension.
+; If the MSB is set (the file is read only) - raise the error
+CHECK_FILE_READ_ONLY:
+    d144  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e) ; Load directory entry address in HL
 
-????:
-d144  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
-????:
-d147  11 09 00   LXI DE, 0009
-d14a  19         DAD DE
-d14b  7e         MOV A, M
-d14c  17         RAL
-d14d  d0         RNC
-d14e  21 0f cc   LXI HL, FILE_READ_ONLY_ERROR_PTR (cc0f)
-d151  c3 4a cf   JMP ROUTE_TO_ERROR_HANDLER (cf4a)
+; Check the file read only flag for record address in HL
+CHECK_FILE_READ_ONLY_FLAG:
+    d147  11 09 00   LXI DE, 0009               ; Offset to file extension
+    d14a  19         DAD DE
+
+    d14b  7e         MOV A, M                   ; Return if file is read write (MSB of first extension byte
+    d14c  17         RAL                        ; is 0)
+    d14d  d0         RNC
+
+    d14e  21 0f cc   LXI HL, FILE_READ_ONLY_ERROR_PTR (cc0f); Report file read only error
+    d151  c3 4a cf   JMP ROUTE_TO_ERROR_HANDLER (cf4a)
+
 
 ; Check if the disk is read only, and report an error
 CHECK_DISK_READ_ONLY:
@@ -1839,8 +1845,8 @@ DISK_INITIALIZE_1:
 
 
 
-
-????:
+; Return 0xff if file was not found, or index of the directory entry on current directory sector
+RETURN_DIRECTORY_CODE:
     d301  3a d4 d9   LDA SEARCH_IN_PROGRESS (d9d4)  ; Return error if file not found
     d304  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 
@@ -2002,7 +2008,7 @@ d3a1  cd 18 d3   CALL SEARCH_FIRST (d318)
 ????:
 d3a4  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d3a7  c8         RZ
-d3a8  cd 44 d1   CALL d144
+d3a8  cd 44 d1   CALL CHECK_FILE_READ_ONLY (d144)
 d3ab  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
 d3ae  36 e5      MVI M, e5
 d3b0  0e 00      MVI C, 00
@@ -2083,25 +2089,35 @@ FLUSH_DIR_SECTOR:
     d410  cd c3 cf   CALL SEEK_TO_DIR_ENTRY (cfc3)  ; Seek to the directory entry sector
     d413  c3 c6 d1   JMP WRITE_DIRECTORY_SECTOR (d1c6)  ; And update with the new data
 
-
+; Rename file
+;
+; Argument:
+; DE - pointer to FCB, where first 0x10 bytes represent old name, and next 0x10 bytes for the new name
 RENAME_FILE:
-d416  cd 54 d1   CALL CHECK_DISK_READ_ONLY (d154)
-d419  0e 0c      MVI C, 0c
-d41b  cd 18 d3   CALL SEARCH_FIRST (d318)
-d41e  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d421  7e         MOV A, M
-d422  11 10 00   LXI DE, 0010
-d425  19         DAD DE
-d426  77         MOV M, A
-????:
-d427  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
-d42a  c8         RZ
-d42b  cd 44 d1   CALL d144
-d42e  0e 10      MVI C, 10
-d430  1e 0c      MVI E, 0c
-d432  cd 01 d4   CALL COPY_DIR_ENTRY (d401)
-d435  cd 2d d3   CALL SEARCH_NEXT (d32d)
-d438  c3 27 d4   JMP d427
+    d416  cd 54 d1   CALL CHECK_DISK_READ_ONLY (d154)   ; Fail if disk is read only
+
+    d419  0e 0c      MVI C, 0c                  ; Search for the file entry (matching only name, 0x0c bytes)
+    d41b  cd 18 d3   CALL SEARCH_FIRST (d318)
+
+    d41e  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Load disk code for the source file name
+    d421  7e         MOV A, M
+
+    d422  11 10 00   LXI DE, 0010               ; Copy disk code to the target file name
+    d425  19         DAD DE
+    d426  77         MOV M, A
+
+RENAME_FILE_LOOP:
+    d427  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
+    d42a  c8         RZ                         ; Exit if no file found, or all entries processed
+
+    d42b  cd 44 d1   CALL CHECK_FILE_READ_ONLY (d144)
+
+    d42e  0e 10      MVI C, 10                  ; Copy 12 bytes of the new name to the directory entry
+    d430  1e 0c      MVI E, 0c
+    d432  cd 01 d4   CALL COPY_DIR_ENTRY (d401)
+
+    d435  cd 2d d3   CALL SEARCH_NEXT (d32d)    ; Update all similar entries
+    d438  c3 27 d4   JMP RENAME_FILE_LOOP (d427)
 
 
 SET_FILE_ATTRS:
@@ -2434,7 +2450,7 @@ d603  3e 00      MVI A, 00
 d605  32 d3 d9   STA d9d3
 d608  cd 54 d1   CALL CHECK_DISK_READ_ONLY (d154)
 d60b  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d60e  cd 47 d1   CALL d147
+d60e  cd 47 d1   CALL CHECK_FILE_READ_ONLY_FLAG (d147)
 d611  cd bb d0   CALL d0bb
 d614  3a e3 d9   LDA d9e3
 d617  fe 80      CPI A, 80
@@ -2973,7 +2989,7 @@ SEARCH_NEXT_FUNC:
 DELETE_FILE_FUNC:
 d8d7  cd 51 d8   CALL RESELECT_DISK (d851)
 d8da  cd 9c d3   CALL DELETE_FILE (d39c)
-d8dd  c3 01 d3   JMP d301
+d8dd  c3 01 d3   JMP RETURN_DIRECTORY_CODE (d301)
 
 READ_SEQUENTAL_FUNC:
 d8e0  cd 51 d8   CALL RESELECT_DISK (d851)
@@ -2989,16 +3005,27 @@ d8e9  c3 fe d5   JMP WRITE_SEQUENTAL (d5fe)
 ; DE - pointer to the File Control Block (FCB)
 ;
 ; Return:
-; A - directory code
+; A - directory code (0-3 for entry index on current directory sector, or 0xff if file not found)
 CREATE_FILE_FUNC:
     d8ec  cd 72 d1   CALL CLEAR_FCB_S2 (d172)
     d8ef  cd 51 d8   CALL RESELECT_DISK (d851)
     d8f2  c3 24 d5   JMP CREATE_FILE (d524)
 
+
+; Function 0x17 - Rename the file
+;
+; Arguments:
+; DE - pointer to the File Control Block (FCB)
+; where first 0x10 bytes represent original file name
+; and second 0x10 bytes represent target file name
+;
+; Return:
+; A - directory code (0-3 for entry index on current directory sector, or 0xff if file not found)
 RENAME_FILE_FUNC:
-d8f5  cd 51 d8   CALL RESELECT_DISK (d851)
-d8f8  cd 16 d4   CALL RENAME_FILE (d416)
-d8fb  c3 01 d3   JMP d301
+    d8f5  cd 51 d8   CALL RESELECT_DISK (d851)
+    d8f8  cd 16 d4   CALL RENAME_FILE (d416)
+    d8fb  c3 01 d3   JMP RETURN_DIRECTORY_CODE (d301)
+
 
 ; Function 0x18 - Return disk login vector
 ;
@@ -3049,7 +3076,7 @@ GET_READ_ONLY_VECTOR:
 SET_FILE_ATTRS_FUNC:
 d91d  cd 51 d8   CALL RESELECT_DISK (d851)
 d920  cd 3b d4   CALL SET_FILE_ATTRS (d43b)
-d923  c3 01 d3   JMP d301
+d923  c3 01 d3   JMP RETURN_DIRECTORY_CODE (d301)
 
 ; Function 0x1f - Get Address of Disk Params Block
 ;

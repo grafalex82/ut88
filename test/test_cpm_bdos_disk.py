@@ -82,6 +82,12 @@ def search_next(cpm):
     return call_bdos_function(cpm, 0x12, 0x1000)
 
 
+def rename_file(cpm, oldname, newname):
+    fill_fcb(cpm, 0x1000, oldname)  # Old name in the first 16 bytes of FCB
+    fill_fcb(cpm, 0x1010, newname)  # New name in the second 16 bytes
+    return call_bdos_function(cpm, 0x17, 0x1000)
+
+
 def test_reset_disk_system(cpm, disk):
     pass
 
@@ -155,4 +161,15 @@ def test_search_by_pattern(cpm, disk):
     assert index == 2   # Index of the first match
 
 # TODO: delete the file, and see that search with '?' as a drive code returns all the entries
+
+def test_rename_file(cpm, disk):
+    create_file(cpm, 'FOO.TXT')
+
+    assert search_first(cpm, 'FOO.TXT') == 0        # Foo exists
+    assert search_first(cpm, 'BAR.TXT') == 0xff     # Bar does not
+
+    rename_file(cpm, 'FOO.TXT', 'BAR.TXT') 
+
+    assert search_first(cpm, 'FOO.TXT') == 0xff     # Foo no longer found
+    assert search_first(cpm, 'BAR.TXT') == 0        # Bar is at foo's location
 
