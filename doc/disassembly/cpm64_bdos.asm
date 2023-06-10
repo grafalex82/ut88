@@ -24,7 +24,7 @@
 ; cf42  - current disk
 ; cf43  - function arguments (2 byte)
 ; cf45  - function return code or return value(2 byte)
-; d9ac  - ????
+; d9ac  - Signature of an empty directory entry
 ; d9ad  - Pointer to read only vector
 ; d9af  - Disk Login Vector
 ; d9b1  - ???? Disk buffer address
@@ -1511,12 +1511,17 @@ STORE_NEW_CHECKSUM:
 
 
 
-????:
-d1c6  cd 9c d1   CALL UPDATE_DIR_CHECKSUM (d19c)
-d1c9  cd e0 d1   CALL SET_DIR_DISK_BUFFER (d1e0)
-d1cc  0e 01      MVI C, 01
-d1ce  cd b8 cf   CALL WRITE_SECTOR (cfb8)
-d1d1  c3 da d1   JMP SET_DATA_DISK_BUFFER (d1da)
+WRITE_DIRECTORY_SECTOR:
+    d1c6  cd 9c d1   CALL UPDATE_DIR_CHECKSUM (d19c); Update directory checksum
+    
+    d1c9  cd e0 d1   CALL SET_DIR_DISK_BUFFER (d1e0); Write the updated directory entry to the disk
+
+    d1cc  0e 01      MVI C, 01                      ; This supposed to indicate it will write directory 
+                                                    ; sector, but this flag never checked
+
+    d1ce  cd b8 cf   CALL WRITE_SECTOR (cfb8)       ; Actually write the sector
+
+    d1d1  c3 da d1   JMP SET_DATA_DISK_BUFFER (d1da); Restore the buffer address
 
 
 ; Read a single sector in directory area
@@ -1829,7 +1834,7 @@ DISK_INITIALIZE_1:
     d2f6  0e 01      MVI C, 01                  ; Update the disk map, by setting bits in the allocation map
     d2f8  cd 6b d2   CALL UPDATE_DISK_MAP (d26b)
 
-    d2fb  cd 8c d1   CALL UPDATE_LAST_DIR_ENTRY_NUMBER (d18c)
+    d2fb  cd 8c d1   CALL UPDATE_LAST_DIR_ENTRY_NUMBER (d18c)   ; Update the entries counter
     d2fe  c3 d2 d2   JMP DISK_INITIALIZE_NEXT_FILE (d2d2)
 
 
@@ -1913,7 +1918,7 @@ SEARCH_NEXT:
 
     d33c  1a         LDAX DE                    ; Load the first byte of the FCB
     
-    d33d  fe e5      CPI A, e5                  ; Keep matching empty records
+    d33d  fe e5      CPI A, e5                  ; This allows matching empty directory entries
     d33f  ca 4a d3   JZ SEARCH_NEXT_1 (d34a)
 
     d342  d5         PUSH DE                    ; Check if we reached the end of the directory
@@ -2002,7 +2007,7 @@ d3ab  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
 d3ae  36 e5      MVI M, e5
 d3b0  0e 00      MVI C, 00
 d3b2  cd 6b d2   CALL UPDATE_DISK_MAP (d26b)
-d3b5  cd c6 d1   CALL d1c6
+d3b5  cd c6 d1   CALL WRITE_DIRECTORY_SECTOR (d1c6)
 d3b8  cd 2d d3   CALL SEARCH_NEXT (d32d)
 d3bb  c3 a4 d3   JMP d3a4
 
@@ -2055,21 +2060,28 @@ d3f9  21 00 00   LXI HL, 0000
 d3fc  c9         RET
 
 
-????:
-d3fd  0e 00      MVI C, 00
-d3ff  1e 20      MVI E, 20
-????:
-d401  d5         PUSH DE
-d402  06 00      MVI B, 00
-d404  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d407  09         DAD BC
-d408  eb         XCHG
-d409  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
-d40c  c1         POP BC
-d40d  cd 4f cf   CALL MEMCOPY_DE_HL (cf4f)
-????:
-d410  cd c3 cf   CALL SEEK_TO_DIR_ENTRY (cfc3)
-d413  c3 c6 d1   JMP d1c6
+; Copy the FCB to the selected directory entry, then update the corresponding sector
+COPY_FCB_TO_DIR:
+    d3fd  0e 00      MVI C, 00                  ; Will copy from start of the FCB
+
+    d3ff  1e 20      MVI E, 20                  ; Size of the entry to copy
+
+; Copy E bytes of FCB starting from C offset to the directory entry, then update corresponding dir sector
+COPY_DIR_ENTRY:
+    d401  d5         PUSH DE
+    d402  06 00      MVI B, 00                  ; Add the offset to the FCB address
+    d404  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
+    d407  09         DAD BC
+    d408  eb         XCHG
+
+    d409  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e) ; Get the directory entry address
+    d40c  c1         POP BC
+
+    d40d  cd 4f cf   CALL MEMCOPY_DE_HL (cf4f)  ; Copy FCB to the directory entry
+
+FLUSH_DIR_SECTOR:
+    d410  cd c3 cf   CALL SEEK_TO_DIR_ENTRY (cfc3)  ; Seek to the directory entry sector
+    d413  c3 c6 d1   JMP WRITE_DIRECTORY_SECTOR (d1c6)  ; And update with the new data
 
 
 RENAME_FILE:
@@ -2087,7 +2099,7 @@ d42a  c8         RZ
 d42b  cd 44 d1   CALL d144
 d42e  0e 10      MVI C, 10
 d430  1e 0c      MVI E, 0c
-d432  cd 01 d4   CALL d401
+d432  cd 01 d4   CALL COPY_DIR_ENTRY (d401)
 d435  cd 2d d3   CALL SEARCH_NEXT (d32d)
 d438  c3 27 d4   JMP d427
 
@@ -2100,7 +2112,7 @@ d440  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d443  c8         RZ
 d444  0e 00      MVI C, 00
 d446  1e 0c      MVI E, 0c
-d448  cd 01 d4   CALL d401
+d448  cd 01 d4   CALL COPY_DIR_ENTRY (d401)
 d44b  cd 2d d3   CALL SEARCH_NEXT (d32d)
 d44e  c3 40 d4   JMP d440
 
@@ -2144,140 +2156,198 @@ d48e  11 0f 00   LXI DE, 000f
 d491  19         DAD DE
 d492  77         MOV M, A
 d493  c9         RET
-????:
-d494  7e         MOV A, M
-d495  23         INX HL
-d496  b6         ORA M
-d497  2b         DCX HL
-d498  c0         RNZ
-d499  1a         LDAX DE
-d49a  77         MOV M, A
-d49b  13         INX DE
-d49c  23         INX HL
-d49d  1a         LDAX DE
-d49e  77         MOV M, A
-d49f  1b         DCX DE
-d4a0  2b         DCX HL
-d4a1  c9         RET
 
+; Merge non-zero disk allocation entries
+;
+; Check if [HL] is zero, and if it is copy word from [DE] to [HL]
+MERGE_ALLOC_ENTRIES:
+    d494  7e         MOV A, M                   ; Compare word at [HL] with zero
+    d495  23         INX HL
+    d496  b6         ORA M
+    d497  2b         DCX HL
+    d498  c0         RNZ                        ; return if not zero
+
+    d499  1a         LDAX DE                    ; Copy word from [DE] to [HL]
+    d49a  77         MOV M, A
+    d49b  13         INX DE
+    d49c  23         INX HL
+    d49d  1a         LDAX DE
+    d49e  77         MOV M, A
+    d49f  1b         DCX DE
+    d4a0  2b         DCX HL
+    d4a1  c9         RET
+
+
+; Close file
+;
+; Function algorithm:
+; - Check S2 flag ???
+; - Find the directory entry that matches current FCB
+; - Merge FCB and directory entry allocation records (1- or 2-byte records supported)
+; - Update extent number and record counter from FCB to directory entry
+; - Flush the directory entry to disk
 CLOSE_FILE:
-d4a2  af         XRA A
-d4a3  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
-d4a6  32 ea d9   STA DIRECTORY_COUNTER (d9ea)
-d4a9  32 eb d9   STA d9eb
-d4ac  cd 1e d1   CALL IS_DISK_READ_ONLY (d11e)
-d4af  c0         RNZ
-d4b0  cd 69 d1   CALL GET_FCB_S2 (d169)
-d4b3  e6 80      ANI A, 80
-d4b5  c0         RNZ
-d4b6  0e 0f      MVI C, 0f
-d4b8  cd 18 d3   CALL SEARCH_FIRST (d318)
-d4bb  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
-d4be  c8         RZ
-d4bf  01 10 00   LXI BC, 0010
-d4c2  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
-d4c5  09         DAD BC
-d4c6  eb         XCHG
-d4c7  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d4ca  09         DAD BC
-d4cb  0e 10      MVI C, 10
-????:
-d4cd  3a dd d9   LDA SINGLE_BYTE_ALLOCATION_MAP (d9dd)
-d4d0  b7         ORA A
-d4d1  ca e8 d4   JZ d4e8
-d4d4  7e         MOV A, M
-d4d5  b7         ORA A
-d4d6  1a         LDAX DE
-d4d7  c2 db d4   JNZ d4db
-d4da  77         MOV M, A
-????:
-d4db  b7         ORA A
-d4dc  c2 e1 d4   JNZ d4e1
-d4df  7e         MOV A, M
-d4e0  12         STAX DE
-????:
-d4e1  be         CMP M
-d4e2  c2 1f d5   JNZ d51f
-d4e5  c3 fd d4   JMP d4fd
-????:
-d4e8  cd 94 d4   CALL d494
-d4eb  eb         XCHG
-d4ec  cd 94 d4   CALL d494
-d4ef  eb         XCHG
-d4f0  1a         LDAX DE
-d4f1  be         CMP M
-d4f2  c2 1f d5   JNZ d51f
-d4f5  13         INX DE
-d4f6  23         INX HL
-d4f7  1a         LDAX DE
-d4f8  be         CMP M
-d4f9  c2 1f d5   JNZ d51f
-d4fc  0d         DCR C
-????:
-d4fd  13         INX DE
-d4fe  23         INX HL
-d4ff  0d         DCR C
-d500  c2 cd d4   JNZ d4cd
-d503  01 ec ff   LXI BC, ffec
-d506  09         DAD BC
-d507  eb         XCHG
-d508  09         DAD BC
-d509  1a         LDAX DE
-d50a  be         CMP M
-d50b  da 17 d5   JC d517
-d50e  77         MOV M, A
-d50f  01 03 00   LXI BC, 0003
-d512  09         DAD BC
-d513  eb         XCHG
-d514  09         DAD BC
-d515  7e         MOV A, M
-d516  12         STAX DE
-????:
-d517  3e ff      MVI A, ff
-d519  32 d2 d9   STA d9d2
-d51c  c3 10 d4   JMP d410
-????:
-d51f  21 45 cf   LXI HL, FUNCTION_RETURN_VALUE (cf45)
-d522  35         DCR M
-d523  c9         RET
+    d4a2  af         XRA A                      ; Clear return value
+    d4a3  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
 
+    d4a6  32 ea d9   STA DIRECTORY_COUNTER (d9ea)   ; Clear directory counter
+
+    d4a9  32 eb d9   STA d9eb                   ; ?????
+
+    d4ac  cd 1e d1   CALL IS_DISK_READ_ONLY (d11e)  ; Can't proceed if the disk is read only
+    d4af  c0         RNZ
+
+    d4b0  cd 69 d1   CALL GET_FCB_S2 (d169)     ; ???? Return is S2 byte is not empty???
+    d4b3  e6 80      ANI A, 80
+    d4b5  c0         RNZ
+
+    d4b6  0e 0f      MVI C, 0f                  ; Search for directory entry that exactly (0xf bytes)
+    d4b8  cd 18 d3   CALL SEARCH_FIRST (d318)   ; matches the FCB
+
+    d4bb  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)   ; Return if the entry was not found
+    d4be  c8         RZ
+
+    d4bf  01 10 00   LXI BC, 0010               ; Calculate the pointer to allocation vector of the entry
+    d4c2  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
+    d4c5  09         DAD BC
+    d4c6  eb         XCHG                       ; Move to DE
+
+    d4c7  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Calculate similar pointer in the FCB, load to HL
+    d4ca  09         DAD BC
+    d4cb  0e 10      MVI C, 10                  ; allocation entries count
+
+CLOSE_FILE_MERGE_ALLOC_LOOP:
+    d4cd  3a dd d9   LDA SINGLE_BYTE_ALLOCATION_MAP (d9dd)
+    d4d0  b7         ORA A                      ; Check if single-byte allocation entries used
+    d4d1  ca e8 d4   JZ CLOSE_FILE_MERGE_2B_ALLOC (d4e8)
+
+    d4d4  7e         MOV A, M                   ; Merge non-zero allocation records between FCB ([HL]) and
+    d4d5  b7         ORA A                      ; directory entry ([DE])
+    d4d6  1a         LDAX DE
+    d4d7  c2 db d4   JNZ CLOSE_FILE_MERGE_ALLOC_1 (d4db)
+    d4da  77         MOV M, A                   ; record at [HL] is empty - copy from [DE]
+
+CLOSE_FILE_MERGE_ALLOC_1:
+    d4db  b7         ORA A                      ; Record ad [DE] is empty - copy from [HL]
+    d4dc  c2 e1 d4   JNZ CLOSE_FILE_MERGE_ALLOC_2 (d4e1)
+    d4df  7e         MOV A, M
+    d4e0  12         STAX DE
+
+CLOSE_FILE_MERGE_ALLOC_2:
+    d4e1  be         CMP M                      ; Check the merge error ([HL] != [DE])
+    d4e2  c2 1f d5   JNZ CLOSE_FILE_MERGE_ALLOC_ERROR (d51f)
+
+    d4e5  c3 fd d4   JMP CLOSE_FILE_MERGE_ALLOC_NEXT (d4fd) ; Advance to the next record
+
+CLOSE_FILE_MERGE_2B_ALLOC:
+    d4e8  cd 94 d4   CALL MERGE_ALLOC_ENTRIES (d494); Merge non-zero 2-byte allocation records in FCB and
+    d4eb  eb         XCHG                           ; directory entry
+    d4ec  cd 94 d4   CALL MERGE_ALLOC_ENTRIES (d494)
+    d4ef  eb         XCHG
+
+    d4f0  1a         LDAX DE                    ; Check the merge error  ([HL] != [DE])
+    d4f1  be         CMP M
+    d4f2  c2 1f d5   JNZ CLOSE_FILE_MERGE_ALLOC_ERROR (d51f)
+
+    d4f5  13         INX DE                     ; Check the second byte for the merge error condition
+    d4f6  23         INX HL
+    d4f7  1a         LDAX DE
+    d4f8  be         CMP M
+    d4f9  c2 1f d5   JNZ CLOSE_FILE_MERGE_ALLOC_ERROR (d51f)
+
+    d4fc  0d         DCR C                      ; We are working with 2-byte records - advance C twice faster
+
+CLOSE_FILE_MERGE_ALLOC_NEXT:
+    d4fd  13         INX DE                     ; Advance to the next allocation record
+    d4fe  23         INX HL
+    d4ff  0d         DCR C                      ; Check if we are done
+    d500  c2 cd d4   JNZ CLOSE_FILE_MERGE_ALLOC_LOOP (d4cd)
+
+    d503  01 ec ff   LXI BC, ffec               ; Move pointer to -0x14 bytes (to extent number at 0x0c offset)
+    d506  09         DAD BC
+    d507  eb         XCHG
+
+    d508  09         DAD BC                     ; Same for FCB pointer
+
+    d509  1a         LDAX DE                    ; Load extent number from FCB to A
+
+    d50a  be         CMP M                      ; Compare extent numbers with one in directory entry
+    d50b  da 17 d5   JC CLOSE_FILE_MERGE_ALLOC_EXIT (d517)
+
+    d50e  77         MOV M, A                   ; Update the extent number in the directory entry
+
+    d50f  01 03 00   LXI BC, 0003               ; Advance pointers to the record counter
+    d512  09         DAD BC
+    d513  eb         XCHG
+    d514  09         DAD BC                     
+
+    d515  7e         MOV A, M                   ; Copy from record counter from FCB to directory entry
+    d516  12         STAX DE
+
+CLOSE_FILE_MERGE_ALLOC_EXIT:
+    d517  3e ff      MVI A, ff                  ; Set the flag that FCB has been flushed to directory entry
+    d519  32 d2 d9   STA FCB_COPIED_TO_DIR (d9d2)
+
+    d51c  c3 10 d4   JMP FLUSH_DIR_SECTOR (d410); Update the data on disk
+
+CLOSE_FILE_MERGE_ALLOC_ERROR:
+    d51f  21 45 cf   LXI HL, FUNCTION_RETURN_VALUE (cf45)   ; Return an error (0xff)
+    d522  35         DCR M
+    d523  c9         RET
+
+
+; Create a file, name in FCB
+;
+; The function algorithm:
+; - search for an empty directory entry (one that starts with 0xe5 byte)
+; - Clear allocation data in the FCB (bytes 0x0f-0x1f)
+; - Stores the FCB in the directory sector
 CREATE_FILE:
     d524  cd 54 d1   CALL CHECK_DISK_READ_ONLY (d154)   ; Check if operation is possible
 
     d527  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)     ; Load the pointer to FCB
     d52a  e5         PUSH HL
 
-    d52b  21 ac d9   LXI HL, d9ac               ; ??????
+    d52b  21 ac d9   LXI HL, EMPTY_ENTRY_SIGNATURE (d9ac)   ; Search for an emtpy directory entry
     d52e  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
 
-    d531  0e 01      MVI C, 01
+    d531  0e 01      MVI C, 01                          ; Will match only empty entry signature (1 byte)
     d533  cd 18 d3   CALL SEARCH_FIRST (d318)
 
-d536  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
-d539  e1         POP HL
-d53a  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
-d53d  c8         RZ
-d53e  eb         XCHG
-d53f  21 0f 00   LXI HL, 000f
-d542  19         DAD DE
-d543  0e 11      MVI C, 11
-d545  af         XRA A
-????:
-d546  77         MOV M, A
-d547  23         INX HL
-d548  0d         DCR C
-d549  c2 46 d5   JNZ d546
-d54c  21 0d 00   LXI HL, 000d
-d54f  19         DAD DE
-d550  77         MOV M, A
-d551  cd 8c d1   CALL UPDATE_LAST_DIR_ENTRY_NUMBER (d18c)
-d554  cd fd d3   CALL d3fd
-d557  c3 78 d1   JMP SET_FCB_S2 (d178)
+    d536  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)   ; Reached end of the directory? no empty slots
+
+    d539  e1         POP HL                             ; Restore and save FCB address
+    d53a  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)     
+
+    d53d  c8         RZ                         ; Return if no empty slots found
+
+    d53e  eb         XCHG                       ; Calculate pointer to the record count of the extent
+    d53f  21 0f 00   LXI HL, 000f
+    d542  19         DAD DE
+
+    d543  0e 11      MVI C, 11                  ; Clear 17 bytes of the record (bytes 0x0f - 0x1f)
+    d545  af         XRA A
+
+CREATE_FILE_CLEAR_LOOP:
+    d546  77         MOV M, A                   ; Clear the next byte
+    d547  23         INX HL
+    d548  0d         DCR C
+    d549  c2 46 d5   JNZ CREATE_FILE_CLEAR_LOOP (d546)
+
+    d54c  21 0d 00   LXI HL, 000d               ; Clear also S1 byte
+    d54f  19         DAD DE
+    d550  77         MOV M, A
+
+    d551  cd 8c d1   CALL UPDATE_LAST_DIR_ENTRY_NUMBER (d18c)   ; Update the entries counter
+
+    d554  cd fd d3   CALL COPY_FCB_TO_DIR (d3fd); Copy FCB to the directory entry
+
+    d557  c3 78 d1   JMP SET_FCB_S2 (d178)      ; ???? Set the write flag???
 
 
 ????:
 d55a  af         XRA A
-d55b  32 d2 d9   STA d9d2
+d55b  32 d2 d9   STA FCB_COPIED_TO_DIR (d9d2)
 d55e  cd a2 d4   CALL CLOSE_FILE (d4a2)
 d561  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d564  c8         RZ
@@ -2292,7 +2362,7 @@ d571  ca 83 d5   JZ d583
 d574  47         MOV B, A
 d575  3a c5 d9   LDA DISK_EXTENT_MASK (d9c5)
 d578  a0         ANA B
-d579  21 d2 d9   LXI HL, d9d2
+d579  21 d2 d9   LXI HL, FCB_COPIED_TO_DIR (d9d2)
 d57c  a6         ANA M
 d57d  ca 8e d5   JZ d58e
 d580  c3 ac d5   JMP d5ac
@@ -2833,9 +2903,13 @@ d89f  cd 51 d8   CALL RESELECT_DISK (d851)
 d8a2  c3 51 d4   JMP OPEN_FILE (d451)
 
 
+; Function 0x10 - Close file
+;
+; Arguments:
+; DE - Pointer to FCB
 CLOSE_FILE_FUNC:
-d8a5  cd 51 d8   CALL RESELECT_DISK (d851)
-d8a8  c3 a2 d4   JMP CLOSE_FILE (d4a2)
+    d8a5  cd 51 d8   CALL RESELECT_DISK (d851)
+    d8a8  c3 a2 d4   JMP CLOSE_FILE (d4a2)
 
 
 ; Function 0x11 - Search first match
@@ -3089,8 +3163,8 @@ d9a5  cd 07 d7   CALL d707
 d9a8  cc 03 d6   CZ d603
 d9ab  c9         RET
 
-????:
-    d9ac  e5          db e5
+EMPTY_ENTRY_SIGNATURE:
+    d9ac  e5          db e5                     ; A first byte of FCB/direntry that marks entry as empty
 
 READ_ONLY_VECTOR:
     d9ad 00 00        dw 0000
@@ -3190,6 +3264,9 @@ DIRECTORY_COUNTER:
 CURRENT_DIR_ENTRY_SECTOR:
     d9ec 00           db 00                     ; Sector number of the current directory entry
 
+FCB_COPIED_TO_DIR:
+    d9d2 00           db 00                     ; Flag indicating the FCB copied to directory entry
+
 RESELECT_DISK_ON_EXIT:
     d9de 00           db 00                     ; Flag indicating that disk needs to be re-selected on exit
 
@@ -3198,3 +3275,8 @@ PREV_SELECTED_DRIVE:
 
 FCB_DRIVE_CODE:
     d9e0 00           db 00                     ; Drive code passed as a first byte of FCB
+
+
+
+????:
+    d9eb 00           db 00

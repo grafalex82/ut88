@@ -66,15 +66,11 @@ def write_protect_disk(cpm, disk_no):
 
 def create_file(cpm, name):
     fill_fcb(cpm, 0x1000, name)
+    return call_bdos_function(cpm, 0x16, 0x1000)
 
-    # Call create file function
-    code = call_bdos_function(cpm, 0x16, 0x1000)
-    if code > 0:
-        return code
 
-    # Call close file function
-    code = call_bdos_function(cpm, 0x10, 0x1000)
-    return code
+def close_file(cpm):
+    return call_bdos_function(cpm, 0x10, 0x1000)
 
 
 def search_first(cpm, name):
