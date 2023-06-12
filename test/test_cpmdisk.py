@@ -22,7 +22,15 @@ def standard_disk_file():
     return f
 
 
-def test_create(tmp_disk_file):
+def gen_content(lines_count):
+    res = ""
+    for i in range(lines_count):
+        res += f"Line num {i:04}!\r\n"
+
+    return res
+
+
+def test_create_disk(tmp_disk_file):
     # Create an empty disk
     disk = CPMDisk(tmp_disk_file)
     disk.flush()
@@ -35,6 +43,10 @@ def test_create(tmp_disk_file):
 def test_list_dir_raw(standard_disk_file):
     disk = CPMDisk(standard_disk_file)
     entries = disk.list_dir_raw()
+
+    # for entry in entries:
+    #     print(entry)
+    # assert False
 
     entry2 = entries[1]
     assert entry2['name'] == 'OS2CCP'
@@ -72,3 +84,37 @@ def test_read_big_file(standard_disk_file):
     print(''.join(chr(code) for code in data))
     assert "Bdos Interface, Bdos, Version 2.2 Feb, 1980" in data_str        # A line at the beginning
     assert "directory record 0,1,...,dirmax/4" in data_str                  # A line at the end
+
+
+def test_disk_allocation(standard_disk_file):
+    disk = CPMDisk(standard_disk_file)
+    allocation = disk.get_disk_allocation()
+
+    assert allocation[0] == True        # Directory block
+    assert allocation[1] == True        # Directory block
+    assert allocation[2] == True        # Data block
+    assert allocation[200] == True      # Data block
+    assert allocation[221] == False     # Empty data block
+    assert allocation[240] == False     # Empty data block
+
+
+def test_get_free_blocks(standard_disk_file):
+    disk = CPMDisk(standard_disk_file)
+    free_blocks = disk.get_free_blocks()
+    assert free_blocks == [x for x in range(221, 243)]
+
+
+# def test_write_small_file(tmp_disk_file):
+#     # Generate test content
+#     content = gen_content(8)
+
+#     # Create the disk, and write the content to a new file
+#     disk = CPMDisk(tmp_disk_file)
+#     disk.write_file('TEST.TXT', content)
+#     disk.flush()
+
+#     # Read the file and check the content
+#     data = disk.read_file('TEST.TXT')
+#     data_str = ''.join(chr(code) for code in data)
+#     assert content == data_str
+

@@ -24,6 +24,7 @@ UT88DiskParams = {
 }
 
 SECTOR_SIZE = 128
+DIR_ENTRY_SIZE = 32
 
 class CPMDisk():
     def __init__(self, filename, params=StandardDiskParams):
@@ -38,7 +39,6 @@ class CPMDisk():
         if os.path.isfile(self.filename):
             with open(self.filename, "rb") as f:
                 self.data = self.do_sector_translation(f.read(), False)
-                
         else:
             self.data = [0] * (self.params['tracks_count'] * self.params['sectors_per_track'] * SECTOR_SIZE)
 
@@ -59,6 +59,7 @@ class CPMDisk():
 
         return res
 
+
     def flush(self):
         with open(self.filename, "w+b") as f:
             f.write(bytearray(self.do_sector_translation(self.data, True)))
@@ -68,8 +69,8 @@ class CPMDisk():
         dir_offset = self.params['reserved_tracks'] * self.params['sectors_per_track'] * SECTOR_SIZE
         res = []
         for i in range(self.params['num_dir_entries']):
-            entry_offset = i * 32   # Each entry is 32 byte
-            entry = self.data[dir_offset + entry_offset : dir_offset + entry_offset + 32] 
+            entry_offset = i * DIR_ENTRY_SIZE
+            entry = self.data[dir_offset + entry_offset : dir_offset + entry_offset + DIR_ENTRY_SIZE] 
 
             code = self.data[dir_offset + entry_offset + 0]
             if code == 0xe5:        # Entries that start with 0xe5 byte are deleted/empty
@@ -81,9 +82,9 @@ class CPMDisk():
             record['ext'] = ''.join(chr(code) for code in entry[9:12]).strip()
             record['EX'] = entry[12]
             record['S2'] = entry[14]
-            record['entry'] = ((32 * entry[14]) + entry[12]) // (self.params['extent_mask'] + 1)
+            record['entry'] = ((DIR_ENTRY_SIZE * entry[14]) + entry[12]) // (self.params['extent_mask'] + 1) # as per spec
             record['num_records'] = (entry[12] & self.params['extent_mask']) * 128 + entry[15]
-            record['allocation'] = [x for x in entry[16:32] if x != 0]
+            record['allocation'] = [x for x in entry[16:32] if x != 0] # Only 1-byte allocation entries supported
             res.append(record)
 
         return res
@@ -111,11 +112,42 @@ class CPMDisk():
         return res
     
 
-    def get_block(self, block):
+    def read_block(self, block):
         data_start = self.params['sectors_per_track'] * self.params['reserved_tracks'] * SECTOR_SIZE
         block_size = self.params['block_size']
         block_offset = block_size * block
         return self.data[data_start + block_offset : data_start + block_offset + block_size]
+
+
+    def write_block(self, block, data):
+        data_start = self.params['sectors_per_track'] * self.params['reserved_tracks'] * SECTOR_SIZE
+        block_size = self.params['block_size']
+        data_size = min(len(data), block_size)
+        block_offset = block_size * block
+        self.data[data_start + block_offset : data_start + block_offset + data_size] = data[0 : data_size]
+
+
+    def get_disk_allocation(self):
+        # Create an allocation vector with all blocks free
+        allocation = [False] * self.params['num_blocks']
+
+        # Mark directory blocks as allocated
+        num_dir_blocks = self.params['num_dir_entries'] * DIR_ENTRY_SIZE // self.params['block_size']
+        for i in range(num_dir_blocks):
+            allocation[i] = True
+
+        # Iterate over all files, and mark their blocks as allocated
+        for entry in self.list_dir_raw():
+            for alloc_entry in entry['allocation']:
+                allocation[alloc_entry] = True
+
+        return allocation
+        
+
+    def get_free_blocks(self):
+        allocation = self.get_disk_allocation()
+        free_blocks = [b for b in range(len(allocation)) if allocation[b] == False]
+        return free_blocks            
 
 
     def read_file(self, filename):
@@ -124,6 +156,6 @@ class CPMDisk():
 
         data = []
         for block in entry['allocation']:
-            data.extend(self.get_block(block))
+            data.extend(self.read_block(block))
 
         return data[0:num_records*128]
