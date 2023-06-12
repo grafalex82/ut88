@@ -44,6 +44,13 @@ def call_bdos_function(cpm, func, arg = 0):
     return (cpm.cpu._b << 8) | cpm.cpu._a
 
 
+def gen_content(lines_count):
+    res = ""
+    for i in range(lines_count):
+        res += f"Line num {i:04}!\r\n"
+
+    return res
+
 def fill_fcb(cpm, addr, filename):
     # Zero the file control block
     for i in range(33):
@@ -81,6 +88,26 @@ def search_first(cpm, name):
 def search_next(cpm):
     return call_bdos_function(cpm, 0x12, 0x1000)
 
+
+def delete_file(cpm, name):
+    fill_fcb(cpm, 0x1000, name)
+    return call_bdos_function(cpm, 0x13, 0x1000)
+
+
+def write_file_sequentally(cpm, data):
+    offset = 0
+    while offset < len(data):
+        chunk_len = min(128, len(data) - offset)
+
+        # Fill the 128-byte default disk buffer at 0x0080
+        i = 0
+        for b in data[offset : offset + chunk_len]:
+            cpm.set_byte(0x0080 + i, b)
+            i += 1
+
+        # Call the sector write function
+        call_bdos_function(cpm, 0x15, 0x1000)
+        offset += 128
 
 def rename_file(cpm, oldname, newname):
     fill_fcb(cpm, 0x1000, oldname)  # Old name in the first 16 bytes of FCB
@@ -173,3 +200,42 @@ def test_rename_file(cpm, disk):
     assert search_first(cpm, 'FOO.TXT') == 0xff     # Foo no longer found
     assert search_first(cpm, 'BAR.TXT') == 0        # Bar is at foo's location
 
+
+def test_delete_file(cpm, disk):
+    create_file(cpm, 'FOO.TXT')
+    assert search_first(cpm, 'FOO.TXT') == 0        # File exists
+
+    delete_file(cpm, 'FOO.TXT') 
+    assert search_first(cpm, 'FOO.TXT') == 0xff     # Foo no longer exists
+
+
+def test_delete_file_by_mask(cpm, disk):
+    create_file(cpm, 'FOO1.TXT')
+    create_file(cpm, 'FOO2.TXT')
+    create_file(cpm, 'FOO3.TXT')
+    assert search_first(cpm, 'FOO?.TXT') == 0        # Files exists
+
+    delete_file(cpm, 'FOO?.TXT') 
+    assert search_first(cpm, 'FOO?.TXT') == 0xff     # Files no longer exist
+
+
+@pytest.mark.parametrize("data_size", [
+    8,      # 1 sector, block is partially filled
+    64,     # 8 sectors, 1 full block
+    128,    # 16 sectors, 2 full blocks
+    1024,   # 128 sectors, 16 full blocks - full extent
+    1032,   # >128 sectors, require additional extent
+])
+def test_write_file_sequentally(cpm, data_size, disk):
+    assert create_file(cpm, 'FOO.TXT') != 0xff
+
+    content = gen_content(data_size)
+    write_file_sequentally(cpm, bytearray(content.encode('ascii')))
+    
+    assert close_file(cpm) != 0xff
+
+    # Check the content
+    disk.update()
+    loader = CPMDisk(disk.filename, params=UT88DiskParams)
+    read_str = ''.join(chr(code) for code in loader.read_file('FOO.TXT'))
+    assert read_str == content
