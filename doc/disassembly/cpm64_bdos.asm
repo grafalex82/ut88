@@ -787,9 +787,9 @@ FUNC_26:
 FUNC_27:
     cf04  c9         RET
 
-????:
-cf05  3e 01      MVI A, 01
-cf07  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+EXIT_WITH_ERROR:
+    cf05  3e 01      MVI A, 01                  ; Set the return code to 1 and exit
+    cf07  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 
 COMP_CURSOR_POSITION:
     cf0a  00           db 00                    ; Flag indicates that no char printing required, only
@@ -1133,76 +1133,155 @@ SEEK_TO_SECTOR_EXIT:
     d03b  c3 21 da   JMP BIOS_SELECT_SECTOR (da21)
 
 
+; Calculate position in the disk allocation vector
+;
+; The function algorithm:
+;     block index = current record >> block shift factor
+;     extent value = extent number << (7 - block shift factor)
+;     res = extent value + block index
+;
+; It is quite hard to understand the intention of the function. Here are a few examples for different
+; block shift factors (number of sectors in block)
+;
+; block size    sectors per block       block shift     disk map position
+; 1k            8                       3               sect/8  + extval*16
+; 2k            16                      4               sect/16 + extval*8
+; 4k            32                      5               sect/32 + extval*4
+; 8k            64                      6               sect/64 + extval*2
+; 16k           128                     7               sect/128 + extval
+; Where sect is a record (sector) number within the current extent, and extval is a extent number masked
+; with disk extent mask
+CALC_DISK_MAP_POS:
+    d03e  21 c3 d9   LXI HL, DISK_BLOCK_SHIFT_FACTOR (d9c3)
+    d041  4e         MOV C, M
 
-????:
-d03e  21 c3 d9   LXI HL, DISK_BLOCK_SHIFT_FACTOR (d9c3)
-d041  4e         MOV C, M
-d042  3a e3 d9   LDA d9e3
-????:
-d045  b7         ORA A
-d046  1f         RAR
-d047  0d         DCR C
-d048  c2 45 d0   JNZ d045
-d04b  47         MOV B, A
-d04c  3e 08      MVI A, 08
-d04e  96         SUB M
-d04f  4f         MOV C, A
-d050  3a e2 d9   LDA d9e2
-????:
-d053  0d         DCR C
-d054  ca 5c d0   JZ d05c
-d057  b7         ORA A
-d058  17         RAL
-d059  c3 53 d0   JMP d053
-????:
-d05c  80         ADD B
-d05d  c9         RET
-????:
-d05e  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d061  11 10 00   LXI DE, 0010
-d064  19         DAD DE
-d065  09         DAD BC
-d066  3a dd d9   LDA SINGLE_BYTE_ALLOCATION_MAP (d9dd)
-d069  b7         ORA A
-d06a  ca 71 d0   JZ d071
-d06d  6e         MOV L, M
-d06e  26 00      MVI H, 00
-d070  c9         RET
-????:
-d071  09         DAD BC
-d072  5e         MOV E, M
-d073  23         INX HL
-d074  56         MOV D, M
-d075  eb         XCHG
-d076  c9         RET
-????:
-d077  cd 3e d0   CALL d03e
-d07a  4f         MOV C, A
-d07b  06 00      MVI B, 00
-d07d  cd 5e d0   CALL d05e
-d080  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
-d083  c9         RET
-????:
-d084  2a e5 d9   LHLD ACTUAL_SECTOR (d9e5)
-d087  7d         MOV A, L
-d088  b4         ORA H
-d089  c9         RET
-????:
-d08a  3a c3 d9   LDA DISK_BLOCK_SHIFT_FACTOR (d9c3)
-d08d  2a e5 d9   LHLD ACTUAL_SECTOR (d9e5)
-????:
-d090  29         DAD HL
-d091  3d         DCR A
-d092  c2 90 d0   JNZ d090
-d095  22 e7 d9   SHLD d9e7
-d098  3a c4 d9   LDA DISK_BLOCK_BLM (d9c4)
-d09b  4f         MOV C, A
-d09c  3a e3 d9   LDA d9e3
-d09f  a1         ANA C
-d0a0  b5         ORA L
-d0a1  6f         MOV L, A
-d0a2  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
-d0a5  c9         RET
+    d042  3a e3 d9   LDA CURRENT_RECORD_INDEX (d9e3)
+
+CALC_DISK_MAP_POS_LOOP1:
+    d045  b7         ORA A                      ; Shift record index right Block Shift Factor times
+    d046  1f         RAR                        ; This will get the block index in the extent
+    d047  0d         DCR C
+    d048  c2 45 d0   JNZ CALC_DISK_MAP_POS_LOOP1 (d045)
+
+    d04b  47         MOV B, A                   ; Store block index in B
+
+    d04c  3e 08      MVI A, 08                  ; C = 8 - block shift factor
+    d04e  96         SUB M
+    d04f  4f         MOV C, A
+
+    d050  3a e2 d9   LDA EXTENT_NUMBER_MASKED (d9e2)
+
+CALC_DISK_MAP_POS_LOOP2:
+    d053  0d         DCR C                      ; Move extent number left C-1 times
+    d054  ca 5c d0   JZ CALC_DISK_MAP_POS_FIN (d05c)
+    d057  b7         ORA A
+    d058  17         RAL
+    d059  c3 53 d0   JMP CALC_DISK_MAP_POS_LOOP2 (d053)
+
+CALC_DISK_MAP_POS_FIN:
+    d05c  80         ADD B
+    d05d  c9         RET
+
+
+; Return a record in the FCB or extent allocation vector (block number)
+;
+; Each FCB or a directory entry has a vector, containing 16 one-byte or 8 two-byte block numbers.
+; This function returns an entry in this vector at the given index.
+;
+; Arguments:
+; BC - block index in the current extent or FCB allocation vector
+;
+; Return:
+; HL - block number
+GET_BLOCK_NUM_FOR_RECORD:
+    d05e  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Calculate allocation vector ptr of the given FCB
+    d061  11 10 00   LXI DE, 0010
+    d064  19         DAD DE
+
+    d065  09         DAD BC                     ; Add current record (sector) block number index
+
+    d066  3a dd d9   LDA SINGLE_BYTE_ALLOCATION_MAP (d9dd)  ; Check if the allocation map is single byte
+    d069  b7         ORA A
+    d06a  ca 71 d0   JZ GET_BLOCK_NUM_FOR_RECORD_1 (d071)
+
+    d06d  6e         MOV L, M                   ; Load 1-byte block number at given index to HL
+    d06e  26 00      MVI H, 00
+    d070  c9         RET
+
+GET_BLOCK_NUM_FOR_RECORD_1:
+    d071  09         DAD BC                     ; Double the offset
+
+    d072  5e         MOV E, M                   ; get the 2-byte block number to HL
+    d073  23         INX HL
+    d074  56         MOV D, M
+    d075  eb         XCHG
+
+    d076  c9         RET
+
+
+
+; Calculate block number for currently read/write sector
+;
+; This function is used for sequental read/write operations, and convert current sector index
+; into block number.
+;
+; Algorithm:
+; - Take current sector index and convert it into the block index
+; - Read the block number from the FCB allocation vector at the calculated index
+; - Store calculated block number into ACTUAL_SECTOR variable ????
+; - Calculated block number is returned in HL
+CALC_BLOCK_NUMBER:
+    d077  cd 3e d0   CALL CALC_DISK_MAP_POS (d03e)
+    d07a  4f         MOV C, A
+
+    d07b  06 00      MVI B, 00
+    d07d  cd 5e d0   CALL GET_BLOCK_NUM_FOR_RECORD (d05e)
+
+    d080  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)  ; Store calculated block number
+    d083  c9         RET
+
+
+; Check if the block number record is zero (HL==0)
+IS_BLOCK_ZERO:
+    d084  2a e5 d9   LHLD ACTUAL_SECTOR (d9e5)
+    d087  7d         MOV A, L
+    d088  b4         ORA H
+    d089  c9         RET
+
+
+; Calculate sector number based current record index
+;
+; This function calculates the actual sector number, taking into account block number (calculated
+; previously) and current record index
+;
+; Algorithm:
+; - First sector of block = block number << block shift factor
+; - sector within the block = record index & block mask
+; - res (HL) = first sector of block + sector within the block
+CALC_SECTOR_NUMBER:
+    d08a  3a c3 d9   LDA DISK_BLOCK_SHIFT_FACTOR (d9c3) ; Load block shift factor (number of sectors in block)
+    d08d  2a e5 d9   LHLD ACTUAL_SECTOR (d9e5)          ; Load the block number
+
+CALC_SECTOR_NUMBER_LOOP:
+    d090  29         DAD HL                     ; sector number = block number << shift factor
+    d091  3d         DCR A
+    d092  c2 90 d0   JNZ CALC_SECTOR_NUMBER_LOOP (d090)
+
+    d095  22 e7 d9   SHLD BLOCK_FIRST_SECTOR (d9e7) ; Save for future use
+
+    d098  3a c4 d9   LDA DISK_BLOCK_BLM (d9c4)  ; Load the block mask
+    d09b  4f         MOV C, A
+
+    d09c  3a e3 d9   LDA CURRENT_RECORD_INDEX (d9e3); Load current record index and apply the block mask
+    d09f  a1         ANA C
+
+    d0a0  b5         ORA L                      ; Add current record index to the sector number
+    d0a1  6f         MOV L, A
+
+    d0a2  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)  ; Store the calculated sector number
+    d0a5  c9         RET
+
+
 
 ; HL = FCB pointer + 0x0c (extent number offset in the FCB)
 GET_FCB_EXTENT_NUMBER:
@@ -1213,47 +1292,61 @@ GET_FCB_EXTENT_NUMBER:
 
 
 ; DE = FCB pointer + 0xf (record count)
-; HL = FCB pointer + 0x20 (current record)
-????:
-d0ae  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d0b1  11 0f 00   LXI DE, 000f
-d0b4  19         DAD DE
-d0b5  eb         XCHG
+; HL = FCB pointer + 0x20 (current read/write record)
+GET_FCB_NUM_RECORDS:
+    d0ae  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
+    d0b1  11 0f 00   LXI DE, 000f
+    d0b4  19         DAD DE
+    d0b5  eb         XCHG
 
-d0b6  21 11 00   LXI HL, 0011
-d0b9  19         DAD DE
-d0ba  c9         RET
+    d0b6  21 11 00   LXI HL, 0011
+    d0b9  19         DAD DE
+    d0ba  c9         RET
+
+
+; Load record counter and total record number values, and store them into variables
+LOAD_RECORDS_COUNT:
+    d0bb  cd ae d0   CALL GET_FCB_NUM_RECORDS (d0ae); Get current record (sector) number
+    d0be  7e         MOV A, M
+    d0bf  32 e3 d9   STA CURRENT_RECORD_INDEX (d9e3)
+
+    d0c2  eb         XCHG                       ; Get total number of records (sectors) in this extent
+    d0c3  7e         MOV A, M
+    d0c4  32 e1 d9   STA TOTAL_EXTENT_RECORDS (d9e1)
+
+    d0c7  cd a6 d0   CALL GET_FCB_EXTENT_NUMBER (d0a6)  ; Get extent number from FCB
+
+    d0ca  3a c5 d9   LDA DISK_EXTENT_MASK (d9c5); Apply extent mask and save
+    d0cd  a6         ANA M
+    d0ce  32 e2 d9   STA EXTENT_NUMBER_MASKED (d9e2); Extent number masked
+    d0d1  c9         RET
 
 
 
-????:
-d0bb  cd ae d0   CALL d0ae
-d0be  7e         MOV A, M
-d0bf  32 e3 d9   STA d9e3
-d0c2  eb         XCHG
-d0c3  7e         MOV A, M
-d0c4  32 e1 d9   STA d9e1
-d0c7  cd a6 d0   CALL GET_FCB_EXTENT_NUMBER (d0a6)
-d0ca  3a c5 d9   LDA DISK_EXTENT_MASK (d9c5)
-d0cd  a6         ANA M
-d0ce  32 e2 d9   STA d9e2
-d0d1  c9         RET
+; Update FCB record counter
+;
+; The function increments current record counter for sequental operations (leave it as is for random
+; access operations), and update total record counter
+UPDATE_RECORD_COUNTER:
+    d0d2  cd ae d0   CALL GET_FCB_NUM_RECORDS (d0ae); Get current and total records for the extent in DE and HL
 
-????:
-d0d2  cd ae d0   CALL d0ae
-d0d5  3a d5 d9   LDA d9d5
-d0d8  fe 02      CPI A, 02
-d0da  c2 de d0   JNZ d0de
-d0dd  af         XRA A
-????:
-d0de  4f         MOV C, A
-d0df  3a e3 d9   LDA d9e3
-d0e2  81         ADD C
-d0e3  77         MOV M, A
-d0e4  eb         XCHG
-d0e5  3a e1 d9   LDA d9e1
-d0e8  77         MOV M, A
-d0e9  c9         RET
+    d0d5  3a d5 d9   LDA SEQUENTAL_OPERATION (d9d5) ; Compare operation type with #2 (zeroed write)
+    d0d8  fe 02      CPI A, 02
+    d0da  c2 de d0   JNZ UPDATE_RECORD_COUNTER_1 (d0de)
+
+    d0dd  af         XRA A                      ; Operation #2 is similar to operation #0 (random read/write)
+
+UPDATE_RECORD_COUNTER_1:
+    d0de  4f         MOV C, A                   ; Increment record counter for sequental operation, but do
+    d0df  3a e3 d9   LDA CURRENT_RECORD_INDEX (d9e3)    ; nothing for random access operations
+    d0e2  81         ADD C
+    d0e3  77         MOV M, A
+
+    d0e4  eb         XCHG
+    d0e5  3a e1 d9   LDA TOTAL_EXTENT_RECORDS (d9e1)    ; Update total records count
+    d0e8  77         MOV M, A
+
+    d0e9  c9         RET
 
 
 ; Shift HL right C number of times
@@ -1705,6 +1798,7 @@ SET_DISK_ALLOCATION_BIT:
 
     d263  b1         ORA C                      ; And set the requested one
 
+STORE_DISK_ALLOCATION_BIT:
 SET_DISK_ALLOCATION_BIT_LOOP:
     d264  0f         RRC                        ; Restore the map entry bit position
     d265  15         DCR D
@@ -2000,70 +2094,106 @@ SEARCH_NEXT_NO_MORE_ENTRIES:
 
 
 
-
+; Delete the file
+;
+; Arguments:
+; DE - Pointer to FCB with file mask
 DELETE_FILE:
-d39c  cd 54 d1   CALL CHECK_DISK_READ_ONLY (d154)
-d39f  0e 0c      MVI C, 0c
-d3a1  cd 18 d3   CALL SEARCH_FIRST (d318)
-????:
-d3a4  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
-d3a7  c8         RZ
-d3a8  cd 44 d1   CALL CHECK_FILE_READ_ONLY (d144)
-d3ab  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
-d3ae  36 e5      MVI M, e5
-d3b0  0e 00      MVI C, 00
-d3b2  cd 6b d2   CALL UPDATE_DISK_MAP (d26b)
-d3b5  cd c6 d1   CALL WRITE_DIRECTORY_SECTOR (d1c6)
-d3b8  cd 2d d3   CALL SEARCH_NEXT (d32d)
-d3bb  c3 a4 d3   JMP d3a4
+    d39c  cd 54 d1   CALL CHECK_DISK_READ_ONLY (d154)   ; Can't do anything on the read only disk
+
+    d39f  0e 0c      MVI C, 0c                  ; Search for file that matches the name pattern (0x0c bytes)
+    d3a1  cd 18 d3   CALL SEARCH_FIRST (d318)
+
+DELETE_FILE_LOOP:
+    d3a4  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
+    d3a7  c8         RZ                         ; Return if all file were processed
+
+    d3a8  cd 44 d1   CALL CHECK_FILE_READ_ONLY (d144)   ; Can't delete the file if it is read only
+
+    d3ab  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e) ; Calculate directory entry address
+    d3ae  36 e5      MVI M, e5                  ; and mark it's first byte as 0xe5 (empty record)
+
+    d3b0  0e 00      MVI C, 00                  ; Clear allocation bits for blocks of the file
+    d3b2  cd 6b d2   CALL UPDATE_DISK_MAP (d26b)
+
+    d3b5  cd c6 d1   CALL WRITE_DIRECTORY_SECTOR (d1c6) ; Flush the directory changes
+
+    d3b8  cd 2d d3   CALL SEARCH_NEXT (d32d)    ; Repeat for the next entry
+    d3bb  c3 a4 d3   JMP DELETE_FILE_LOOP (d3a4)
 
 
-????:
-d3be  50         MOV D, B
-d3bf  59         MOV E, C
-????:
-d3c0  79         MOV A, C
-d3c1  b0         ORA B
-d3c2  ca d1 d3   JZ d3d1
-d3c5  0b         DCX BC
-d3c6  d5         PUSH DE
-d3c7  c5         PUSH BC
-d3c8  cd 35 d2   CALL GET_DISK_ALLOCATION_BIT (d235)
-d3cb  1f         RAR
-d3cc  d2 ec d3   JNC d3ec
-d3cf  c1         POP BC
-d3d0  d1         POP DE
-????:
-d3d1  2a c6 d9   LHLD DISK_TOTAL_STORAGE_CAPACITY (d9c6)
-d3d4  7b         MOV A, E
-d3d5  95         SUB L
-d3d6  7a         MOV A, D
-d3d7  9c         SBB H
-d3d8  d2 f4 d3   JNC d3f4
-d3db  13         INX DE
-d3dc  c5         PUSH BC
-d3dd  d5         PUSH DE
-d3de  42         MOV B, D
-d3df  4b         MOV C, E
-d3e0  cd 35 d2   CALL GET_DISK_ALLOCATION_BIT (d235)
-d3e3  1f         RAR
-d3e4  d2 ec d3   JNC d3ec
-d3e7  d1         POP DE
-d3e8  c1         POP BC
-d3e9  c3 c0 d3   JMP d3c0
-????:
-d3ec  17         RAL
-d3ed  3c         INR A
-d3ee  cd 64 d2   CALL d264
-d3f1  e1         POP HL
-d3f2  d1         POP DE
-d3f3  c9         RET
-????:
-d3f4  79         MOV A, C
-d3f5  b0         ORA B
-d3f6  c2 c0 d3   JNZ d3c0
-d3f9  21 00 00   LXI HL, 0000
-d3fc  c9         RET
+
+; Search available block left and right
+;
+; This block searches for an empty block, and return its position. The function also sets the allocation
+; bit for the found block, marking the block allocated.
+;
+; The function does its work in a pretty interesting way - it searches in both left and right direction, 
+; until zero block number is reached at the left, or total number of blocks reached on the right.
+;
+; Arguments:
+; BC - Start block number
+;
+; Return:
+; HL - Available block number
+SEARCH_AVAILABLE_BLOCK:
+    d3be  50         MOV D, B                   ; Move BC to DE. BC will search for a block to the left,
+    d3bf  59         MOV E, C                   ; while DE will be used for the search to the right
+
+SEARCH_AVAILABLE_BLOCK_LEFT:
+    d3c0  79         MOV A, C                   ; Check if BC is zero (we reached the left border)
+    d3c1  b0         ORA B
+    d3c2  ca d1 d3   JZ SEARCH_AVAILABLE_BLOCK_RIGHT (d3d1)
+
+    d3c5  0b         DCX BC                     ; Decrement the left block number
+
+    d3c6  d5         PUSH DE                    ; Search if the block to the left is not allocated
+    d3c7  c5         PUSH BC
+    d3c8  cd 35 d2   CALL GET_DISK_ALLOCATION_BIT (d235)
+    d3cb  1f         RAR
+    d3cc  d2 ec d3   JNC SEARCH_AVAILABLE_BLOCK_FOUND (d3ec); If block is empty - allocate it
+    d3cf  c1         POP BC
+    d3d0  d1         POP DE
+
+SEARCH_AVAILABLE_BLOCK_RIGHT:
+    d3d1  2a c6 d9   LHLD DISK_TOTAL_STORAGE_CAPACITY (d9c6); Check if we have any empty blocks (is requested
+    d3d4  7b         MOV A, E                               ; block number >= total number of blocks?)
+    d3d5  95         SUB L
+    d3d6  7a         MOV A, D
+    d3d7  9c         SBB H
+
+    d3d8  d2 f4 d3   JNC SEARCH_AVAILABLE_NEXT (d3f4)   ; If reached - try moving left or exit with error
+
+    d3db  13         INX DE                     ; Try moving right
+    d3dc  c5         PUSH BC
+    d3dd  d5         PUSH DE
+
+    d3de  42         MOV B, D                   ; Get allocation for that block
+    d3df  4b         MOV C, E
+    d3e0  cd 35 d2   CALL GET_DISK_ALLOCATION_BIT (d235)
+
+    d3e3  1f         RAR                        ; Check the allocation bit
+    d3e4  d2 ec d3   JNC SEARCH_AVAILABLE_BLOCK_FOUND (d3ec)
+
+    d3e7  d1         POP DE                     ; This block is allocated, try another one
+    d3e8  c1         POP BC
+    d3e9  c3 c0 d3   JMP SEARCH_AVAILABLE_BLOCK_LEFT (d3c0)
+
+SEARCH_AVAILABLE_BLOCK_FOUND:
+    d3ec  17         RAL                        ; This block is not allocated - allocate it
+    d3ed  3c         INR A                      ; Set the allocation bit and store in the allocation vector
+    d3ee  cd 64 d2   CALL STORE_DISK_ALLOCATION_BIT (d264)
+    d3f1  e1         POP HL
+    d3f2  d1         POP DE
+    d3f3  c9         RET                        ; And exit
+
+SEARCH_AVAILABLE_NEXT:
+    d3f4  79         MOV A, C                   ; We can move right, but perhaps we still can move left 
+    d3f5  b0         ORA B                      
+    d3f6  c2 c0 d3   JNZ SEARCH_AVAILABLE_BLOCK_LEFT (d3c0)
+
+    d3f9  21 00 00   LXI HL, 0000               ; No luck - return zero, indicating no available block found
+    d3fc  c9         RET
 
 
 ; Copy the FCB to the selected directory entry, then update the corresponding sector
@@ -2137,41 +2267,63 @@ d451  0e 0f      MVI C, 0f
 d453  cd 18 d3   CALL SEARCH_FIRST (d318)
 d456  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
 d459  c8         RZ
-????:
-d45a  cd a6 d0   CALL GET_FCB_EXTENT_NUMBER (d0a6)
-d45d  7e         MOV A, M
-d45e  f5         PUSH PSW
-d45f  e5         PUSH HL
-d460  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
-d463  eb         XCHG
-d464  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d467  0e 20      MVI C, 20
-d469  d5         PUSH DE
-d46a  cd 4f cf   CALL MEMCOPY_DE_HL (cf4f)
-d46d  cd 78 d1   CALL SET_FCB_S2 (d178)
-d470  d1         POP DE
-d471  21 0c 00   LXI HL, 000c
-d474  19         DAD DE
-d475  4e         MOV C, M
-d476  21 0f 00   LXI HL, 000f
-d479  19         DAD DE
-d47a  46         MOV B, M
-d47b  e1         POP HL
-d47c  f1         POP PSW
-d47d  77         MOV M, A
-d47e  79         MOV A, C
-d47f  be         CMP M
-d480  78         MOV A, B
-d481  ca 8b d4   JZ d48b
-d484  3e 00      MVI A, 00
-d486  da 8b d4   JC d48b
-d489  3e 80      MVI A, 80
-????:
-d48b  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d48e  11 0f 00   LXI DE, 000f
-d491  19         DAD DE
-d492  77         MOV M, A
-d493  c9         RET
+
+
+
+; Update FCB for next extent
+;
+; The function resets FCB with the directory entry data, but keep the extent number and record counter.
+; This is needed to load next extent of the same file to FCB. If the extent has changed, record counter
+; is reset.
+UPDATE_FCB_FOR_NEXT_EXTENT:
+    d45a  cd a6 d0   CALL GET_FCB_EXTENT_NUMBER (d0a6)  ; Load extent number from FCB and save it for later
+    d45d  7e         MOV A, M
+    d45e  f5         PUSH PSW                   
+    d45f  e5         PUSH HL
+
+    d460  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e) ; Get directory entry address to DE
+    d463  eb         XCHG
+
+    d464  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Load FCB address to HL
+
+    d467  0e 20      MVI C, 20                  ; Copy directory entry to FCB
+    d469  d5         PUSH DE
+    d46a  cd 4f cf   CALL MEMCOPY_DE_HL (cf4f)
+
+    d46d  cd 78 d1   CALL SET_FCB_S2 (d178)     ; ?????
+
+    d470  d1         POP DE                     ; Load extent number from the directory entry to C
+    d471  21 0c 00   LXI HL, 000c
+    d474  19         DAD DE
+    d475  4e         MOV C, M
+
+    d476  21 0f 00   LXI HL, 000f               ; Load records counter from the directory entry to B
+    d479  19         DAD DE
+    d47a  46         MOV B, M
+
+    d47b  e1         POP HL                     ; Restore extent number in the FCB
+    d47c  f1         POP PSW
+    d47d  77         MOV M, A
+
+    d47e  79         MOV A, C                   ; Compare FCB extent number with directory entry one
+    d47f  be         CMP M
+
+    d480  78         MOV A, B                   ; Load the record counter
+    d481  ca 8b d4   JZ UPDATE_FCB_FOR_NEXT_EXTENT_1 (d48b)
+
+    d484  3e 00      MVI A, 00                  ; If extent numbers do not match, reset the record counter
+    d486  da 8b d4   JC UPDATE_FCB_FOR_NEXT_EXTENT_1 (d48b) ; for the new extent
+
+    d489  3e 80      MVI A, 80                  ; Limit record counter with 0x80
+
+UPDATE_FCB_FOR_NEXT_EXTENT_1:
+    d48b  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Store the updated record counter
+    d48e  11 0f 00   LXI DE, 000f
+    d491  19         DAD DE
+    d492  77         MOV M, A
+
+    d493  c9         RET
+
 
 ; Merge non-zero disk allocation entries
 ;
@@ -2361,231 +2513,342 @@ CREATE_FILE_CLEAR_LOOP:
     d557  c3 78 d1   JMP SET_FCB_S2 (d178)      ; ???? Set the write flag???
 
 
-????:
-d55a  af         XRA A
-d55b  32 d2 d9   STA FCB_COPIED_TO_DIR (d9d2)
-d55e  cd a2 d4   CALL CLOSE_FILE (d4a2)
-d561  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
-d564  c8         RZ
-d565  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d568  01 0c 00   LXI BC, 000c
-d56b  09         DAD BC
-d56c  7e         MOV A, M
-d56d  3c         INR A
-d56e  e6 1f      ANI A, 1f
-d570  77         MOV M, A
-d571  ca 83 d5   JZ d583
-d574  47         MOV B, A
-d575  3a c5 d9   LDA DISK_EXTENT_MASK (d9c5)
-d578  a0         ANA B
-d579  21 d2 d9   LXI HL, FCB_COPIED_TO_DIR (d9d2)
-d57c  a6         ANA M
-d57d  ca 8e d5   JZ d58e
-d580  c3 ac d5   JMP d5ac
-????:
-d583  01 02 00   LXI BC, 0002
-d586  09         DAD BC
-d587  34         INR M
-d588  7e         MOV A, M
-d589  e6 0f      ANI A, 0f
-d58b  ca b6 d5   JZ d5b6
-????:
-d58e  0e 0f      MVI C, 0f
-d590  cd 18 d3   CALL SEARCH_FIRST (d318)
-d593  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
-d596  c2 ac d5   JNZ d5ac
-d599  3a d3 d9   LDA d9d3
-d59c  3c         INR A
-d59d  ca b6 d5   JZ d5b6
-d5a0  cd 24 d5   CALL CREATE_FILE (d524)
-d5a3  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
-d5a6  ca b6 d5   JZ d5b6
-d5a9  c3 af d5   JMP d5af
-????:
-d5ac  cd 5a d4   CALL d45a
-????:
-d5af  cd bb d0   CALL d0bb
-d5b2  af         XRA A
-d5b3  c3 01 cf   JMP FUNCTION_EXIT (cf01)
-????:
-d5b6  cd 05 cf   CALL cf05
-d5b9  c3 78 d1   JMP SET_FCB_S2 (d178)
+
+
+; Advance to the next extent
+;
+; If all records of the current extent are processed, this function closes the extent, and advances
+; to the next one. In case of reading or updating operations the extent must already exist. In case
+; of sequental writing, the new extent is created.] 
+ADVANCE_TO_NEXT_EXTENT:
+    d55a  af         XRA A                      ; Indicate FCB needs to be flushed on the disk
+    d55b  32 d2 d9   STA FCB_COPIED_TO_DIR (d9d2)
+
+    d55e  cd a2 d4   CALL CLOSE_FILE (d4a2)     ; Close File function will do all the directory update stuff
+
+    d561  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)   ; Check if error has happened during dir update
+    d564  c8         RZ
+
+    d565  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Calculate pointer to FCB extent number
+    d568  01 0c 00   LXI BC, 000c
+    d56b  09         DAD BC
+
+    d56c  7e         MOV A, M                   ; Increment the extent number
+    d56d  3c         INR A
+    d56e  e6 1f      ANI A, 1f
+    d570  77         MOV M, A
+
+    d571  ca 83 d5   JZ ADVANCE_TO_NEXT_EXTENT_1 (d583) ; Check if the maximum extents count reached
+
+    d574  47         MOV B, A                   ; Apply the extent mask
+    d575  3a c5 d9   LDA DISK_EXTENT_MASK (d9c5)
+    d578  a0         ANA B
+
+    d579  21 d2 d9   LXI HL, FCB_COPIED_TO_DIR (d9d2)   ; Update FCB flushed flag
+    d57c  a6         ANA M
+    d57d  ca 8e d5   JZ ADVANCE_TO_NEXT_EXTENT_2 (d58e)
+
+    d580  c3 ac d5   JMP ADVANCE_TO_NEXT_EXTENT_3 (d5ac)
+
+ADVANCE_TO_NEXT_EXTENT_1:
+    d583  01 02 00   LXI BC, 0002               ; Advance to S2 byte of FCB
+    d586  09         DAD BC
+
+    d587  34         INR M                      ; ???? Increment S2 byte, and check if it reached 0x10?
+    d588  7e         MOV A, M
+    d589  e6 0f      ANI A, 0f
+    d58b  ca b6 d5   JZ ADVANCE_TO_NEXT_EXTENT_EXIT_ERROR (d5b6)
+
+ADVANCE_TO_NEXT_EXTENT_2:
+    d58e  0e 0f      MVI C, 0f                  ; Search if there is directory entry for next extent already
+    d590  cd 18 d3   CALL SEARCH_FIRST (d318)
+
+    d593  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
+    d596  c2 ac d5   JNZ ADVANCE_TO_NEXT_EXTENT_3 (d5ac); Create new one of needed
+
+    d599  3a d3 d9   LDA READ_OR_WRITE (d9d3)   ; Are we reading or writing?
+    d59c  3c         INR A
+    d59d  ca b6 d5   JZ ADVANCE_TO_NEXT_EXTENT_EXIT_ERROR (d5b6)
+
+    ; We are writing
+    d5a0  cd 24 d5   CALL CREATE_FILE (d524)    ; Creating the new extent technically means creating a file
+
+    d5a3  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)   ; No directory entries left?
+    d5a6  ca b6 d5   JZ ADVANCE_TO_NEXT_EXTENT_EXIT_ERROR (d5b6)
+
+    d5a9  c3 af d5   JMP ADVANCE_TO_NEXT_EXTENT_EXIT (d5af)
+
+ADVANCE_TO_NEXT_EXTENT_3:
+    d5ac  cd 5a d4   CALL UPDATE_FCB_FOR_NEXT_EXTENT (d45a) ; Update FCB, load the new extent if needed
+
+ADVANCE_TO_NEXT_EXTENT_EXIT:
+    d5af  cd bb d0   CALL LOAD_RECORDS_COUNT (d0bb) ; Update records counters
+
+    d5b2  af         XRA A                      ; Exit normally
+    d5b3  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+
+ADVANCE_TO_NEXT_EXTENT_EXIT_ERROR:
+    d5b6  cd 05 cf   CALL EXIT_WITH_ERROR (cf05)    ; Exit with error
+    d5b9  c3 78 d1   JMP SET_FCB_S2 (d178)
+
+
+
 
 READ_SEQUENTAL:
 d5bc  3e 01      MVI A, 01
-d5be  32 d5 d9   STA d9d5
+d5be  32 d5 d9   STA SEQUENTAL_OPERATION (d9d5)
 ????:
 d5c1  3e ff      MVI A, ff
-d5c3  32 d3 d9   STA d9d3
-d5c6  cd bb d0   CALL d0bb
-d5c9  3a e3 d9   LDA d9e3
-d5cc  21 e1 d9   LXI HL, d9e1
+d5c3  32 d3 d9   STA READ_OR_WRITE (d9d3)
+d5c6  cd bb d0   CALL LOAD_RECORDS_COUNT (d0bb)
+d5c9  3a e3 d9   LDA CURRENT_RECORD_INDEX (d9e3)
+d5cc  21 e1 d9   LXI HL, TOTAL_EXTENT_RECORDS (d9e1)
 d5cf  be         CMP M
 d5d0  da e6 d5   JC d5e6
 d5d3  fe 80      CPI A, 80
 d5d5  c2 fb d5   JNZ d5fb
-d5d8  cd 5a d5   CALL d55a
+d5d8  cd 5a d5   CALL ADVANCE_TO_NEXT_EXTENT (d55a)
 d5db  af         XRA A
-d5dc  32 e3 d9   STA d9e3
+d5dc  32 e3 d9   STA CURRENT_RECORD_INDEX (d9e3)
 d5df  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)
 d5e2  b7         ORA A
 d5e3  c2 fb d5   JNZ d5fb
 ????:
-d5e6  cd 77 d0   CALL d077
-d5e9  cd 84 d0   CALL d084
+d5e6  cd 77 d0   CALL CALC_BLOCK_NUMBER (d077)
+d5e9  cd 84 d0   CALL IS_BLOCK_ZERO (d084)
 d5ec  ca fb d5   JZ d5fb
-d5ef  cd 8a d0   CALL d08a
+d5ef  cd 8a d0   CALL CALC_SECTOR_NUMBER (d08a)
 d5f2  cd d1 cf   CALL SEEK_TO_SECTOR (cfd1)
 d5f5  cd b2 cf   CALL READ_SECTOR (cfb2)
-d5f8  c3 d2 d0   JMP d0d2
+d5f8  c3 d2 d0   JMP UPDATE_RECORD_COUNTER (d0d2)
 ????:
-d5fb  c3 05 cf   JMP cf05
+d5fb  c3 05 cf   JMP EXIT_WITH_ERROR (cf05)
 
 
+
+
+; Write data sector
+;
+; Write the data previously stored to the data buffer. Data is written to the previously opened file. 
+; The function supports 3 modes of writing data (mode is stored in SEQUENTAL_OPERATION variable):
+; Mode 0 - random access write - data is written to the previously specified sector
+; Mode 1 - sequental write - data is written to a sector selected with the record counter (incremented after
+;          each write operation, so that next call of the function will write to the next sector)
+; Mode 2 - random access write with clearing blocks. Unlike Mode 0 where write operation overwrites the
+;          data leaving other sectors of the block intact, Mode 2 will zero all sectors in written block first
+; 
+; Overall, write operation is performed at multiple stages:
+; - Calculate block number for the desired sector (selected for random access write, or the next record in 
+;   sequental writing mode)
+; - If the operation expects to start a new block, the function searches for an empty (unallocated) block,
+;   Preferably close to the previous one. If the mode 2 is used, the new block is zeroed first.
+;   - Since the function starts a new block, disk allocation map is updated accordingly
+; - No extra actions needed if writing a sector within previously allocated block. The function just
+;   calculates the actual sector number within the block, and write data buffer.
+; - Finally, the function increments record counter for sequental write operation. If the current extent 
+;   is full and no more records can fit the extent, a new extent is crteated (with the same name, but
+;   incremented extent number)
 WRITE_SEQUENTAL:
-d5fe  3e 01      MVI A, 01
-d600  32 d5 d9   STA d9d5
-????:
-d603  3e 00      MVI A, 00
-d605  32 d3 d9   STA d9d3
-d608  cd 54 d1   CALL CHECK_DISK_READ_ONLY (d154)
-d60b  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d60e  cd 47 d1   CALL CHECK_FILE_READ_ONLY_FLAG (d147)
-d611  cd bb d0   CALL d0bb
-d614  3a e3 d9   LDA d9e3
-d617  fe 80      CPI A, 80
-d619  d2 05 cf   JNC cf05
-d61c  cd 77 d0   CALL d077
-d61f  cd 84 d0   CALL d084
-d622  0e 00      MVI C, 00
-d624  c2 6e d6   JNZ d66e
-d627  cd 3e d0   CALL d03e
-d62a  32 d7 d9   STA d9d7
-d62d  01 00 00   LXI BC, 0000
-d630  b7         ORA A
-d631  ca 3b d6   JZ d63b
-d634  4f         MOV C, A
-d635  0b         DCX BC
-d636  cd 5e d0   CALL d05e
-d639  44         MOV B, H
-d63a  4d         MOV C, L
-????:
-d63b  cd be d3   CALL d3be
-d63e  7d         MOV A, L
-d63f  b4         ORA H
-d640  c2 48 d6   JNZ d648
-d643  3e 02      MVI A, 02
-d645  c3 01 cf   JMP FUNCTION_EXIT (cf01)
-????:
-d648  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
-d64b  eb         XCHG
-d64c  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d64f  01 10 00   LXI BC, 0010
-d652  09         DAD BC
-d653  3a dd d9   LDA SINGLE_BYTE_ALLOCATION_MAP (d9dd)
-d656  b7         ORA A
-d657  3a d7 d9   LDA d9d7
-d65a  ca 64 d6   JZ d664
-d65d  cd 64 d1   CALL HL_ADD_A (d164)
-d660  73         MOV M, E
-d661  c3 6c d6   JMP d66c
-????:
-d664  4f         MOV C, A
-d665  06 00      MVI B, 00
-d667  09         DAD BC
-d668  09         DAD BC
-d669  73         MOV M, E
-d66a  23         INX HL
-d66b  72         MOV M, D
-????:
-d66c  0e 02      MVI C, 02
-????:
-d66e  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)
-d671  b7         ORA A
-d672  c0         RNZ
-d673  c5         PUSH BC
-d674  cd 8a d0   CALL d08a
-d677  3a d5 d9   LDA d9d5
-d67a  3d         DCR A
-d67b  3d         DCR A
-d67c  c2 bb d6   JNZ d6bb
-d67f  c1         POP BC
-d680  c5         PUSH BC
-d681  79         MOV A, C
-d682  3d         DCR A
-d683  3d         DCR A
-d684  c2 bb d6   JNZ d6bb
-d687  e5         PUSH HL
-d688  2a b9 d9   LHLD DIRECTORY_BUFFER_ADDR (d9b9)
-d68b  57         MOV D, A
-????:
-d68c  77         MOV M, A
-d68d  23         INX HL
-d68e  14         INR D
-d68f  f2 8c d6   JP d68c
-d692  cd e0 d1   CALL SET_DIR_DISK_BUFFER (d1e0)
-d695  2a e7 d9   LHLD d9e7
-d698  0e 02      MVI C, 02
-????:
-d69a  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
-d69d  c5         PUSH BC
-d69e  cd d1 cf   CALL SEEK_TO_SECTOR (cfd1)
-d6a1  c1         POP BC
-d6a2  cd b8 cf   CALL WRITE_SECTOR (cfb8)
-d6a5  2a e5 d9   LHLD ACTUAL_SECTOR (d9e5)
-d6a8  0e 00      MVI C, 00
-d6aa  3a c4 d9   LDA DISK_BLOCK_BLM (d9c4)
-d6ad  47         MOV B, A
-d6ae  a5         ANA L
-d6af  b8         CMP B
-d6b0  23         INX HL
-d6b1  c2 9a d6   JNZ d69a
-d6b4  e1         POP HL
-d6b5  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
-d6b8  cd da d1   CALL SET_DATA_DISK_BUFFER (d1da)
-????:
-d6bb  cd d1 cf   CALL SEEK_TO_SECTOR (cfd1)
-d6be  c1         POP BC
-d6bf  c5         PUSH BC
-d6c0  cd b8 cf   CALL WRITE_SECTOR (cfb8)
-d6c3  c1         POP BC
-d6c4  3a e3 d9   LDA d9e3
-d6c7  21 e1 d9   LXI HL, d9e1
-d6ca  be         CMP M
-d6cb  da d2 d6   JC d6d2
-d6ce  77         MOV M, A
-d6cf  34         INR M
-d6d0  0e 02      MVI C, 02
-????:
-d6d2  0d         DCR C
-d6d3  0d         DCR C
-d6d4  c2 df d6   JNZ d6df
-d6d7  f5         PUSH PSW
-d6d8  cd 69 d1   CALL GET_FCB_S2 (d169)
-d6db  e6 7f      ANI A, 7f
-d6dd  77         MOV M, A
-d6de  f1         POP PSW
-????:
-d6df  fe 7f      CPI A, 7f
-d6e1  c2 00 d7   JNZ d700
-d6e4  3a d5 d9   LDA d9d5
-d6e7  fe 01      CPI A, 01
-d6e9  c2 00 d7   JNZ d700
-d6ec  cd d2 d0   CALL d0d2
-d6ef  cd 5a d5   CALL d55a
-d6f2  21 45 cf   LXI HL, FUNCTION_RETURN_VALUE (cf45)
-d6f5  7e         MOV A, M
-d6f6  b7         ORA A
-d6f7  c2 fe d6   JNZ d6fe
-d6fa  3d         DCR A
-d6fb  32 e3 d9   STA d9e3
-????:
-d6fe  36 00      MVI M, 00
-????:
-d700  c3 d2 d0   JMP d0d2
+    d5fe  3e 01      MVI A, 01                  ; Set mode, indicating sequental read/write op
+    d600  32 d5 d9   STA SEQUENTAL_OPERATION (d9d5)
+
+DISK_WRITE:
+    d603  3e 00      MVI A, 00                  ; This will be a write operation
+    d605  32 d3 d9   STA READ_OR_WRITE (d9d3)
+
+    d608  cd 54 d1   CALL CHECK_DISK_READ_ONLY (d154)   ; Can't write on a read only disk
+
+    d60b  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Can't also write to a read only file
+    d60e  cd 47 d1   CALL CHECK_FILE_READ_ONLY_FLAG (d147)
+
+    d611  cd bb d0   CALL LOAD_RECORDS_COUNT (d0bb) ; Load record counter variables used below
+
+    d614  3a e3 d9   LDA CURRENT_RECORD_INDEX (d9e3); Check if we record index is over the maximum for extent
+    d617  fe 80      CPI A, 80
+    d619  d2 05 cf   JNC EXIT_WITH_ERROR (cf05)
+
+    d61c  cd 77 d0   CALL CALC_BLOCK_NUMBER (d077)  ; Get the block number for the current record
+
+    d61f  cd 84 d0   CALL IS_BLOCK_ZERO (d084)      ; Check if the slot in the allocation vector is free.
+
+    d622  0e 00      MVI C, 00                      ; Will use normal write operation
+    d624  c2 6e d6   JNZ DISK_WRITE_5 (d66e)        ; for partially allocated blocks
+
+    d627  cd 3e d0   CALL CALC_DISK_MAP_POS (d03e)  ; Get current record block index in FCB alloc vector
+    d62a  32 d7 d9   STA CUR_RECORD_BLOCK_INDEX (d9d7)
+
+    d62d  01 00 00   LXI BC, 0000                   ; Check if this is the first write operation
+    d630  b7         ORA A                          ; on the file. If yes - set the block number BC=0
+    d631  ca 3b d6   JZ DISK_WRITE_1 (d63b)
+
+    d634  4f         MOV C, A                       ; If not - get the block number in BC
+    d635  0b         DCX BC                         ; (start searching from the previous block)
+    d636  cd 5e d0   CALL GET_BLOCK_NUM_FOR_RECORD (d05e)
+    d639  44         MOV B, H
+    d63a  4d         MOV C, L
+
+DISK_WRITE_1:
+    d63b  cd be d3   CALL SEARCH_AVAILABLE_BLOCK (d3be) ; Search for an available block
+    d63e  7d         MOV A, L
+    d63f  b4         ORA H
+    d640  c2 48 d6   JNZ DISK_WRITE_2 (d648)
+
+    d643  3e 02      MVI A, 02                  ; No available blocks left - exit with error #2
+    d645  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+
+DISK_WRITE_2:
+    d648  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)  ; Load block number to DE
+    d64b  eb         XCHG
+
+    d64c  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Load FCB allocation vector ptr in HL
+    d64f  01 10 00   LXI BC, 0010
+    d652  09         DAD BC
+
+    d653  3a dd d9   LDA SINGLE_BYTE_ALLOCATION_MAP (d9dd)  ; Check if allocation vector uses 1-byte records
+    d656  b7         ORA A
+    d657  3a d7 d9   LDA CUR_RECORD_BLOCK_INDEX (d9d7)  ; Load the allocation vector element index
+    d65a  ca 64 d6   JZ DISK_WRITE_3 (d664)
+
+    d65d  cd 64 d1   CALL HL_ADD_A (d164)       ; Load the block number from the allocation vector (1 byte)
+    d660  73         MOV M, E
+    d661  c3 6c d6   JMP DISK_WRITE_4 (d66c)
+
+DISK_WRITE_3:
+    d664  4f         MOV C, A                   ; Load the block number from the allocation vector (2 byte)
+    d665  06 00      MVI B, 00
+    d667  09         DAD BC
+    d668  09         DAD BC
+    d669  73         MOV M, E
+    d66a  23         INX HL
+    d66b  72         MOV M, D
+
+DISK_WRITE_4:
+    d66c  0e 02      MVI C, 02                  ; Set unallocated write operation
+
+DISK_WRITE_5:
+    d66e  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)   ; Check if previous functions set an error
+    d671  b7         ORA A 
+    d672  c0         RNZ                        ; If yes - stop execution
+
+    d673  c5         PUSH BC                    ; Calculate the sector number
+    d674  cd 8a d0   CALL CALC_SECTOR_NUMBER (d08a)
+
+    d677  3a d5 d9   LDA SEQUENTAL_OPERATION (d9d5) ; Check the operation type
+    d67a  3d         DCR A
+    d67b  3d         DCR A
+    d67c  c2 bb d6   JNZ DISK_WRITE_DATA (d6bb)
+
+    ; Here and below we will be zeroing the block sectors
+    d67f  c1         POP BC                     ; Restore write type operation set above
+    d680  c5         PUSH BC
+    
+    d681  79         MOV A, C                   ; Check the write type set above
+    d682  3d         DCR A
+    d683  3d         DCR A
+    d684  c2 bb d6   JNZ DISK_WRITE_DATA (d6bb)
+
+    d687  e5         PUSH HL                    ; Will use directory buffer for clearing unallocated sectors
+    d688  2a b9 d9   LHLD DIRECTORY_BUFFER_ADDR (d9b9)
+
+    d68b  57         MOV D, A                   ; Zero bytes counter
+
+DISK_WRITE_ZERO_BUF_LOOP:
+    d68c  77         MOV M, A                   ; Fill buffer with zeros
+    d68d  23         INX HL
+    d68e  14         INR D
+    d68f  f2 8c d6   JP DISK_WRITE_ZERO_BUF_LOOP (d68c)
+
+    d692  cd e0 d1   CALL SET_DIR_DISK_BUFFER (d1e0); Prepare for writing zeroed buffer
+
+    d695  2a e7 d9   LHLD BLOCK_FIRST_SECTOR (d9e7) ; Get the number of block first sector
+
+    d698  0e 02      MVI C, 02                  ; ?????
+DISK_WRITE_ZERO_BLOCK_LOOP:
+    d69a  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)  ; Seek to the next sector
+    d69d  c5         PUSH BC
+    d69e  cd d1 cf   CALL SEEK_TO_SECTOR (cfd1)
+    d6a1  c1         POP BC
+
+    d6a2  cd b8 cf   CALL WRITE_SECTOR (cfb8)   ; Write the zeroed sector
+
+    
+    d6a5  2a e5 d9   LHLD ACTUAL_SECTOR (d9e5)  ; Get the current sector number
+    d6a8  0e 00      MVI C, 00
+
+    d6aa  3a c4 d9   LDA DISK_BLOCK_BLM (d9c4)  ; Load the block mask
+    d6ad  47         MOV B, A
+    d6ae  a5         ANA L
+
+    d6af  b8         CMP B                      ; Loop while we still within the current block
+    d6b0  23         INX HL
+    d6b1  c2 9a d6   JNZ DISK_WRITE_ZERO_BLOCK_LOOP (d69a)
+
+    d6b4  e1         POP HL                     ; Restore the data sector number
+    d6b5  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)
+
+    d6b8  cd da d1   CALL SET_DATA_DISK_BUFFER (d1da)   ; Restore the data buffer
+
+    ; Write the actual data
+DISK_WRITE_DATA:
+    d6bb  cd d1 cf   CALL SEEK_TO_SECTOR (cfd1)     ; Seek to the sector to write
+
+    d6be  c1         POP BC                         ; Write the sector
+    d6bf  c5         PUSH BC
+    d6c0  cd b8 cf   CALL WRITE_SECTOR (cfb8)
+
+    d6c3  c1         POP BC                         ; Check if record index still fits the extent
+    d6c4  3a e3 d9   LDA CURRENT_RECORD_INDEX (d9e3)
+    d6c7  21 e1 d9   LXI HL, TOTAL_EXTENT_RECORDS (d9e1)
+
+    d6ca  be         CMP M
+    d6cb  da d2 d6   JC DISK_WRITE_6 (d6d2)
+
+    d6ce  77         MOV M, A                       ; If yes, increment the record counter
+    d6cf  34         INR M                      
+
+    d6d0  0e 02      MVI C, 02
+
+DISK_WRITE_6:
+    d6d2  0d         DCR C                          ; Check if this is a new block operation
+    d6d3  0d         DCR C
+    d6d4  c2 df d6   JNZ DISK_WRITE_7 (d6df)
+
+    d6d7  f5         PUSH PSW                       ; If yes, clear the S2 high bit   ????
+    d6d8  cd 69 d1   CALL GET_FCB_S2 (d169)
+    d6db  e6 7f      ANI A, 7f
+    d6dd  77         MOV M, A
+    d6de  f1         POP PSW
+
+DISK_WRITE_7:
+    d6df  fe 7f      CPI A, 7f                      ; Check if we reached maximum record count for the extent
+    d6e1  c2 00 d7   JNZ DISK_WRITE_9 (d700)
+
+    d6e4  3a d5 d9   LDA SEQUENTAL_OPERATION (d9d5) ; Check if this is a sequental operation
+    d6e7  fe 01      CPI A, 01
+    d6e9  c2 00 d7   JNZ DISK_WRITE_9 (d700)
+
+    d6ec  cd d2 d0   CALL UPDATE_RECORD_COUNTER (d0d2)  ; Update record counters
+
+    d6ef  cd 5a d5   CALL ADVANCE_TO_NEXT_EXTENT (d55a) ; And advance/create new extent
+
+    d6f2  21 45 cf   LXI HL, FUNCTION_RETURN_VALUE (cf45)   ; Check if an error happened
+    d6f5  7e         MOV A, M
+    d6f6  b7         ORA A
+    d6f7  c2 fe d6   JNZ DISK_WRITE_8 (d6fe)
+
+    d6fa  3d         DCR A                              ; Set 0xff as return code indicating the error
+    d6fb  32 e3 d9   STA CURRENT_RECORD_INDEX (d9e3)
+
+DISK_WRITE_8:
+    d6fe  36 00      MVI M, 00                          ; Set return code to zero indicating success
+
+DISK_WRITE_9:
+    d700  c3 d2 d0   JMP UPDATE_RECORD_COUNTER (d0d2)   ; Update counters and exit
+
+
 ????:
 d703  af         XRA A
-d704  32 d5 d9   STA d9d5
+d704  32 d5 d9   STA SEQUENTAL_OPERATION (d9d5)
 ????:
 d707  c5         PUSH BC
 d708  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
@@ -2660,10 +2923,12 @@ d776  2e 05      MVI L, 05
 d778  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)
 d77b  3c         INR A
 d77c  ca 84 d7   JZ d784
+
 ????:
-d77f  c1         POP BC
-d780  af         XRA A
-d781  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+    d77f  c1         POP BC
+    d780  af         XRA A                      ; Exit with success code ????
+    d781  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+
 ????:
 d784  e5         PUSH HL
 d785  cd 69 d1   CALL GET_FCB_S2 (d169)
@@ -2685,7 +2950,7 @@ d79b  c9         RET
 WRITE_RANDOM:
 d79c  0e 00      MVI C, 00
 d79e  cd 03 d7   CALL d703
-d7a1  cc 03 d6   CZ d603
+d7a1  cc 03 d6   CZ DISK_WRITE (d603)
 d7a4  c9         RET
 
 
@@ -2985,19 +3250,36 @@ SEARCH_NEXT_FUNC:
     d8d4  c3 e9 d1   JMP COPY_DIR_BUF_TO_DISK_BUF (d1e9); Return the result
 
 
-
+; Function 0x13 - Delete File
+;
+; Arguments:
+; DE - Pointer to FCB with file mask
+;
+; Return:
+; A - Directory code (0-3 if file was found and deleted, 0xff if no file was founds)
 DELETE_FILE_FUNC:
-d8d7  cd 51 d8   CALL RESELECT_DISK (d851)
-d8da  cd 9c d3   CALL DELETE_FILE (d39c)
-d8dd  c3 01 d3   JMP RETURN_DIRECTORY_CODE (d301)
+    d8d7  cd 51 d8   CALL RESELECT_DISK (d851)
+    d8da  cd 9c d3   CALL DELETE_FILE (d39c)
+    d8dd  c3 01 d3   JMP RETURN_DIRECTORY_CODE (d301)
+
 
 READ_SEQUENTAL_FUNC:
 d8e0  cd 51 d8   CALL RESELECT_DISK (d851)
 d8e3  c3 bc d5   JMP READ_SEQUENTAL (d5bc)
 
+; Function 0x15 - Write sector sequentally
+;
+; Write the data previously stored to the data buffer. Data is written to the previous opened file
+; in a sequental manner (sector number is incremented automatically)
+;
+; Arguments:
+; DE - pointer to the opened file FCB
+;
+; Return:
+; A = 0x00 - success, other values - failure
 WRITE_SEQUENTAL_FUNC:
-d8e6  cd 51 d8   CALL RESELECT_DISK (d851)
-d8e9  c3 fe d5   JMP WRITE_SEQUENTAL (d5fe)
+    d8e6  cd 51 d8   CALL RESELECT_DISK (d851)
+    d8e9  c3 fe d5   JMP WRITE_SEQUENTAL (d5fe)
 
 ; Function 0x16 - Create a file
 ;
@@ -3184,10 +3466,10 @@ BDOS_HANDLER_RETURN_EXIT:
 FUNC_28:
 d99b  cd 51 d8   CALL RESELECT_DISK (d851)
 d99e  3e 02      MVI A, 02
-d9a0  32 d5 d9   STA d9d5
+d9a0  32 d5 d9   STA SEQUENTAL_OPERATION (d9d5)
 d9a3  0e 00      MVI C, 00
 d9a5  cd 07 d7   CALL d707
-d9a8  cc 03 d6   CZ d603
+d9a8  cc 03 d6   CZ DISK_WRITE (d603)
 d9ab  c9         RET
 
 EMPTY_ENTRY_SIGNATURE:
@@ -3235,7 +3517,7 @@ DISK_BLOCK_SHIFT_FACTOR:
     d9c3  03         db 03                      ; Block shift factor
 
 DISK_BLOCK_BLM:
-    d9c4  07         db 07                      ; BLM ???
+    d9c4  07         db 07                      ; Block number mask 
 
 DISK_EXTENT_MASK:
     d9c5  00         db 00                      ; Extent mask ????
@@ -3294,6 +3576,16 @@ CURRENT_DIR_ENTRY_SECTOR:
 FCB_COPIED_TO_DIR:
     d9d2 00           db 00                     ; Flag indicating the FCB copied to directory entry
 
+READ_OR_WRITE:
+    d9d3 00           db 00                     ; 0 for write, 0xff for read
+
+SEQUENTAL_OPERATION:
+    d9d5 00           db 00                     ; Operation type (0 - random read/write, 1 - sequental, 
+                                                ; 2 - random write with zero fill of unallocated blocks)
+
+CUR_RECORD_BLOCK_INDEX:
+    d9d7 00           db 00                     ; Current record block index in FCB alloc vector
+
 RESELECT_DISK_ON_EXIT:
     d9de 00           db 00                     ; Flag indicating that disk needs to be re-selected on exit
 
@@ -3303,7 +3595,17 @@ PREV_SELECTED_DRIVE:
 FCB_DRIVE_CODE:
     d9e0 00           db 00                     ; Drive code passed as a first byte of FCB
 
+TOTAL_EXTENT_RECORDS:
+    d9e1 00           db 00                     ; Total records (sector) in current extent
 
+EXTENT_NUMBER_MASKED:
+    d9e2 00           db 00                     ; Current extent number (masked with extent mask)
+
+CURRENT_RECORD_INDEX:
+    d9e3 00           db 00                     ; Index of the current sector for sequental read/write ops
+
+BLOCK_FIRST_SECTOR:
+    d9e7 00           db 00                     ; First sector number for a given block
 
 ????:
     d9eb 00           db 00
