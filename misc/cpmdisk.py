@@ -40,7 +40,7 @@ class CPMDisk():
             with open(self.filename, "rb") as f:
                 self.data = self.do_sector_translation(f.read(), False)
         else:
-            self.data = [0] * (self.params['tracks_count'] * self.params['sectors_per_track'] * SECTOR_SIZE)
+            self.data = [0xe5] * (self.params['tracks_count'] * self.params['sectors_per_track'] * SECTOR_SIZE)
 
 
     def do_sector_translation(self, data, reverse=False):
@@ -62,6 +62,9 @@ class CPMDisk():
 
     def flush(self):
         with open(self.filename, "w+b") as f:
+            print(type(self.data))
+            print(type(self.do_sector_translation(self.data, True)))
+            print(type(bytearray(self.do_sector_translation(self.data, True))))
             f.write(bytearray(self.do_sector_translation(self.data, True)))
 
 
@@ -83,7 +86,7 @@ class CPMDisk():
             record['EX'] = entry[12]
             record['S2'] = entry[14]
             record['entry'] = ((DIR_ENTRY_SIZE * entry[14]) + entry[12]) // (self.params['extent_mask'] + 1) # as per spec
-            record['num_records'] = (entry[12] & self.params['extent_mask']) * 128 + entry[15]
+            record['num_records'] = (entry[12] & self.params['extent_mask']) * SECTOR_SIZE + entry[15]
             record['allocation'] = [x for x in entry[16:32] if x != 0] # Only 1-byte allocation entries supported
             res.append(record)
 
@@ -150,6 +153,34 @@ class CPMDisk():
         return free_blocks            
 
 
+    def write_directory_entry(self, filename, extent, extent_allocation, extent_records):
+        # Search for an empty entry
+        dir_offset = self.params['reserved_tracks'] * self.params['sectors_per_track'] * SECTOR_SIZE
+        for i in range(self.params['num_dir_entries']):
+            entry_offset = i * DIR_ENTRY_SIZE + dir_offset
+            if self.data[entry_offset] != 0xe5:
+                continue
+
+            # Write the entry
+            name, ext = filename.split('.')
+            name = f"{name.strip():8}"
+            self.data[entry_offset + 0] = 0 # Now this is a valid entry
+            self.data[entry_offset + 1 : entry_offset + 9] = bytearray(f"{name.strip():8}".encode('ascii'))
+            self.data[entry_offset + 9 : entry_offset + 12] = bytearray(f"{ext.strip():3}".encode('ascii'))
+            self.data[entry_offset + 12] = extent
+            self.data[entry_offset + 13] = 0 # S1
+            self.data[entry_offset + 14] = 0 # S2
+            self.data[entry_offset + 15] = extent_records
+            assert len(extent_allocation) <= 16
+            for i in range(16):
+                self.data[entry_offset + 16 + i] = 0 if i >= len(extent_allocation) else extent_allocation[i]
+
+            return
+
+        # No 'out of dir entries' error processing is implemented
+
+
+
     def read_file(self, filename):
         entry = self.list_dir()[filename]
         num_records = entry['num_records']
@@ -158,4 +189,32 @@ class CPMDisk():
         for block in entry['allocation']:
             data.extend(self.read_block(block))
 
-        return data[0:num_records*128]
+        return data[0:num_records*SECTOR_SIZE]
+    
+
+    def write_file(self, filename, data):
+        free_blocks = self.get_free_blocks()
+        block_size = self.params['block_size']
+        data_offset = 0
+        extent = 0
+        extent_allocation = []
+        extent_records = 0
+
+        while(data_offset < len(data)):
+            data_len = min(len(data) - data_offset, block_size)
+            block = free_blocks.pop(0)
+            self.write_block(block, data[data_offset : data_offset + data_len])
+
+            extent_allocation.append(block) # Only 1-byte allocation entries supported
+            extent_records += data_len // SECTOR_SIZE
+
+            if len(extent_allocation) == 16:
+                self.write_directory_entry(filename, extent, extent_allocation, extent_records)
+                extent += 1
+                extent_allocation = []
+                extent_records = 0
+
+            data_offset += data_len
+
+        # Write the final extent entry (may cause an extra empty extent entry, but this is correct)
+        self.write_directory_entry(filename, extent, extent_allocation, extent_records)
