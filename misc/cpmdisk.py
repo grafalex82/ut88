@@ -62,9 +62,6 @@ class CPMDisk():
 
     def flush(self):
         with open(self.filename, "w+b") as f:
-            print(type(self.data))
-            print(type(self.do_sector_translation(self.data, True)))
-            print(type(bytearray(self.do_sector_translation(self.data, True))))
             f.write(bytearray(self.do_sector_translation(self.data, True)))
 
 

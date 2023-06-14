@@ -9,15 +9,7 @@ class QuasiDisk(IODevice, StackDevice):
 
         self._page = None
         self._fname = fname
-        self._changed = False
-
-        if os.path.exists(fname):
-            with open(fname, "rb") as f:
-                self._data = bytearray(f.read())
-                assert len(self._data) == 256*1024
-        else:
-            self._data = bytearray(256*1024)
-
+        self.reload()
 
     @property
     def filename(self):
@@ -62,8 +54,19 @@ class QuasiDisk(IODevice, StackDevice):
         page_offset = 64*1024*self._page
         return (self._data[page_offset + ptr + 1] << 8) | self._data[page_offset + ptr]
 
+
+    def reload(self):
+        self._changed = False
+
+        if os.path.exists(self._fname):
+            with open(self._fname, "rb") as f:
+                self._data = bytearray(f.read())
+                assert len(self._data) == 256*1024
+        else:
+            self._data = bytearray(256*1024)
+
     
-    def update(self):
+    def flush(self):
         if not self._changed:
             return
         
@@ -72,3 +75,6 @@ class QuasiDisk(IODevice, StackDevice):
         
         self._changed = False
 
+
+    def update(self):
+        self.flush()
