@@ -76,6 +76,11 @@ def create_file(cpm, name):
     return call_bdos_function(cpm, 0x16, 0x1000)
 
 
+def open_file(cpm, name):
+    fill_fcb(cpm, 0x1000, name)
+    return call_bdos_function(cpm, 0x0f, 0x1000)
+
+
 def close_file(cpm):
     return call_bdos_function(cpm, 0x10, 0x1000)
 
@@ -159,7 +164,7 @@ def test_create_file(cpm, disk):
     code = create_file(cpm, 'ABC.TXT')
     assert code == 0
 
-    disk.update()
+    disk.flush()
     loader = CPMDisk(disk.filename, params=UT88DiskParams)
     entries = loader.list_dir()
 
@@ -235,7 +240,30 @@ def test_write_file_sequentally(cpm, data_size, disk):
     assert close_file(cpm) != 0xff
 
     # Check the content
-    disk.update()
+    disk.flush()
     loader = CPMDisk(disk.filename, params=UT88DiskParams)
     read_str = ''.join(chr(code) for code in loader.read_file('FOO.TXT'))
     assert read_str == content
+
+
+def test_open_file(cpm, disk):
+    content = gen_content(8)
+
+    writer = CPMDisk(disk.filename, params=UT88DiskParams)
+    writer.write_file('FOO.TXT', bytearray(content.encode('ascii')))
+    writer.flush()
+    disk.reload()
+
+    assert open_file(cpm, 'FOO.TXT') == 0       # Existing file
+    assert open_file(cpm, 'BAR.TXT') == 0xff    # Non-existing file
+
+
+
+# def test_read_file_sequentally(cpm, disk):
+#     content = gen_content(8)
+
+#     writer = CPMDisk(disk.filename, params=UT88DiskParams)
+#     writer.write_file('FOO.TXT', content)
+#     writer.flush()
+
+#     assert open_file(cpm, 'FOO.TXT') == 0

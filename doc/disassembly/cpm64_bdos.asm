@@ -2262,11 +2262,16 @@ d448  cd 01 d4   CALL COPY_DIR_ENTRY (d401)
 d44b  cd 2d d3   CALL SEARCH_NEXT (d32d)
 d44e  c3 40 d4   JMP d440
 
+
+; Open existing file
+;
+; The function search a directory entry that matches provided FCB, and updates FCB with allocation
+; information, records count, and other fields stored in the directory entry.
 OPEN_FILE:
-d451  0e 0f      MVI C, 0f
-d453  cd 18 d3   CALL SEARCH_FIRST (d318)
-d456  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
-d459  c8         RZ
+    d451  0e 0f      MVI C, 0f
+    d453  cd 18 d3   CALL SEARCH_FIRST (d318)
+    d456  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
+    d459  c8         RZ
 
 
 
@@ -3177,11 +3182,14 @@ RESET_DISK_SYSTEM:
     d899  c3 21 d8   JMP SELECT_DISK (d821)
 
 
-
+; Function 0x0f - Open existing file
+; 
+; Arguments:
+; DE - Pointer to FCB
 OPEN_FILE_FUNC:
-d89c  cd 72 d1   CALL CLEAR_FCB_S2 (d172)
-d89f  cd 51 d8   CALL RESELECT_DISK (d851)
-d8a2  c3 51 d4   JMP OPEN_FILE (d451)
+    d89c  cd 72 d1   CALL CLEAR_FCB_S2 (d172)
+    d89f  cd 51 d8   CALL RESELECT_DISK (d851)
+    d8a2  c3 51 d4   JMP OPEN_FILE (d451)
 
 
 ; Function 0x10 - Close file
