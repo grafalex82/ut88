@@ -109,10 +109,16 @@ def test_get_free_blocks(standard_disk_file):
     free_blocks = disk.get_free_blocks()
     assert free_blocks == [x for x in range(221, 243)]
 
-
-def test_write_small_file(tmp_disk_file):
+@pytest.mark.parametrize("data_size", [
+    8,      # 1 sector, block is partially filled
+    64,     # 8 sectors, 1 full block
+    128,    # 16 sectors, 2 full blocks
+    1024,   # 128 sectors, 16 full blocks - full extent
+    1032,   # >128 sectors, require additional extent
+])
+def test_write_small_file(tmp_disk_file, data_size):
     # Generate test content
-    content = gen_content(8)
+    content = gen_content(data_size)
 
     # Create the disk, and write the content to a new file
     disk = CPMDisk(tmp_disk_file)
