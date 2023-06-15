@@ -114,6 +114,21 @@ def write_file_sequentally(cpm, data):
         call_bdos_function(cpm, 0x15, 0x1000)
         offset += 128
 
+
+def read_file_sequentally(cpm, size):
+    offset = 0
+    res = []
+    while offset < size:
+        call_bdos_function(cpm, 0x14, 0x1000)
+
+        for i in range(128):
+            res.append(cpm.get_byte(0x0080 + i))
+
+        offset += 128
+
+    return res
+
+
 def rename_file(cpm, oldname, newname):
     fill_fcb(cpm, 0x1000, oldname)  # Old name in the first 16 bytes of FCB
     fill_fcb(cpm, 0x1010, newname)  # New name in the second 16 bytes
@@ -258,12 +273,22 @@ def test_open_file(cpm, disk):
     assert open_file(cpm, 'BAR.TXT') == 0xff    # Non-existing file
 
 
+@pytest.mark.parametrize("data_size", [
+    8,      # 1 sector, block is partially filled
+    64,     # 8 sectors, 1 full block
+    128,    # 16 sectors, 2 full blocks
+    1024,   # 128 sectors, 16 full blocks - full extent
+    1032,   # >128 sectors, require additional extent
+])
+def test_read_file_sequentally(cpm, data_size, disk):
+    content = gen_content(data_size)
 
-# def test_read_file_sequentally(cpm, disk):
-#     content = gen_content(8)
+    writer = CPMDisk(disk.filename, params=UT88DiskParams)
+    writer.write_file('FOO.TXT', bytearray(content.encode('ascii')))
+    writer.flush()
+    disk.reload()
 
-#     writer = CPMDisk(disk.filename, params=UT88DiskParams)
-#     writer.write_file('FOO.TXT', content)
-#     writer.flush()
-
-#     assert open_file(cpm, 'FOO.TXT') == 0
+    assert open_file(cpm, 'FOO.TXT') == 0
+    data = read_file_sequentally(cpm, len(content))
+    data_str = ''.join(chr(code) for code in data)
+    assert content == data_str

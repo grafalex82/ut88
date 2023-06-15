@@ -116,7 +116,7 @@ def test_get_free_blocks(standard_disk_file):
     1024,   # 128 sectors, 16 full blocks - full extent
     1032,   # >128 sectors, require additional extent
 ])
-def test_write_small_file(tmp_disk_file, data_size):
+def test_write_file(tmp_disk_file, data_size):
     # Generate test content
     content = gen_content(data_size)
 

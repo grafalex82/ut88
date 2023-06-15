@@ -2274,7 +2274,6 @@ OPEN_FILE:
     d459  c8         RZ
 
 
-
 ; Update FCB for next extent
 ;
 ; The function resets FCB with the directory entry data, but keep the extent number and record counter.
@@ -2593,41 +2592,58 @@ ADVANCE_TO_NEXT_EXTENT_EXIT:
     d5b3  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 
 ADVANCE_TO_NEXT_EXTENT_EXIT_ERROR:
-    d5b6  cd 05 cf   CALL EXIT_WITH_ERROR (cf05)    ; Exit with error
+    d5b6  cd 05 cf   CALL EXIT_WITH_ERROR (cf05); Exit with error
     d5b9  c3 78 d1   JMP SET_FCB_S2 (d178)
 
 
 
 
+; Read file in a sequental manner
+;
+; Arguments:
+; DE - Pointer to FCB
 READ_SEQUENTAL:
-d5bc  3e 01      MVI A, 01
-d5be  32 d5 d9   STA SEQUENTAL_OPERATION (d9d5)
-????:
-d5c1  3e ff      MVI A, ff
-d5c3  32 d3 d9   STA READ_OR_WRITE (d9d3)
-d5c6  cd bb d0   CALL LOAD_RECORDS_COUNT (d0bb)
-d5c9  3a e3 d9   LDA CURRENT_RECORD_INDEX (d9e3)
-d5cc  21 e1 d9   LXI HL, TOTAL_EXTENT_RECORDS (d9e1)
-d5cf  be         CMP M
-d5d0  da e6 d5   JC d5e6
-d5d3  fe 80      CPI A, 80
-d5d5  c2 fb d5   JNZ d5fb
-d5d8  cd 5a d5   CALL ADVANCE_TO_NEXT_EXTENT (d55a)
-d5db  af         XRA A
-d5dc  32 e3 d9   STA CURRENT_RECORD_INDEX (d9e3)
-d5df  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)
-d5e2  b7         ORA A
-d5e3  c2 fb d5   JNZ d5fb
-????:
-d5e6  cd 77 d0   CALL CALC_BLOCK_NUMBER (d077)
-d5e9  cd 84 d0   CALL IS_BLOCK_ZERO (d084)
-d5ec  ca fb d5   JZ d5fb
-d5ef  cd 8a d0   CALL CALC_SECTOR_NUMBER (d08a)
-d5f2  cd d1 cf   CALL SEEK_TO_SECTOR (cfd1)
-d5f5  cd b2 cf   CALL READ_SECTOR (cfb2)
-d5f8  c3 d2 d0   JMP UPDATE_RECORD_COUNTER (d0d2)
-????:
-d5fb  c3 05 cf   JMP EXIT_WITH_ERROR (cf05)
+    d5bc  3e 01      MVI A, 01                  ; Mark the operation as sequental
+    d5be  32 d5 d9   STA SEQUENTAL_OPERATION (d9d5)
+
+DISK_READ:
+    d5c1  3e ff      MVI A, ff                  ; Mark the operation as read operation
+    d5c3  32 d3 d9   STA READ_OR_WRITE (d9d3)
+
+    d5c6  cd bb d0   CALL LOAD_RECORDS_COUNT (d0bb) ; Load record counters
+
+    d5c9  3a e3 d9   LDA CURRENT_RECORD_INDEX (d9e3); Check if the current record is within current extent
+    d5cc  21 e1 d9   LXI HL, TOTAL_EXTENT_RECORDS (d9e1)
+    d5cf  be         CMP M
+    d5d0  da e6 d5   JC DISK_READ_1 (d5e6)
+
+    d5d3  fe 80      CPI A, 80                      ; Check if we reached maximum records for extent
+    d5d5  c2 fb d5   JNZ READ_FILE_ERROR (d5fb)
+
+    d5d8  cd 5a d5   CALL ADVANCE_TO_NEXT_EXTENT (d55a) ; Current extent is over, advance to the next one
+
+    d5db  af         XRA A                          ; Will start from record 0 in the next extent
+    d5dc  32 e3 d9   STA CURRENT_RECORD_INDEX (d9e3)
+
+    d5df  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)   ; Check if there were errors already
+    d5e2  b7         ORA A
+    d5e3  c2 fb d5   JNZ READ_FILE_ERROR (d5fb)
+
+DISK_READ_1:
+    d5e6  cd 77 d0   CALL CALC_BLOCK_NUMBER (d077)  ; Calculate block number based on the record number
+
+    d5e9  cd 84 d0   CALL IS_BLOCK_ZERO (d084)      ; Zero block number indicates an error
+    d5ec  ca fb d5   JZ READ_FILE_ERROR (d5fb)
+
+    d5ef  cd 8a d0   CALL CALC_SECTOR_NUMBER (d08a) ; Calculate sector number based on block and record number
+
+    d5f2  cd d1 cf   CALL SEEK_TO_SECTOR (cfd1)     ; Read the desired sector
+    d5f5  cd b2 cf   CALL READ_SECTOR (cfb2)
+
+    d5f8  c3 d2 d0   JMP UPDATE_RECORD_COUNTER (d0d2)   ; Advance to the next record and exit normally
+
+READ_FILE_ERROR:
+    d5fb  c3 05 cf   JMP EXIT_WITH_ERROR (cf05)
 
 
 
@@ -2949,7 +2965,7 @@ d790  c3 78 d1   JMP SET_FCB_S2 (d178)
 READ_RANDOM:
 d793  0e ff      MVI C, ff
 d795  cd 03 d7   CALL d703
-d798  cc c1 d5   CZ d5c1
+d798  cc c1 d5   CZ DISK_READ (d5c1)
 d79b  c9         RET
 
 WRITE_RANDOM:
