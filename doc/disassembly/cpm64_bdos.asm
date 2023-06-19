@@ -2867,110 +2867,153 @@ DISK_WRITE_9:
     d700  c3 d2 d0   JMP UPDATE_RECORD_COUNTER (d0d2)   ; Update counters and exit
 
 
-????:
-d703  af         XRA A
-d704  32 d5 d9   STA SEQUENTAL_OPERATION (d9d5)
-????:
-d707  c5         PUSH BC
-d708  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d70b  eb         XCHG
-d70c  21 21 00   LXI HL, 0021
-d70f  19         DAD DE
-d710  7e         MOV A, M
-d711  e6 7f      ANI A, 7f
-d713  f5         PUSH PSW
-d714  7e         MOV A, M
-d715  17         RAL
-d716  23         INX HL
-d717  7e         MOV A, M
-d718  17         RAL
-d719  e6 1f      ANI A, 1f
-d71b  4f         MOV C, A
-d71c  7e         MOV A, M
-d71d  1f         RAR
-d71e  1f         RAR
-d71f  1f         RAR
-d720  1f         RAR
-d721  e6 0f      ANI A, 0f
-d723  47         MOV B, A
-d724  f1         POP PSW
-d725  23         INX HL
-d726  6e         MOV L, M
-d727  2c         INR L
-d728  2d         DCR L
-d729  2e 06      MVI L, 06
-d72b  c2 8b d7   JNZ d78b
-d72e  21 20 00   LXI HL, 0020
-d731  19         DAD DE
-d732  77         MOV M, A
-d733  21 0c 00   LXI HL, 000c
-d736  19         DAD DE
-d737  79         MOV A, C
-d738  96         SUB M
-d739  c2 47 d7   JNZ d747
-d73c  21 0e 00   LXI HL, 000e
-d73f  19         DAD DE
-d740  78         MOV A, B
-d741  96         SUB M
-d742  e6 7f      ANI A, 7f
-d744  ca 7f d7   JZ d77f
-????:
-d747  c5         PUSH BC
-d748  d5         PUSH DE
-d749  cd a2 d4   CALL CLOSE_FILE (d4a2)
-d74c  d1         POP DE
-d74d  c1         POP BC
-d74e  2e 03      MVI L, 03
-d750  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)
-d753  3c         INR A
-d754  ca 84 d7   JZ d784
-d757  21 0c 00   LXI HL, 000c
-d75a  19         DAD DE
-d75b  71         MOV M, C
-d75c  21 0e 00   LXI HL, 000e
-d75f  19         DAD DE
-d760  70         MOV M, B
-d761  cd 51 d4   CALL OPEN_FILE (d451)
-d764  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)
-d767  3c         INR A
-d768  c2 7f d7   JNZ d77f
-d76b  c1         POP BC
-d76c  c5         PUSH BC
-d76d  2e 04      MVI L, 04
-d76f  0c         INR C
-d770  ca 84 d7   JZ d784
-d773  cd 24 d5   CALL CREATE_FILE (d524)
-d776  2e 05      MVI L, 05
-d778  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)
-d77b  3c         INR A
-d77c  ca 84 d7   JZ d784
+; Select sector for random read or write
+;
+; Prepare for random access read or write operation. The function parses bytes 33-35 of the FCB, that
+; indicates record index of the file to be read or written. The requested record index is converted to
+; a triple of extent high byte, extent low byte, and extent record index parameters. These parameters
+; are then written to the FCB. The function also loads needed extent of the file, and reads file allocation
+; vector for this extent.
+;
+; When all actions described above are performed, regular sequental read/write operation may be performed
+; next to read/write more than 1 sector of data
+;
+; Arguments:
+; C - operation type (0xff - read, 0x00 - write)
+; Bytes 33-35 of FCB specify file position (in sectors) to read or write
+SELECT_FILE_SECTOR:
+    d703  af         XRA A                      ; Mark this is a random access operation (not sequental)
+    d704  32 d5 d9   STA SEQUENTAL_OPERATION (d9d5)
 
-????:
+SELECT_FILE_SECTOR_1:
+    d707  c5         PUSH BC                    ; Load FCB pointer to DE
+    d708  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
+    d70b  eb         XCHG
+
+    d70c  21 21 00   LXI HL, 0021               ; Calculate offset to selected sector numer
+    d70f  19         DAD DE
+
+    d710  7e         MOV A, M                   ; record number = sector % 128
+    d711  e6 7f      ANI A, 7f
+    d713  f5         PUSH PSW
+
+    d714  7e         MOV A, M                   ; Move MSB of the low byte to the high byte
+    d715  17         RAL
+    d716  23         INX HL
+    d717  7e         MOV A, M
+    d718  17         RAL
+
+    d719  e6 1f      ANI A, 1f              ; extent number  = (pos high byte << 1 + pos low byte >> 7) & 0x1f
+    d71b  4f         MOV C, A               ; ^ this is low byte of extent number. Store block index to C.
+
+    d71c  7e         MOV A, M               ; Extent number high byte = (position high byte >> 4) & 0xf
+    d71d  1f         RAR
+    d71e  1f         RAR
+    d71f  1f         RAR
+    d720  1f         RAR
+    d721  e6 0f      ANI A, 0f
+    d723  47         MOV B, A               ; Store calculated extent number high byte to B
+
+    d724  f1         POP PSW                    ; Ensure the 3rd byte is zero
+    d725  23         INX HL
+    d726  6e         MOV L, M
+    d727  2c         INR L
+    d728  2d         DCR L
+    d729  2e 06      MVI L, 06                  ; Error code 06 - seek past end of the disk
+    d72b  c2 8b d7   JNZ SELECT_FILE_SECTOR_ERROR_1 (d78b)
+
+    d72e  21 20 00   LXI HL, 0020               ; Store calculated record counter into dedicated FCB field
+    d731  19         DAD DE
+    d732  77         MOV M, A
+
+    d733  21 0c 00   LXI HL, 000c               ; Load FCB extent number field address
+    d736  19         DAD DE
+
+    d737  79         MOV A, C                   ; Compare low byte of extent
+    d738  96         SUB M
+    d739  c2 47 d7   JNZ SELECT_FILE_SECTOR_2 (d747); If not equal - switch to the new extent
+
+    d73c  21 0e 00   LXI HL, 000e               ; Load address of the extent high byte
+    d73f  19         DAD DE
+
+    d740  78         MOV A, B                   ; Compare high byte of extent
+    d741  96         SUB M
+
+    d742  e6 7f      ANI A, 7f                  ; No need to switch extent if extent numbers equal
+    d744  ca 7f d7   JZ SELECT_FILE_SECTOR_EXIT (d77f)
+
+SELECT_FILE_SECTOR_2:
+    d747  c5         PUSH BC                    ; Close previous extent, flush FCB to directory entry
+    d748  d5         PUSH DE
+    d749  cd a2 d4   CALL CLOSE_FILE (d4a2)
+    d74c  d1         POP DE
+    d74d  c1         POP BC
+
+    d74e  2e 03      MVI L, 03                  ; Error code 03 - cannot close current extent
+
+    d750  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)   ; Check if there was indeed an error condition
+    d753  3c         INR A
+    d754  ca 84 d7   JZ SELECT_FILE_SECTOR_ERROR (d784)
+
+    d757  21 0c 00   LXI HL, 000c               ; Store calculated extent number low byte
+    d75a  19         DAD DE
+    d75b  71         MOV M, C
+
+    d75c  21 0e 00   LXI HL, 000e               ; Store calculated extent number high byte
+    d75f  19         DAD DE
+    d760  70         MOV M, B
+
+    d761  cd 51 d4   CALL OPEN_FILE (d451)      ; Load the calculated extent (FCB has all the info already)
+
+    d764  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)   ; Check for an error
+    d767  3c         INR A
+    d768  c2 7f d7   JNZ SELECT_FILE_SECTOR_EXIT (d77f)
+
+    d76b  c1         POP BC
+    d76c  c5         PUSH BC
+    d76d  2e 04      MVI L, 04                  ; Prepare to 'seek to unwriten position' error
+
+    d76f  0c         INR C                      ; Check if we are in read operation?
+    d770  ca 84 d7   JZ SELECT_FILE_SECTOR_ERROR (d784)
+
+    d773  cd 24 d5   CALL CREATE_FILE (d524)    ; Create extent if needed
+    d776  2e 05      MVI L, 05                  ; error code ????
+    d778  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)   ; Was there an error?
+    d77b  3c         INR A
+    d77c  ca 84 d7   JZ SELECT_FILE_SECTOR_ERROR (d784)
+
+SELECT_FILE_SECTOR_EXIT:
     d77f  c1         POP BC
-    d780  af         XRA A                      ; Exit with success code ????
+    d780  af         XRA A                      ; Exit with zero (success) code
     d781  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 
-????:
-d784  e5         PUSH HL
-d785  cd 69 d1   CALL GET_FCB_S2 (d169)
-d788  36 c0      MVI M, c0
-d78a  e1         POP HL
-????:
-d78b  c1         POP BC
-d78c  7d         MOV A, L
-d78d  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
-d790  c3 78 d1   JMP SET_FCB_S2 (d178)
+SELECT_FILE_SECTOR_ERROR:
+    d784  e5         PUSH HL
+    d785  cd 69 d1   CALL GET_FCB_S2 (d169)     ; Clear high extent byte, and set some flags????
+    d788  36 c0      MVI M, c0
+    d78a  e1         POP HL
+
+SELECT_FILE_SECTOR_ERROR_1:
+    d78b  c1         POP BC                     ; Set error code from L and exit
+    d78c  7d         MOV A, L
+    d78d  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
+    d790  c3 78 d1   JMP SET_FCB_S2 (d178)
 
 
+
+; Function 0x21 - Read randomly accessed sector
+;
+; DE - pointer to the FCB with fillex bytes 0x20-0x22 indicating file offset to read
 READ_RANDOM:
-d793  0e ff      MVI C, ff
-d795  cd 03 d7   CALL d703
-d798  cc c1 d5   CZ DISK_READ (d5c1)
-d79b  c9         RET
+    d793  0e ff      MVI C, ff
+    d795  cd 03 d7   CALL SELECT_FILE_SECTOR (d703)
+    d798  cc c1 d5   CZ DISK_READ (d5c1)
+    d79b  c9         RET
+
 
 WRITE_RANDOM:
 d79c  0e 00      MVI C, 00
-d79e  cd 03 d7   CALL d703
+d79e  cd 03 d7   CALL SELECT_FILE_SECTOR (d703)
 d7a1  cc 03 d6   CZ DISK_WRITE (d603)
 d7a4  c9         RET
 
@@ -3280,16 +3323,24 @@ SEARCH_NEXT_FUNC:
 ; DE - Pointer to FCB with file mask
 ;
 ; Return:
-; A - Directory code (0-3 if file was found and deleted, 0xff if no file was founds)
+; A - Directory code (0-3 if file was found and deleted, 0xff if no file was found)
 DELETE_FILE_FUNC:
     d8d7  cd 51 d8   CALL RESELECT_DISK (d851)
     d8da  cd 9c d3   CALL DELETE_FILE (d39c)
     d8dd  c3 01 d3   JMP RETURN_DIRECTORY_CODE (d301)
 
 
+; Function 0x14 - Read file sequentally
+;
+; Arguments:
+; DE - Pointer to opened file FCB 
+;
+; Return:
+; A - Directory code (0-3 if file was found and deleted, 0xff if no file was found)
 READ_SEQUENTAL_FUNC:
-d8e0  cd 51 d8   CALL RESELECT_DISK (d851)
-d8e3  c3 bc d5   JMP READ_SEQUENTAL (d5bc)
+    d8e0  cd 51 d8   CALL RESELECT_DISK (d851)
+    d8e3  c3 bc d5   JMP READ_SEQUENTAL (d5bc)
+
 
 ; Function 0x15 - Write sector sequentally
 ;
@@ -3492,7 +3543,7 @@ d99b  cd 51 d8   CALL RESELECT_DISK (d851)
 d99e  3e 02      MVI A, 02
 d9a0  32 d5 d9   STA SEQUENTAL_OPERATION (d9d5)
 d9a3  0e 00      MVI C, 00
-d9a5  cd 07 d7   CALL d707
+d9a5  cd 07 d7   CALL SELECT_FILE_SECTOR_1 (d707)
 d9a8  cc 03 d6   CZ DISK_WRITE (d603)
 d9ab  c9         RET
 

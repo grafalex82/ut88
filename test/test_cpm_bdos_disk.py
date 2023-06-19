@@ -44,9 +44,9 @@ def call_bdos_function(cpm, func, arg = 0):
     return (cpm.cpu._b << 8) | cpm.cpu._a
 
 
-def gen_content(lines_count):
+def gen_content(lines_count, start = 0):
     res = ""
-    for i in range(lines_count):
+    for i in range(start, start + lines_count):
         res += f"Line num {i:04}!\r\n"
 
     return res
@@ -125,6 +125,28 @@ def read_file_sequentally(cpm, size):
             res.append(cpm.get_byte(0x0080 + i))
 
         offset += 128
+
+    return res
+
+
+def read_file_random(cpm, pos, size):
+    res = []
+
+    pos >>= 7   # Convert byte offset to sector number
+
+    while size > 0:
+        # Set read position
+        cpm.set_word(0x1021, pos & 0xffff)
+        cpm.set_byte(0x1023, (pos >> 16) & 0xff) # Should be zero for normal files under 8Mb
+
+        # Read sector
+        call_bdos_function(cpm, 0x21, 0x1000)
+
+        for i in range(128):
+            res.append(cpm.get_byte(0x0080 + i))
+
+        size -= 128
+        pos += 1
 
     return res
 
@@ -292,3 +314,19 @@ def test_read_file_sequentally(cpm, data_size, disk):
     data = read_file_sequentally(cpm, len(content))
     data_str = ''.join(chr(code) for code in data)
     assert content == data_str
+
+
+def test_read_file_random(cpm, disk):
+    # Prepare a file on disk
+    content = gen_content(2048)
+    writer = CPMDisk(disk.filename, params=UT88DiskParams)
+    writer.write_file('FOO.TXT', bytearray(content.encode('ascii')))
+    writer.flush()
+    disk.reload()
+
+    # Open the file, and read a sector in the middle
+    open_file(cpm, 'FOO.TXT')
+    data = read_file_random(cpm, 0x2000, 256)   # Read 2 sectors at offset 0x2000
+    data_str = ''.join(chr(code) for code in data)
+    assert data_str == gen_content(16, 512) # 16 records == 256 bytes read, 512 records match requested offset
+
