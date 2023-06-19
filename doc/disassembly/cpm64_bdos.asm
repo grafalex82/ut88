@@ -159,7 +159,7 @@ FUNCTION_HANDLERS_TABLE:
     cc91  53 d9      dw FUNC_25 (d953)
     cc93  04 cf      dw FUNC_26 (cf04)
     cc95  04 cf      dw FUNC_27 (cf04)
-    cc97  9b d9      dw FUNC_28 (d99b)
+    cc97  9b d9      dw WRITE_WITH_ZERO_FILL (d99b) ; Function 0x28 - Write unallocated block with zero fill
 
 
 DISK_READ_WRITE_ERROR:
@@ -3010,12 +3010,14 @@ READ_RANDOM:
     d798  cc c1 d5   CZ DISK_READ (d5c1)
     d79b  c9         RET
 
-
+; Function 0x22 - Write randomly accessed sector
+;
+; DE - pointer to the FCB with fillex bytes 0x20-0x22 indicating file offset to read
 WRITE_RANDOM:
-d79c  0e 00      MVI C, 00
-d79e  cd 03 d7   CALL SELECT_FILE_SECTOR (d703)
-d7a1  cc 03 d6   CZ DISK_WRITE (d603)
-d7a4  c9         RET
+    d79c  0e 00      MVI C, 00
+    d79e  cd 03 d7   CALL SELECT_FILE_SECTOR (d703)
+    d7a1  cc 03 d6   CZ DISK_WRITE (d603)
+    d7a4  c9         RET
 
 
 
@@ -3538,14 +3540,26 @@ BDOS_HANDLER_RETURN_EXIT:
     d99a  c9         RET                            ; and go back to the caller
 
 
-FUNC_28:
-d99b  cd 51 d8   CALL RESELECT_DISK (d851)
-d99e  3e 02      MVI A, 02
-d9a0  32 d5 d9   STA SEQUENTAL_OPERATION (d9d5)
-d9a3  0e 00      MVI C, 00
-d9a5  cd 07 d7   CALL SELECT_FILE_SECTOR_1 (d707)
-d9a8  cc 03 d6   CZ DISK_WRITE (d603)
-d9ab  c9         RET
+; Function 0x28 - Write unallocated block with zero fill
+;
+; This function is similar to 0x22 random write operation, except for it zeros whole block when
+; writing an unallocated block. 
+;
+; Arguments:
+; DE - pointer to FCB with bytes 33-35 filled (see random write operation)
+WRITE_WITH_ZERO_FILL:
+    d99b  cd 51 d8   CALL RESELECT_DISK (d851)
+
+    d99e  3e 02      MVI A, 02                  ; Select 'write operation with clearing unallocated block'
+    d9a0  32 d5 d9   STA SEQUENTAL_OPERATION (d9d5)
+
+    d9a3  0e 00      MVI C, 00                  ; Select the sector, indicating this is write operation
+    d9a5  cd 07 d7   CALL SELECT_FILE_SECTOR_1 (d707)
+
+    d9a8  cc 03 d6   CZ DISK_WRITE (d603)       ; Perform write
+    d9ab  c9         RET
+
+
 
 EMPTY_ENTRY_SIGNATURE:
     d9ac  e5          db e5                     ; A first byte of FCB/direntry that marks entry as empty
