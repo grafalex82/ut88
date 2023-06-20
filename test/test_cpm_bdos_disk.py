@@ -193,6 +193,14 @@ def rename_file(cpm, oldname, newname):
     return call_bdos_function(cpm, 0x17, 0x1000)
 
 
+def get_file_size(cpm, filename):
+    fill_fcb(cpm, 0x1000, filename)
+    call_bdos_function(cpm, 0x23, 0x1000)
+    assert cpm.get_byte(0x1023) == 0    # No file size overflows
+    return cpm.get_word(0x1021)
+
+
+
 def test_reset_disk_system(cpm, disk):
     pass
 
@@ -420,3 +428,17 @@ def test_write_file_zero_fill(cpm, disk):
     assert len(rcontent) == 0x8200                      # No data after the written records
     assert bin2str(rcontent[0x8100 : 0x8200]) == insert # 2 sectors in the middle have content
 
+
+def test_get_file_size(cpm, disk):
+    # Prepare a file on disk
+    wcontent = gen_content(2160)    # Create a file of an odd size - 270 sectors (34 blocks, last not full)
+    writer = CPMDisk(disk.filename, params=UT88DiskParams)
+    writer.write_file('FOO.TXT', str2bin(wcontent))
+    writer.flush()
+
+    # Load the new disk content, and reset disk in CPM so that it reloads the directory
+    disk.reload()
+    disk_reset(cpm)
+
+    # Check the file size is correct
+    assert get_file_size(cpm, 'FOO.TXT') == 270

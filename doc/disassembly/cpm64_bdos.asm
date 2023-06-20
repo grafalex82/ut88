@@ -3021,99 +3021,143 @@ WRITE_RANDOM:
 
 
 
-; ????
+; Convert FCB (or directory entry) record counter to sector index
+;
+; This function is intended to convert a triple record counter/extent number/S2 byte into a single
+; 16-bit sector index. The function also calculates the overflow, in case if the file occupies more than
+; 65k sectors (8Mb). The result is stored into BC for sectors count, and A contains an overflow flag.
+;
+; The function does is pretty much opposite to SELECT_FILE_SECTOR function.
+;
 ; Arguments:
-; DE - ??? 0x0f or 0x20 offset 
-; HL - ??? directory entry or FCB address
+; HL - directory entry or FCB address
+; DE - offset of current record count field (offset 0x0f) or current record index in sequental read/write
+; operations (offset 0x20)
 ;
 ; Returns:
-; A
-; B
-; C
-????:
-d7a5  eb         XCHG
-d7a6  19         DAD DE
-d7a7  4e         MOV C, M
-d7a8  06 00      MVI B, 00
-d7aa  21 0c 00   LXI HL, 000c
-d7ad  19         DAD DE
-d7ae  7e         MOV A, M
-d7af  0f         RRC
-d7b0  e6 80      ANI A, 80
-d7b2  81         ADD C
-d7b3  4f         MOV C, A
-d7b4  3e 00      MVI A, 00
-d7b6  88         ADC B
-d7b7  47         MOV B, A
-d7b8  7e         MOV A, M
-d7b9  0f         RRC
-d7ba  e6 0f      ANI A, 0f
-d7bc  80         ADD B
-d7bd  47         MOV B, A
-d7be  21 0e 00   LXI HL, 000e
-d7c1  19         DAD DE
-d7c2  7e         MOV A, M
-d7c3  87         ADD A
-d7c4  87         ADD A
-d7c5  87         ADD A
-d7c6  87         ADD A
-d7c7  f5         PUSH PSW
-d7c8  80         ADD B
-d7c9  47         MOV B, A
-d7ca  f5         PUSH PSW
-d7cb  e1         POP HL
-d7cc  7d         MOV A, L
-d7cd  e1         POP HL
-d7ce  b5         ORA L
-d7cf  e6 01      ANI A, 01
-d7d1  c9         RET
+; A - 0x00 if no overflow, or 0x01 if size overflow detected
+; BC - sector index that corresponds record counter and current extent
+CONVERT_RECORD_TO_SECTOR:
+    d7a5  eb         XCHG                       ; Read the value at pointer to C (record counter, 0x00-0x80)
+    d7a6  19         DAD DE         
+    d7a7  4e         MOV C, M
 
+    d7a8  06 00      MVI B, 00                  ; B = 0
+
+    d7aa  21 0c 00   LXI HL, 000c               ; Calculate pointer to extent number
+    d7ad  19         DAD DE
+
+    d7ae  7e         MOV A, M                   ; Add LSB of the extent number to the record counter's MSB
+    d7af  0f         RRC
+    d7b0  e6 80      ANI A, 80
+    d7b2  81         ADD C
+    d7b3  4f         MOV C, A
+
+    d7b4  3e 00      MVI A, 00                  ; It may happen that record counter is already 0x80, and
+    d7b6  88         ADC B                      ; the highest bit will overflow the result. Carry this
+    d7b7  47         MOV B, A                   ; to the next digit (store in B for now)
+
+    d7b8  7e         MOV A, M                   ; Take remaining 4 bits of the extent number, and apply
+    d7b9  0f         RRC                        ; the carry bit from the previous step
+    d7ba  e6 0f      ANI A, 0f
+    d7bc  80         ADD B
+    d7bd  47         MOV B, A
+
+    d7be  21 0e 00   LXI HL, 000e               ; Get highest 4 bits of the extent number from S2 field
+    d7c1  19         DAD DE                     ; and shift them left to be combined with low 4 bits from
+    d7c2  7e         MOV A, M                   ; the previous step
+    d7c3  87         ADD A
+    d7c4  87         ADD A
+    d7c5  87         ADD A
+    d7c6  87         ADD A
+
+    d7c7  f5         PUSH PSW                   ; Combine low and high bits of the extent number
+    d7c8  80         ADD B
+    d7c9  47         MOV B, A                   ; BC now contains the actual record size in sectors
+
+    d7ca  f5         PUSH PSW                   ; But there is still may be an overflow from the previous
+    d7cb  e1         POP HL                     ; step. Move flags register to L
+
+    d7cc  7d         MOV A, L                   ; Mask the lowest bit which corresponds to the carry flag
+    d7cd  e1         POP HL
+    d7ce  b5         ORA L
+    d7cf  e6 01      ANI A, 01                  ; Put result to A
+
+    d7d1  c9         RET
+
+
+
+; Get file size (in sectors)
+;
+; The function calculates the file size (counting in 128 byte sectors) and stores the value in the bytes
+; 33-35 of the FCB. These bytes may be further used for write operations in case the file is appeneded.
+;
+; The algorithm iterates over all extents of the selected file, and calculates sector index, based on
+; number of records in the extent. The function selects the biggest value, which will will be the file
+; size result
+;
+; Arguments:
+; DE - Pointer to FCB
 GET_FILE_SIZE:
-d7d2  0e 0c      MVI C, 0c
-d7d4  cd 18 d3   CALL SEARCH_FIRST (d318)
-d7d7  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d7da  11 21 00   LXI DE, 0021
-d7dd  19         DAD DE
-d7de  e5         PUSH HL
-d7df  72         MOV M, D
-d7e0  23         INX HL
-d7e1  72         MOV M, D
-d7e2  23         INX HL
-d7e3  72         MOV M, D
-????:
-d7e4  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
-d7e7  ca 0c d8   JZ d80c
-d7ea  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e)
-d7ed  11 0f 00   LXI DE, 000f
-d7f0  cd a5 d7   CALL d7a5
-d7f3  e1         POP HL
-d7f4  e5         PUSH HL
-d7f5  5f         MOV E, A
-d7f6  79         MOV A, C
-d7f7  96         SUB M
-d7f8  23         INX HL
-d7f9  78         MOV A, B
-d7fa  9e         SBB M
-d7fb  23         INX HL
-d7fc  7b         MOV A, E
-d7fd  9e         SBB M
-d7fe  da 06 d8   JC d806
-d801  73         MOV M, E
-d802  2b         DCX HL
-d803  70         MOV M, B
-d804  2b         DCX HL
-d805  71         MOV M, C
-????:
-d806  cd 2d d3   CALL SEARCH_NEXT (d32d)
-d809  c3 e4 d7   JMP d7e4
-????:
-d80c  e1         POP HL
-d80d  c9         RET
+    d7d2  0e 0c      MVI C, 0c                  ; Search for the first directory entry matching the file
+    d7d4  cd 18 d3   CALL SEARCH_FIRST (d318)
+
+    d7d7  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Calculate pointer to the output FCB random pos bytes
+    d7da  11 21 00   LXI DE, 0021
+    d7dd  19         DAD DE
+
+    d7de  e5         PUSH HL                    ; Zero output bytes (bytes 33-35 of FCB)
+    d7df  72         MOV M, D
+    d7e0  23         INX HL
+    d7e1  72         MOV M, D
+    d7e2  23         INX HL
+    d7e3  72         MOV M, D
+
+GET_FILE_SIZE_LOOP:
+    d7e4  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)   ; Repeat until all directory entries processed
+    d7e7  ca 0c d8   JZ GET_FILE_SIZE_EXIT (d80c)
+
+    d7ea  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e) ; Get next directory entry address
+
+    d7ed  11 0f 00   LXI DE, 000f               ; Convert record counter to sector index, result in A-B-C
+    d7f0  cd a5 d7   CALL CONVERT_RECORD_TO_SECTOR (d7a5)
+
+    d7f3  e1         POP HL                     ; Restore output bytes address
+    d7f4  e5         PUSH HL
+
+    d7f5  5f         MOV E, A                   ; Store overflow flag in E
+
+    d7f6  79         MOV A, C                   ; Compare calculated value for current extent with
+    d7f7  96         SUB M                      ; results of the previous extents
+    d7f8  23         INX HL
+    d7f9  78         MOV A, B
+    d7fa  9e         SBB M
+    d7fb  23         INX HL
+    d7fc  7b         MOV A, E
+    d7fd  9e         SBB M
+    d7fe  da 06 d8   JC GET_FILE_SIZE_NEXT (d806)   ; Skip if new value is less than one already computed
+
+    d801  73         MOV M, E                   ; Store new resulting value
+    d802  2b         DCX HL
+    d803  70         MOV M, B
+    d804  2b         DCX HL
+    d805  71         MOV M, C
+
+GET_FILE_SIZE_NEXT:
+    d806  cd 2d d3   CALL SEARCH_NEXT (d32d)    ; Look for another extent for the same file
+    d809  c3 e4 d7   JMP GET_FILE_SIZE_LOOP (d7e4)
+
+GET_FILE_SIZE_EXIT:
+    d80c  e1         POP HL                     ; Exit the function
+    d80d  c9         RET
+
+
+
 
 SET_RANDOM_REC_FUNC:
 d80e  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
 d811  11 20 00   LXI DE, 0020
-d814  cd a5 d7   CALL d7a5
+d814  cd a5 d7   CALL CONVERT_RECORD_TO_SECTOR (d7a5)
 d817  21 21 00   LXI HL, 0021
 d81a  19         DAD DE
 d81b  71         MOV M, C
@@ -3470,17 +3514,26 @@ GET_SET_USER_CODE_1:
     d940  c9         RET
 
 
+; Function 0x21 - Read randomly accessed sector
+;
+; DE - pointer to the FCB with fillex bytes 0x20-0x22 indicating file offset to read
 READ_RANDOM_FUNC:
 d941  cd 51 d8   CALL RESELECT_DISK (d851)
 d944  c3 93 d7   JMP READ_RANDOM (d793)
 
+; Function 0x22 - Write randomly accessed sector
+;
+; DE - pointer to the FCB with filled bytes 0x20-0x22 indicating file offset to read
 WRITE_RANDOM_FUNC:
 d947  cd 51 d8   CALL RESELECT_DISK (d851)
 d94a  c3 9c d7   JMP WRITE_RANDOM (d79c)
 
+; Function 0x23 - Get file size
+;
+; DE - pointer to the FCB
 GET_FILE_SIZE_FUNC:
-d94d  cd 51 d8   CALL RESELECT_DISK (d851)
-d950  c3 d2 d7   JMP GET_FILE_SIZE (d7d2)
+    d94d  cd 51 d8   CALL RESELECT_DISK (d851)
+    d950  c3 d2 d7   JMP GET_FILE_SIZE (d7d2)
 
 
 FUNC_25:
