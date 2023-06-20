@@ -156,7 +156,7 @@ FUNCTION_HANDLERS_TABLE:
     cc8b  47 d9      dw WRITE_RANDOM_FUNC (d947)    ; Function 0x22 - Write random
     cc8d  4d d9      dw GET_FILE_SIZE_FUNC (d94d)   ; Function 0x23 - Compute file size
     cc8f  0e d8      dw SET_RANDOM_REC_FUNC (d80e)  ; Function 0x24 - Set random record
-    cc91  53 d9      dw FUNC_25 (d953)
+    cc91  53 d9      dw RESET_DRIVE_FUNC (d953)     ; Function 0x25 - Reset drive
     cc93  04 cf      dw FUNC_26 (cf04)
     cc95  04 cf      dw FUNC_27 (cf04)
     cc97  9b d9      dw WRITE_WITH_ZERO_FILL (d99b) ; Function 0x28 - Write unallocated block with zero fill
@@ -3528,15 +3528,15 @@ GET_SET_USER_CODE_1:
 ;
 ; DE - pointer to the FCB with fillex bytes 0x20-0x22 indicating file offset to read
 READ_RANDOM_FUNC:
-d941  cd 51 d8   CALL RESELECT_DISK (d851)
-d944  c3 93 d7   JMP READ_RANDOM (d793)
+    d941  cd 51 d8   CALL RESELECT_DISK (d851)
+    d944  c3 93 d7   JMP READ_RANDOM (d793)
 
 ; Function 0x22 - Write randomly accessed sector
 ;
 ; DE - pointer to the FCB with filled bytes 0x20-0x22 indicating file offset to read
 WRITE_RANDOM_FUNC:
-d947  cd 51 d8   CALL RESELECT_DISK (d851)
-d94a  c3 9c d7   JMP WRITE_RANDOM (d79c)
+    d947  cd 51 d8   CALL RESELECT_DISK (d851)
+    d94a  c3 9c d7   JMP WRITE_RANDOM (d79c)
 
 ; Function 0x23 - Get file size
 ;
@@ -3546,30 +3546,48 @@ GET_FILE_SIZE_FUNC:
     d950  c3 d2 d7   JMP GET_FILE_SIZE (d7d2)
 
 
-FUNC_25:
-d953  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d956  7d         MOV A, L
-d957  2f         CMA
-d958  5f         MOV E, A
-d959  7c         MOV A, H
-d95a  2f         CMA
-d95b  2a af d9   LHLD LOGIN_VECTOR (d9af)
-d95e  a4         ANA H
-d95f  57         MOV D, A
-d960  7d         MOV A, L
-d961  a3         ANA E
-d962  5f         MOV E, A
-d963  2a ad d9   LHLD READ_ONLY_VECTOR (d9ad)
-d966  eb         XCHG
-d967  22 af d9   SHLD LOGIN_VECTOR (d9af)
-d96a  7d         MOV A, L
-d96b  a3         ANA E
-d96c  6f         MOV L, A
-d96d  7c         MOV A, H
-d96e  a2         ANA D
-d96f  67         MOV H, A
-d970  22 ad d9   SHLD READ_ONLY_VECTOR (d9ad)
-d973  c9         RET
+; Function 0x25 - Reset drive
+;
+; Despite its name (which could be read as reset and reload the drive), the function actually switches
+; off the drive that previously was only. It updates the login vector (list of online drives) setting
+; corresponding bit to 0. Bits of the read/only vector are also reset. The function can work with multiple
+; drives simultaneously (this is just applying a mask)
+;
+; Arguments:
+; DE - bitmask of drives to reset
+RESET_DRIVE_FUNC:
+    d953  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Load the drives vector
+
+    d956  7d         MOV A, L                   ; Negate the provided vector of drives
+    d957  2f         CMA
+    d958  5f         MOV E, A
+
+    d959  7c         MOV A, H
+    d95a  2f         CMA
+
+    d95b  2a af d9   LHLD LOGIN_VECTOR (d9af)   ; Load the login vector and apply the mask from previous
+    d95e  a4         ANA H                      ; step. This will 'switch off' selected bits in the list
+    d95f  57         MOV D, A                   ; of online drives
+
+    d960  7d         MOV A, L
+    d961  a3         ANA E
+    d962  5f         MOV E, A
+
+    d963  2a ad d9   LHLD READ_ONLY_VECTOR (d9ad)   ; Load the read/only vector
+
+    d966  eb         XCHG
+    d967  22 af d9   SHLD LOGIN_VECTOR (d9af)   ; Store the login vector
+
+    d96a  7d         MOV A, L                   ; Apply the mask to read/only vector so that
+    d96b  a3         ANA E                      ; disabled drives cannot be read only
+    d96c  6f         MOV L, A
+
+    d96d  7c         MOV A, H
+    d96e  a2         ANA D
+    d96f  67         MOV H, A
+
+    d970  22 ad d9   SHLD READ_ONLY_VECTOR (d9ad)
+    d973  c9         RET
 
 
 

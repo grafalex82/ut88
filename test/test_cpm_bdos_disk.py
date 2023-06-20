@@ -32,7 +32,7 @@ def disk(tmp_path, cpm):
 
     # Register the disk at CPM and initialize the disk system
     cpm._emulator._machine.set_quasi_disk(disk)
-    disk_reset(cpm)
+    disk_system_reset(cpm)
 
     return disk
 
@@ -79,8 +79,24 @@ def write_protect_disk(cpm, disk_no):
     call_bdos_function(cpm, 0x1c, 0)
 
 
-def disk_reset(cpm):
+def disk_system_reset(cpm):
     call_bdos_function(cpm, 0x0d)
+
+
+def get_login_vector(cpm):
+    return call_bdos_function(cpm, 0x18)
+    
+
+def get_disk_read_only_vector(cpm):
+    return call_bdos_function(cpm, 0x1d)
+    
+
+def get_current_disk(cpm):
+    return call_bdos_function(cpm, 0x19)
+
+
+def switch_off_drive(cpm, drive):
+    call_bdos_function(cpm, 0x25, drive)
 
 
 def create_file(cpm, name):
@@ -214,6 +230,7 @@ def test_reset_disk_system(cpm, disk):
 def test_write_protect_disk(cpm, disk):
     # Check starting conditions
     assert cpm.get_word(0xd9ad) == 0x0000   # Write protect bit is not set for any disk
+    assert get_disk_read_only_vector(cpm) == 0x0000
 
     # Write protect disk A (0)
     write_protect_disk(cpm, 0)
@@ -221,6 +238,7 @@ def test_write_protect_disk(cpm, disk):
     # Check new conditions
     assert cpm.get_word(0xd9ad) == 0x0001   # Write protect bit is set for disk A
     assert cpm.get_word(0xda35) == 32       # Last entry number is set to maximum dir entries number
+    assert get_disk_read_only_vector(cpm) == 0x0001
 
 
 def test_seek(cpm, disk):
@@ -374,7 +392,7 @@ def test_read_file_random(cpm, disk):
 
     # Load the new disk content, and reset disk in CPM so that it loads the directory
     disk.reload()
-    disk_reset(cpm)
+    disk_system_reset(cpm)
 
     # Open the file, and read a sector in the middle
     open_file(cpm, 'FOO.TXT')
@@ -391,7 +409,7 @@ def test_write_file_random(cpm, disk):
 
     # Load the new disk content, and reset disk in CPM so that it loads the directory
     disk.reload()
-    disk_reset(cpm)
+    disk_system_reset(cpm)
 
     # Open the file, and write a sector in the middle
     open_file(cpm, 'FOO.TXT')
@@ -416,7 +434,7 @@ def test_write_file_zero_fill(cpm, disk):
 
     # Load the new disk content, and reset disk in CPM so that it loads the directory
     disk.reload()
-    disk_reset(cpm)
+    disk_system_reset(cpm)
 
     # Open the file, and write a sector in the middle
     open_file(cpm, 'FOO.TXT')
@@ -444,7 +462,7 @@ def test_get_file_size(cpm, disk):
 
     # Load the new disk content, and reset disk in CPM so that it reloads the directory
     disk.reload()
-    disk_reset(cpm)
+    disk_system_reset(cpm)
 
     # Check the file size is correct
     assert get_file_size(cpm, 'FOO.TXT') == 270
@@ -463,3 +481,15 @@ def test_get_file_position(cpm, disk):
     read_file_sequentally(cpm, 16*1240) # Read some random number of sectors (more than one extent)
 
     assert get_file_position(cpm) == 16*1240 // 128
+
+
+def test_reset_disk(cpm, disk):
+    # All disks shall be enabled at this point
+    assert get_login_vector(cpm) == 0x0001  # Our disk is online
+    assert get_current_disk(cpm) == 0x00    # Our disk is current
+
+    # Switch off the drive
+    switch_off_drive(cpm, 0x0001)
+
+    # Check the drive is off
+    assert get_login_vector(cpm) == 0x0000  # Our disk is no longer online
