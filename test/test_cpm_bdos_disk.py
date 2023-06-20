@@ -200,6 +200,12 @@ def get_file_size(cpm, filename):
     return cpm.get_word(0x1021)
 
 
+def get_file_position(cpm):
+    call_bdos_function(cpm, 0x24, 0x1000)
+    assert cpm.get_byte(0x1023) == 0    # No file size overflows
+    return cpm.get_word(0x1021)
+
+
 
 def test_reset_disk_system(cpm, disk):
     pass
@@ -442,3 +448,18 @@ def test_get_file_size(cpm, disk):
 
     # Check the file size is correct
     assert get_file_size(cpm, 'FOO.TXT') == 270
+
+
+def test_get_file_position(cpm, disk):
+    # Create file large enough
+    content = gen_content(1789)     # Just random size between 1 and 2 full extents
+    writer = CPMDisk(disk.filename, params=UT88DiskParams)
+    writer.write_file('FOO.TXT', str2bin(content))
+    writer.flush()
+    disk.reload()
+
+    # Read part of the file
+    assert open_file(cpm, 'FOO.TXT') == 0
+    read_file_sequentally(cpm, 16*1240) # Read some random number of sectors (more than one extent)
+
+    assert get_file_position(cpm) == 16*1240 // 128

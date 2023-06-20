@@ -3153,19 +3153,29 @@ GET_FILE_SIZE_EXIT:
 
 
 
-
+; Function 0x24 - Set random record
+;
+; Sequental read/write operations operate with triples (record counter/extent low byte/extent high
+; byte) which is not convenient for understanding position of the file. The function converts current 
+; record index (advanced during read/write operations) to a single value sector index for random access
+; read/write operations. 
+;
+; Arguments:
+; DE - pointer to FCB
 SET_RANDOM_REC_FUNC:
-d80e  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
-d811  11 20 00   LXI DE, 0020
-d814  cd a5 d7   CALL CONVERT_RECORD_TO_SECTOR (d7a5)
-d817  21 21 00   LXI HL, 0021
-d81a  19         DAD DE
-d81b  71         MOV M, C
-d81c  23         INX HL
-d81d  70         MOV M, B
-d81e  23         INX HL
-d81f  77         MOV M, A
-d820  c9         RET
+    d80e  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43) ; Convert current record to file sector index
+    d811  11 20 00   LXI DE, 0020
+    d814  cd a5 d7   CALL CONVERT_RECORD_TO_SECTOR (d7a5)
+
+    d817  21 21 00   LXI HL, 0021               ; Calculate pointer to bytes 33-35 of FCB
+    d81a  19         DAD DE
+
+    d81b  71         MOV M, C                   ; Store calculated value
+    d81c  23         INX HL
+    d81d  70         MOV M, B
+    d81e  23         INX HL
+    d81f  77         MOV M, A
+    d820  c9         RET
 
 
 
