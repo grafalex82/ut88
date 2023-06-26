@@ -95,6 +95,10 @@ def get_current_disk(cpm):
     return call_bdos_function(cpm, 0x19)
 
 
+def set_user_code(cpm, code):
+    return call_bdos_function(cpm, 0x20, code)
+
+
 def switch_off_drive(cpm, drive):
     call_bdos_function(cpm, 0x25, drive)
 
@@ -493,3 +497,27 @@ def test_reset_disk(cpm, disk):
 
     # Check the drive is off
     assert get_login_vector(cpm) == 0x0000  # Our disk is no longer online
+
+
+def test_search_by_user_code(cpm, disk):
+    set_user_code(cpm, 1)
+    create_file(cpm, 'TEST1.TXT')
+    set_user_code(cpm, 2)
+    create_file(cpm, 'TEST2.TXT')
+    set_user_code(cpm, 3)
+    create_file(cpm, 'TEST3.TXT')
+    
+    set_user_code(cpm, 1)
+    assert search_first(cpm, 'TEST1.TXT') == 0      # User #1 sees only their file
+    assert search_first(cpm, 'TEST2.TXT') == 0xff
+    assert search_first(cpm, 'TEST3.TXT') == 0xff
+
+    set_user_code(cpm, 2)
+    assert search_first(cpm, 'TEST1.TXT') == 0xff   # User #2 sees only their file
+    assert search_first(cpm, 'TEST2.TXT') == 1
+    assert search_first(cpm, 'TEST3.TXT') == 0xff
+
+    set_user_code(cpm, 3)
+    assert search_first(cpm, 'TEST1.TXT') == 0xff   # User #3 sees only their file
+    assert search_first(cpm, 'TEST2.TXT') == 0xff
+    assert search_first(cpm, 'TEST3.TXT') == 2
