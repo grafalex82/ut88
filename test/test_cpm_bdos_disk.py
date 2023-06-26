@@ -521,3 +521,7 @@ def test_search_by_user_code(cpm, disk):
     assert search_first(cpm, 'TEST1.TXT') == 0xff   # User #3 sees only their file
     assert search_first(cpm, 'TEST2.TXT') == 0xff
     assert search_first(cpm, 'TEST3.TXT') == 2
+
+    fill_fcb(cpm, 0x1000, 'TEST1.TXT')              # Special trick - put '?' in the FCB user code field and 
+    cpm.set_byte(0x1000, ord('?'))                  # see files for all users
+    assert call_bdos_function(cpm, 0x11, 0x1000) == 0
