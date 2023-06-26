@@ -3,15 +3,234 @@
 ; This code is loaded to the 0xcc00-0xd9ff by CP/M initial bootloader, and initially is located at
 ; 0x3c00-0x49ff address range of the CP/M binary.
 ;
-; ?????????????? Description TBD
+;
+; Generic notes
+; ------------- 
+;
+; BDOS part of CP/M OS provide high level building blocks for user application. BDOS provides two groups
+; of functions:
+; - console input and output
+; - file operations
+;
+; All functions are executed via a single entry located at 0xcc06. A particular function is selected by
+; setting function number in C register. The function may take an input parameter in E register (single byte)
+; or DE register pair (for word parameter or address). The result is usually passed in A register for a 8-bit
+; result, or HL register pair for 16-bit result of address. 
+;
+; Note: In case of error most of the functions return an error code, but in some emergency situations (such
+; as writing to a read/only drive, or disk structure corruption) the function does a software reset.
+;
+; CP/M v2.2 supports the following functions:
+; - Function 0x00 - Warm reboot
+; - Function 0x01 - Console input (wait symbol from console, then echo it. Return symbol in A)
+; - Function 0x02 - Console output (print symbol in C register, process some special symbols)
+; - Function 0x03 - Input a byte from the tape (BIOS function)
+; - Function 0x04 - Output a byte to the tape (BIOS function)
+; - Function 0x05 - Print (List) a byte (BIOS function)
+; - Function 0x06 - Direct console input or output (input a byte if C=0xff, otherwise output symbol)
+; - Function 0x07 - Get I/O Byte
+; - Function 0x08 - Set I/O Byte
+; - Function 0x09 - print string (Print '$' terminated string pointed by DE)
+; - Function 0x0a - read console to the buffer (read a string from console to the buffer pointed by DE)
+; - Function 0x0b - get console status (check if a button is pressed)
+; - Function 0x0c - get version (return CP/M version in A)
+; - Function 0x0d - reset disk system (reload all disks, reset all internal data)
+; - Function 0x0e - select disk (select a default drive for default operations)
+; - Function 0x0f - open existing file (DE is pointer to FCB with a file name)
+; - Function 0x10 - close file (DE is pointer to FCB for previously opened file)
+; - Function 0x11 - search first match (DE is pointer to FCB with a matching filename pattern)
+; - Function 0x12 - search next match (DE is pointer to FCB with a matching filename pattern)
+; - Function 0x13 - delete file (DE is pointer to FCB containing a file name)
+; - Function 0x14 - read sequentally (DE is pointer to FCB of the opened file)
+; - Function 0x15 - write sequentally (DE is pointer to FCB of the opened file)
+; - Function 0x16 - create file (DE is pointer to FCB containing a file name)
+; - Function 0x17 - rename file (DE is pointer to FCB containing original and new file name)
+; - Function 0x18 - Return disk login vector (return login vector in HL, each bit indicates disk is online)
+; - Function 0x19 - Return current disk (return current disk number in A, 0-based)
+; - Function 0x1a - Set DMA buffer address (DE is a pointer to 128-byte buffer)
+; - Function 0x1b - Get current disk allocation vector (return pointer in HL)
+; - Function 0x1c - Write protect disk (no pameters, current disk will be write protectedf)
+; - Function 0x1d - Get Read Only vector (returns HL - read/only vector, each bit indicates disk is read only)
+; - Function 0x1e - Set file attribites (DE is a pointer to FCB with attributes to set)
+; - Function 0x1f - Get address of Disk Params Block (return pointer to DBP in HL)
+; - Function 0x20 - Get or set user code
+; - Function 0x21 - Read randomly accessed file sector (DE is pointer to FCB of the opened file)
+; - Function 0x22 - Write randomly accessed file sector (DE is pointer to FCB of the opened file)
+; - Function 0x23 - Compute file size (DE is pointer to FCB with file name, function sets bytes 33-35)
+; - Function 0x24 - Set random record (DE is pointer to FCB of previously opened file)
+; - Function 0x25 - Reset drive (DE is a bit mask of drives to switch off)
+; - Function 0x28 - Write unallocated block with zero fill (DE is pointer to FCB of the opened file)
+;
+; 
+; Console I/O functions notes
+; ---------------------------
+;
+; These functions add a few features on top of BIOS' console input and output functions:
+; - Console output (print char) operations support pausing or canceling long lasting operations by pressing
+;   certain key combination. This is reasonable for application that produce a lot of text on the screen. 
+;   Since i8080 supports only one execution thread, keyboard scanning has to happen in the same execution
+;   thread (same function) as printing a character.
+;
+; - Console input does bufferring for one symbol. This may be reasonable in case the console input is
+;   a terminal connected via a network link. When character printing function checks if a Ctrl-C or Ctrl-S
+;   key combinations it does a keyboard read BIOS operation. Since the read read symbol cannot be unread, 
+;   BDOS has to buffer it for other functions that really wait for a symbol from console.
+;
+;   This fact causes some problem when running under emulators. Keyboard emulation cannot distinguish between
+;   real keyboard read and a pre-flight keyboard scan for Ctrl-C/Ctrl-S combinations. This causes extra
+;   keyboard scans and double symbol entering in some cases.
+; 
+; - Console output counts X screen position. Perhaps things could be easier if BIOS provides a function to
+;   read cursor position. But since there is no such a function, BDOS has to virtually calculate symbol
+;   position on its level before calling BIOS function to actually output the symbol. Calculating symbol
+;   position is needed for the following reasons:
+;
+;   - BDOS processes 0x09 tabulation symbols, and advances cursor to the next tab stop (each 8 symbols)
+;
+;   - BDOS text input function (0x0a) supports making input fields starting from a certain cursor positon.
+;     Also it supports clearing current input, moving cursor to the beginning of the input field, re-starting
+;     the input from the new line from the same column position. Moreover input supports Ctrl-* key combi-
+;     nations, which are printed as 2 symbols ^char. Performing a backspace requires BDOS to know the width
+;     of each symbol.
+;  
+;  
+; Disk I/O functions notes
+; ------------------------
+; 
+; - Each disk is split into number of tracks, each track contains a certain number of 128-byte records 
+;   (sectors). While BIOS is mostly concentrated on physical disk structure, BDOS cares about logical
+;   structure, how files are located on the disk, and files metadata (name, extension, read only flags, etc)
+;
+; - Physical disk structure (number of tracks and sectors) is typically hardcoded in the BIOS, and cannot
+;   be changed in runtime. BIOS even does not provide number of tracks on the disk to upper levels. Logical
+;   disk structure is also hardcoded in BIOS, but this information is shared with upper levels (BDOS, and 
+;   user programs via function 0x1f) in a form of Disk Parameters Block (DPB). Though typical application
+;   would not need this information.
+;
+; - Each disk has a few tracks reserved for the system. Typically these tracks contain CCP+BDOS+BIOS code,
+;   which is loaded by the BIOS from disk to the memory during warm boot. Number of reserved tracks is
+;   specified in the disk parameters block (DPB). Reserved tracks do not participate in logical sector number
+;   calculations. Reserved tracks are located at first physical tracks, and all logical sectors start from
+;   the first track after the reserved tracks.
+;
+; - Minimum amount of data that BDOS allows to read or write is 128-byte sector (record). Even if file has
+;   less data, it will be padded with garbage or EOF symbols till 128-byte boundary. Typically text files
+;   use EOF (0x1a) byte to indicate the end of the file.
+;
+; - CP/M does not have any metadata field to indicate an exact file size up to bytes. The size is counted 
+;   in 128-byte records (sectors), and this is the best precision can be obtained.
+;
+; - Tracking every individual sector on the disk, whether it is allocated to a file or empty would require
+;   storing a lot of metadata, and therefore consume a lot of CPU cycles to process. This is especially
+;   critical for large disks with huge number of sectors. Instead, the information on the disk is tracked in
+;   blocks - a bigger chunk of data, containing several sectors. Typical block size is between 1k and 16k, 
+;   depending on the disk size. Block size is selected in the way so that total numbers of blocks does not
+;   exceed 65536 (and each block can be identified as a 2-byte integer).
+;
+; - Depending on the disk size, CP/M supports two ways of blocks numbering. Small disks would contain less
+;   number of blocks. In this case individual block will be addressed with a single byte integer. Larger
+;   disk may have larger number of blocks, which are addressed with 2-byte integer. Blocks numbering start
+;   with 1, while zero is reserved to indicate the block is not allocated.
+;
+; - Every file allocates 0 or more data blocks. Despite files may be really small (say a few bytes), it will
+;   still allocate a full block. Unused sectors of the block are unavailable for other files.
+;
+; - Information about files on the disk (file metadata) is stored in the directory entries. Each file is
+;   described with at least one 32-byte directory entry. Each directory entry contains information about
+;   file name, extension, number of records (file size), read only and system file flags, etc.
+;
+; - Number of directory entries is defined in a DPB parameter. Directory is located at first logical blocks,
+;   right after reserved tracks.
+;
+; - File allocation information is also stored in the directory entry. Each entry contains 16 1-byte, or 8
+;   2-byte records, specifying which block will be used to store corresponding piece of file.
+;
+; - In case if a file does not fit a single directory entry, the data can be split into several chunks called
+;   extents. Each extent is represented by its own directory entry with the same name/extension, but different
+;   allocation data. Each directory entry has extent number field, so that BDOS can always find the next
+;   data extent. 
+;
+; - Maximum amount of data can be stored in a single extent is 128 records (sectors), which is 16k. Exact
+;   amount of records for the extent is stored in a records count field.
+;
+; - There is no global allocation information for entire disk is available (unlike in FAT systems). Instead,
+;   BDOS builds the allocation information internally while initializing the disk, by scanning all directory
+;   entries and loading its allocation information into a in-memory disk allocation map.
+;
+; - CP/M v2.2 does not offer any specific directory structure. All files are located in the same directory,
+;   and are distinguished only by their names and extensions. 
+;
+; - Directory entry format:
+;   1 byte    - 0xe5 if entry is empty, or user code ????
+;   8 bytes   - file name (padded with 0x20 space symbols)
+;   3 bytes   - file extension (low 7 bits of each byte). Highest bit of the 9th byte indicates that the file
+;               is read only, Highest bit of the 10th byte indicates that the file is system, and should not
+;               be visible to the user on DIR command.
+;   1 byte    - current extent number (low 5 bits)
+;   1 byte    - reserved ???
+;   1 byte    - current extent number (high 4 bits)
+;   1 byte    - number of records in the current extent
+;   16 bytes  - disk allocation map (16 one-byte records, or 8 two-byte records, indicating the block index
+;               storing the corresponding piece of file data)
+;
+; - All file operations accept as an argument a pointer to File Control Block (FCB) structure. This structure
+;   is used to pass input information to the function (e.g. name of the file to open), get output information
+;   (for example name of the file found with a name pattern), or even store intermediate information related
+;   to the currently opened file (e.g. current record number during sequental read).
+; 
+; - Structure of the FCB is very similar to the directory entry structure. This simplifies internal functions,
+;   so that it process information in a unified way. At the same time there are a few differences between FCB
+;   and directory entry:
+;
+;   - A byte at offset 0x00 of FCB represent the disk number that the operation is related to. This allows
+;     working with several disk drives simultaneously by specifying their disk codes in different FCBs
+;
+;   - A byte at offset 0x20 is a current record counter for sequental operations. Represent the current
+;     record (sector) index within the current extent. When the record counter reaches a value of 0x80, the
+;     sequental operation switches to the next extent (create a new one for write operation if necessary)
+;
+;   - 3 bytes at offset 0x21-0x23 are used for random access write or read operations. The user may set the
+;     record index for the entire file in bytes 0x21-0x22 (in a range of 0-65535). and the random access
+;     read/write operations will convert it to the extent number (low and high byte) and record index within
+;     the extent. This means that it will further allow sequental reading or writing starting from the 
+;     selected record (sector).
+;
+;   - The function 0x24 does the opposite thing - convert high and low extent number bytes and current record
+;     into a single 2-byte value in bytes 0x21-0x22.
+;
+;   - Byte at offset 0x23 does not participate in the file seek calculations, but indicates an overflow 
+;     during compute file size operation (function 0x23)
+;
+; - Search first / search next operations are most used functions in the BDOS. Since files do not have unique
+;   identifiers, each BDOS file function searches the corresponding directory entry by the name or pattern
+;   provided in the FCB. Some functions return so called directory code from 0 to 3, which in fact is an
+;   index of a directory entry on a currently loaded directory sector (4 entries per sector).
+;
+; - Disk Parameter Block structure (returned by BIOS) for the UT-88 Quasi disk is the following:
+;   - 0x0008 (2 bytes)  - sectors per track
+;   - 0x03   (1 byte)   - Block Shift Factor (BSH). Each block contains 2^BSH number of sectors, which is
+;                         8 records per block, or 1k block size for UT-88 quasi disk.
+;   - 0x07   (1 byte)   - Block Mask (BLM). Used while converting logical record/block index into track/sector
+;                         pair. BLM will mask bits responsible for record index within a block
+;   - 0x00   (1 byte)   - Extent mask. Participates in extent size calculations for large disks. Not relevant
+;                         for UT-88 Quasi disk
+;   - 0x00f9 (2 bytes)  - total number of data blocks - 1, including directory entries, but not counting
+;                         reserved tracks. In case of UT-88, 0xfa blocks 1k each, plus 6 reserved tracks by
+;                         8 sectors each (1k per track) fully utilize all 256 tracks, while the 256 tracks
+;                         number is not stated explicitly in DPB.
+;   - 0x001f (2 bytes)  - Number of directory entries - 1 (in case of UT-88 32 directory entries 32 bytes
+;                         each will fully utilize the first block on the disk)
+;   - 0x8000 (2 bytes)  - bit mask for blocks reserved for directory entries. In this case the first block
+;                         (highest bit) is reserved for the directory
+;   - 0x0008 (2 bytes)  - Size of the directory checksum vector (directory size is 8 sectors, 1 byte of CRC
+;                         for each sector)
+;   - 0x0006 (2 bytes)  - number of reserved tracks in the beginning of the disk
+;
+; - More information on the disk structure, directory entry format, and compatibility notes for other
+;   CP/M versions can be found at https://www.cpm8680.com/cpmtools/cpm.htm
 ;
 ;
-; Directory entry format:
-; 1 byte    - 0xe5 if entry is empty, or user code ????
-; 8 bytes   - file name (padded with 0x20 space symbols)
-; 3 bytes   - file extension
-; 4 bytes   - ????
-; 16 bytes  - disk allocation map
+;
 ;
 ; Important variables:
 ; 0003  - I/O Byte ?????
@@ -40,30 +259,41 @@
 ; d9e9  - Directory entry offset (on the current sector)
 ; d9ea  - ???? Directory counter
 ; d9ec  - Sector number of the current directory entry (LBA)
-cc00  f9         SPHL
-cc01  16 00      MVI D, 00
-cc03  00         NOP
-cc04  00         NOP
-cc05  6b         MOV L, E
 
 
+; Unknown piece of data, probably a serial number
+cc00  f9 16 00 00 00 6b
+
+
+; The main entry point to all BDOS functions (fixed address)
 BDOS_ENTRY:
     cc06  c3 11 cc   JMP REAL_BDOS_ENTRY (cc11)
 
+; Pointer to read/write error handler
 DISK_READ_WRITE_ERROR_PTR:
     cc09  99 cc     dw DISK_READ_WRITE_ERROR (cc99)
 
+; Pointer to disk select error handler
 DISK_SELECT_ERROR_PTR:
     cc0b  a5 cc     dw DISK_SELECT_ERROR (cca5)
 
+; Pointer to disk read only error handler
 DISK_READ_ONLY_ERROR_PTR:
     cc0d  ab cc     dw DISK_READ_ONLY_ERROR (ccab)
 
+; Pointer to file read only error handler
 FILE_READ_ONLY_ERROR_PTR:
     cc0f  b1 cc     dw FILE_READ_ONLY_ERROR (ccb1)
 
 
 ; The BDOS entry (entry point for all BDOS functions)
+;
+; The function does preparation for BDOS function execution:
+; - Sets the BDOS stack
+; - Saves arguments to variables
+; - Prepare return address
+;
+; After all preparation is done, the function dispatches execution to the function handler requested.
 ;
 ; Arguments:
 ; C     - function number
@@ -73,7 +303,7 @@ FILE_READ_ONLY_ERROR_PTR:
 ; A     - result (low byte of the result)
 ; B     - high byte of the result
 REAL_BDOS_ENTRY:
-    cc11  eb         XCHG                       ; Store arguments at cf43
+    cc11  eb         XCHG                       ; Store arguments for future use in the functions
     cc12  22 43 cf   SHLD FUNCTION_ARGUMENTS (cf43)
     cc15  eb         XCHG
 
@@ -88,7 +318,7 @@ REAL_BDOS_ENTRY:
 
     cc24  31 41 cf   LXI SP, BDOS_STACK (cf41)  ; And set our own stack
 
-    cc27  af         XRA A                      ; Do not do drive selection unless explicitly requested
+    cc27  af         XRA A                      ; Do not perform drive selection unless explicitly requested
     cc28  32 e0 d9   STA FCB_DRIVE_CODE (d9e0)  ; in FCB
     cc2b  32 de d9   STA RESELECT_DISK_ON_EXIT (d9de)
 
@@ -118,6 +348,7 @@ REAL_BDOS_ENTRY:
     cc46  e9         PCHL
 
 
+; The BDOS function pointers table
 FUNCTION_HANDLERS_TABLE:
     cc47  03 da      dw BIOS_WARM_BOOT (da03)       ; Function 0x00 - Warm boot
     cc48  c8 ce      dw CONSOLE_INPUT (cec8)        ; Function 0x01 - Console input
@@ -157,11 +388,14 @@ FUNCTION_HANDLERS_TABLE:
     cc8d  4d d9      dw GET_FILE_SIZE_FUNC (d94d)   ; Function 0x23 - Compute file size
     cc8f  0e d8      dw SET_RANDOM_REC_FUNC (d80e)  ; Function 0x24 - Set random record
     cc91  53 d9      dw RESET_DRIVE_FUNC (d953)     ; Function 0x25 - Reset drive
-    cc93  04 cf      dw FUNC_26 (cf04)
-    cc95  04 cf      dw FUNC_27 (cf04)
+    cc93  04 cf      dw FUNC_26 (cf04)              ; Unused
+    cc95  04 cf      dw FUNC_27 (cf04)              ; Unused
     cc97  9b d9      dw WRITE_WITH_ZERO_FILL (d99b) ; Function 0x28 - Write unallocated block with zero fill
 
 
+; Disk Read/Write error handler
+;
+; The function prints an error. If the user presses Ctrl-C combination, the function will do a CPU reset
 DISK_READ_WRITE_ERROR:
     cc99  21 ca cc   LXI HL, DISK_READ_WRITE_ERROR_STR (ccca)   ; Print the error
     cc9c  cd e5 cc   CALL PRINT_ERROR (cce5)
@@ -171,18 +405,27 @@ DISK_READ_WRITE_ERROR:
 
     cca4  c9         RET
 
-
+; Disk select error handler
+;
+; The function prints an error message and resets.
 DISK_SELECT_ERROR:
     cca5  21 d5 cc   LXI HL, DISK_SELECT_ERROR_STR (ccd5)
     cca8  c3 b4 cc   JMP PRINT_ERROR_AND_RESET (ccb4)
 
+; Disk read only error handler
+;
+; The function prints an error message and resets.
 DISK_READ_ONLY_ERROR:
     ccab  21 e1 cc   LXI HL, DISK_READ_ONLY_ERROR_STR (cce1)
     ccae  c3 b4 cc   JMP PRINT_ERROR_AND_RESET (ccb4)
 
+; File read only error handler
+;
+; The function prints an error message and resets.
 FILE_READ_ONLY_ERROR:
     ccb1  21 dc cc   LXI HL, FILE_READ_ONLY_ERROR_STR (ccdc)
 
+; Helper function to print an error message, and then perform a CPU restart
 PRINT_ERROR_AND_RESET:
     ccb4  cd e5 cc   CALL PRINT_ERROR (cce5)    ; Print error
     ccb7  c3 00 00   JMP 0000                   ; and reset
@@ -231,7 +474,7 @@ PRINT_ERROR:
 ;
 ; Return: A - entered symbol
 WAIT_CONSOLE_CHAR:
-    ccfb  21 0e cf   LXI HL, CONSOLE_KEY_PRESSED (cf0e) ; Check if we have a character in the byffer already
+    ccfb  21 0e cf   LXI HL, CONSOLE_KEY_PRESSED (cf0e) ; Check if we have a character in the buffer already
     ccfe  7e         MOV A, M                           ; Get the buffered char and reset the buffer
     ccff  36 00      MVI M, 00
     cd01  b7         ORA A
@@ -258,7 +501,7 @@ DO_CONSOLE_INPUT:
     cd13  c9         RET
 
 
-; Check if A has a special symbol
+; Check if A contains a special symbol code
 ;
 ; Function raises Z flag if A contains 0x0d (carriage return), 0x0a (line feed), 0x08 (backspace), 
 ; or 0x09 (tab)
@@ -281,7 +524,7 @@ IS_SPECIAL_SYMBOL:
 ; This function not just calls BIOS IS_KEY_PRESSED function, it also checks if a Ctrl-S combination
 ; is pressed. If yes, Ctrl-C combination will do the software reset.
 ;
-; If a key is pressed, entered symbol is buffered at cf0e
+; If a key is pressed, entered symbol is buffered at CONSOLE_KEY_PRESSED variable
 ;
 ; Return: A=01 if key is pressed (Z flag is off), A=00 otherwise (Z flag is on)
 IS_KEY_PRESSED:
@@ -295,7 +538,7 @@ IS_KEY_PRESSED:
 
     cd30  cd 09 da   CALL BIOS_CONSOLE_INPUT (da09) ; Check if Ctrl-S is pressed (Stop Screen condition)
     cd33  fe 13      CPI A, 13
-    cd35  c2 42 cd   JNZ cd42
+    cd35  c2 42 cd   JNZ IS_KEY_PRESSED_OK (cd42)
 
     cd38  cd 09 da   CALL BIOS_CONSOLE_INPUT (da09) ; If Ctrl-C is pressed - do soft reset
     cd3b  fe 03      CPI A, 03
@@ -312,7 +555,22 @@ IS_KEY_PRESSED_EXIT:
     cd47  c9         RET
 
 
+; Print a character in C to console
 ;
+; The function is a wrapper over BIOS' print char function. The main goal of this wrapper is to track
+; printed character horizontal position, to be later used for tab stop, or clearing a text in a text editable
+; field. Moreover, the funcion even can skip character printing (if COM_CURSOR_POSITION is flagged), and
+; perform only horizontal position calculation.
+;
+; Special characters, such as backspace, also tracked by the function, and cursor position is calculated
+; accordingly.
+;
+; The function also scans the keyboard to allow the user to stop/cancel long lasting text output.
+;
+; If printer is attached to the system, the function also routes character printing to the printer as well.
+;
+; Arguments:
+; C - character to print
 DO_PUT_CHAR:
     cd48  3a 0a cf   LDA COMP_CURSOR_POSITION (cf0a); Do we need to print the character?
     cd4b  b7         ORA A
@@ -394,10 +652,10 @@ PUT_CHAR:
     cd93  c2 48 cd   JNZ DO_PUT_CHAR (cd48)     ; All other symbols are processed by DO_PUT_CHAR
 
 PUT_CHAR_TAB_LOOP:
-    cd96  0e 20      MVI C, 20                  ; Print spaces until next 8-char column
+    cd96  0e 20      MVI C, 20                  ; Print spaces until next 8-char column is reached
     cd98  cd 48 cd   CALL DO_PUT_CHAR (cd48)
 
-    cd9b  3a 0c cf   LDA CURSOR_COLUMN (cf0c)   ; Check if we reached next 8-char column
+    cd9b  3a 0c cf   LDA CURSOR_COLUMN (cf0c)   ; Check if we reached next 8-char tab stop
     cd9e  e6 07      ANI A, 07
     cda0  c2 96 cd   JNZ cd96
 
@@ -445,6 +703,8 @@ PRINT_CRLF:
     cdce  0e 0a      MVI C, 0a
     cdd0  c3 48 cd   JMP DO_PUT_CHAR (cd48)
 
+
+
 ; Print string pointed by BC, until '$' symbol is reached
 DO_PRINT_STRING:
     cdd3  0a         LDAX BC                    ; Load next byte
@@ -460,6 +720,7 @@ DO_PRINT_STRING:
 
     cddd  c1         POP BC
     cdde  c3 d3 cd   JMP DO_PRINT_STRING (cdd3)
+
 
 ; Function 0x0a - read console input to the provided buffer
 ;
@@ -2050,8 +2311,8 @@ SEARCH_NEXT_SYMBOL_LOOP:
     d366  1a         LDAX DE                    ; Load FCB extent byte
     d367  ca 73 d3   JZ SEARCH_NEXT_COMPARE_EXTENT (d373)
 
-    d36a  96         SUB M                      ; Compare symbols, but mask (ignore) the MSB
-    d36b  e6 7f      ANI A, 7f
+    d36a  96         SUB M                      ; Compare symbols, but mask (ignore) the MSB which may
+    d36b  e6 7f      ANI A, 7f                  ; contain R/O and sys flags for the file
     d36d  c2 2d d3   JNZ SEARCH_NEXT (d32d)     ; If not matched - advance to the next directory entry
 
     d370  c3 7c d3   JMP SEARCH_NEXT_ADVANCE (d37c) ; Current characters match. Advance to the next char.
@@ -2251,16 +2512,19 @@ RENAME_FILE_LOOP:
 
 
 SET_FILE_ATTRS:
-d43b  0e 0c      MVI C, 0c
-d43d  cd 18 d3   CALL SEARCH_FIRST (d318)
-????:
-d440  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)
-d443  c8         RZ
-d444  0e 00      MVI C, 00
-d446  1e 0c      MVI E, 0c
-d448  cd 01 d4   CALL COPY_DIR_ENTRY (d401)
-d44b  cd 2d d3   CALL SEARCH_NEXT (d32d)
-d44e  c3 40 d4   JMP d440
+    d43b  0e 0c      MVI C, 0c                  ; Search for the file
+    d43d  cd 18 d3   CALL SEARCH_FIRST (d318)
+
+SET_FILE_ATTRS_LOOP:
+    d440  cd f5 d1   CALL IS_DIR_COUNTER_RESET (d1f5)   ; Continue until all directory entries processed
+    d443  c8         RZ
+
+    d444  0e 00      MVI C, 00                  ; Copy data from FCB to the directory entry (all MSB flags
+    d446  1e 0c      MVI E, 0c                  ; on top of name and extension bytes)
+    d448  cd 01 d4   CALL COPY_DIR_ENTRY (d401)
+
+    d44b  cd 2d d3   CALL SEARCH_NEXT (d32d)    ; Advance to the next entry
+    d44e  c3 40 d4   JMP SET_FILE_ATTRS_LOOP (d440)
 
 
 ; Open existing file
@@ -3178,7 +3442,12 @@ SET_RANDOM_REC_FUNC:
     d820  c9         RET
 
 
-
+; Select disk
+;
+; ????
+;
+; Arguments:
+; E - disk number (0 for A, 1 for B, and so on)
 SELECT_DISK:
     d821  2a af d9   LHLD LOGIN_VECTOR (d9af)   ; Get login vector anf shift it right, so that LSB
     d824  3a 42 cf   LDA CURRENT_DISK (cf42)    ; corresponds to the current disk
