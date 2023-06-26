@@ -77,7 +77,7 @@ class CPMDisk():
                 continue
 
             record = {}
-            record['code'] = code
+            record['user_code'] = code
             record['name'] = ''.join(chr(code) for code in entry[1:9]).strip()
             record['ext'] = ''.join(chr(code) for code in entry[9:12]).strip()
             record['EX'] = entry[12]
@@ -105,7 +105,8 @@ class CPMDisk():
                 record = {
                     'filename': filename,
                     'num_records': entry['num_records'],
-                    'allocation': entry['allocation']
+                    'allocation': entry['allocation'],
+                    'user_code': entry['user_code']
                 }
                 res[filename] = record
 
@@ -150,7 +151,7 @@ class CPMDisk():
         return free_blocks            
 
 
-    def write_directory_entry(self, filename, extent, extent_allocation, extent_records):
+    def write_directory_entry(self, filename, extent, extent_allocation, extent_records, user_code = 0):
         # Search for an empty entry
         dir_offset = self.params['reserved_tracks'] * self.params['sectors_per_track'] * SECTOR_SIZE
         for i in range(self.params['num_dir_entries']):
@@ -161,7 +162,7 @@ class CPMDisk():
             # Write the entry
             name, ext = filename.split('.')
             name = f"{name.strip():8}"
-            self.data[entry_offset + 0] = 0 # Now this is a valid entry
+            self.data[entry_offset + 0] = user_code
             self.data[entry_offset + 1 : entry_offset + 9] = bytearray(f"{name.strip():8}".encode('ascii'))
             self.data[entry_offset + 9 : entry_offset + 12] = bytearray(f"{ext.strip():3}".encode('ascii'))
             self.data[entry_offset + 12] = extent
@@ -179,7 +180,7 @@ class CPMDisk():
 
 
     def read_file(self, filename):
-        entry = self.list_dir()[filename]
+        entry = self.list_dir()[filename]   # TODO filter by user code as well
         num_records = entry['num_records']
 
         data = []
@@ -189,7 +190,7 @@ class CPMDisk():
         return data[0:num_records*SECTOR_SIZE]
     
 
-    def write_file(self, filename, data):
+    def write_file(self, filename, data, user_code = 0):
         free_blocks = self.get_free_blocks()
         block_size = self.params['block_size']
         data_offset = 0
@@ -206,7 +207,7 @@ class CPMDisk():
             extent_records += data_len // SECTOR_SIZE
 
             if len(extent_allocation) == 16:
-                self.write_directory_entry(filename, extent, extent_allocation, extent_records)
+                self.write_directory_entry(filename, extent, extent_allocation, extent_records, user_code)
                 extent += 1
                 extent_allocation = []
                 extent_records = 0
@@ -214,4 +215,4 @@ class CPMDisk():
             data_offset += data_len
 
         # Write the final extent entry (may cause an extra empty extent entry, but this is correct)
-        self.write_directory_entry(filename, extent, extent_allocation, extent_records)
+        self.write_directory_entry(filename, extent, extent_allocation, extent_records, user_code)

@@ -59,6 +59,7 @@ def test_list_dir_raw(standard_disk_file):
     entry2 = entries[1]
     assert entry2['name'] == 'OS2CCP'
     assert entry2['ext'] == 'ASM'
+    assert entry2['user_code'] == 0
     assert entry2['entry'] == 0 
     assert entry2['num_records'] == 128
     assert entry2['allocation'] == [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
@@ -70,6 +71,7 @@ def test_list_dir(standard_disk_file):
 
     os2cpp_asm = entries['OS2CCP.ASM']
     assert os2cpp_asm['filename'] == "OS2CCP.ASM"
+    assert os2cpp_asm['user_code'] == 0
     assert os2cpp_asm['num_records'] == 200
     assert os2cpp_asm['allocation'] == list(range(5, 30))
 
@@ -129,3 +131,19 @@ def test_write_file(tmp_disk_file, data_size):
     data = bin2str(disk.read_file('TEST.TXT'))
     assert content == data
 
+def test_create_file_with_user_code(tmp_disk_file):
+    # Generate test content
+    content = gen_content(16)
+
+    # Create the disk, and write several files on the disk with different error codes
+    disk = CPMDisk(tmp_disk_file)
+    disk.write_file('TEST1.TXT', str2bin(content), 1)
+    disk.write_file('TEST2.TXT', str2bin(content), 2)
+    disk.write_file('TEST3.TXT', str2bin(content), 3)
+    disk.flush()
+
+    # Check that all these files have correct user codes
+    entries = disk.list_dir()
+    assert entries['TEST1.TXT']['user_code'] == 1
+    assert entries['TEST2.TXT']['user_code'] == 2
+    assert entries['TEST3.TXT']['user_code'] == 3
