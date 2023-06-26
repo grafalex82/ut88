@@ -236,13 +236,23 @@
 ; 0003  - I/O Byte ?????
 ; cf0a  - Flag indicating that no char printing needed, only computing cursor position
 ; cf0b  - Start column of the input buffer reading (used to track back Ctrl-H and backspace)
-; cf0c  - Current cursor horizontap position (used to print tabs)
+; cf0c  - Current cursor horizontal position (used to print tabs)
 ; cf0d  - flag indicating that output to the printer is enabled in addition to console output
 ; cf0e  - if a keypress is detected, entered symbol is buffered in this variable
 ; cf0f  - save caller's SP (2 byte)
+; cf11  - BDOS strack area (0x30 bytes)
+; cf41  - user code (get/set by function 0x20)
 ; cf42  - current disk
 ; cf43  - function arguments (2 byte)
 ; cf45  - function return code or return value(2 byte)
+
+
+FUNCTION_ARGUMENTS:
+    cf43  00 00      dw 0000
+
+FUNCTION_RETURN_VALUE:
+    cf45  00 00      dw 0000
+
 ; d9ac  - Signature of an empty directory entry
 ; d9ad  - Pointer to read only vector
 ; d9af  - Disk Login Vector
@@ -730,14 +740,14 @@ DO_PRINT_STRING:
 ; Each entered symbol is echoed to the console output. Characters with codes < 0x20 (if not processed
 ; as special symbols) are printed as 2-char sequence - ^symb. 
 ;
-; Console reading is finished either with reaching end of the buffer, or with Enter key (Ctrl-J and Ctrl-M
-; do the same)
+; Console reading is finished on either reaching the end of the buffer, or Enter key (Ctrl-J and Ctrl-M
+; do the same) is pressed.
 ;
 ; The function also handles special keys and key combinations:
 ; - backspace   - removes symbol left to the cursor. Special 2-char symbols are erased as well (2 symbols
-;   (or Ctrl-H)   at a once). This is done using a 'fake printing' approach - function sets cf0a to turn
-;                 printing into width calculation mode, then previously entered string is 'printed'. Extra
-;                 characters are erased with spaces.
+;   (or Ctrl-H)   at a once). This is done using a 'fake printing' approach - function sets
+;                 COMP_CURSOR_POSITION to turn printing into width calculation mode, then previously entered
+;                 string is 'printed'. Extra characters are erased with spaces.
 ; - rubout      - similar to the backspace, but erases only one character on the screen (so in case of 
 ;                 2-byte special symbols the line can be visually corrupted)
 ; - Ctrl-C      - reboots the system from 0x0000
@@ -774,7 +784,7 @@ READ_CONSOLE_BUFFER:
     cdeb  23         INX HL                     ; Advance pointer to the first data byte in the buffer
     cdec  e5         PUSH HL
 
-    cded  06 00      MVI B, 00                  ; Counter of the entered symbols ?????
+    cded  06 00      MVI B, 00                  ; Counter of the entered symbols
 
 READ_NEXT_SYMBOL:
     cdef  c5         PUSH BC
@@ -848,7 +858,7 @@ READ_NEXT_SYMBOL_5:
     ce45  c3 ef cd   JMP READ_NEXT_SYMBOL (cdef)
 
 READ_NEXT_SYMBOL_6:
-    ce48  fe 18      CPI A, 18                  ; Check if Ctrl-X entered
+    ce48  fe 18      CPI A, 18                  ; Check if Ctrl-X entered (restart the current line)
     ce4a  c2 5f ce   JNZ READ_NEXT_SYMBOL_7 (ce5f)
 
     ce4d  e1         POP HL
@@ -864,7 +874,7 @@ BACKSPACE_LOOP:
     ce5c  c3 4e ce   JMP BACKSPACE_LOOP (ce4e)
 
 READ_NEXT_SYMBOL_7:
-    ce5f  fe 15      CPI A, 15                  ; Check if this is Ctrl-U
+    ce5f  fe 15      CPI A, 15                  ; Check if this is Ctrl-U (restart from the next line)
     ce61  c2 6b ce   JNZ READ_NEXT_SYMBOL_8 (ce6b)
 
     ce64  cd b1 cd   CALL PRINT_HASH_CRLF (cdb1); Print the CR/LF and restart the buffer read
@@ -872,7 +882,7 @@ READ_NEXT_SYMBOL_7:
     ce68  c3 e1 cd   JMP READ_CONSOLE_BUFFER (cde1)
 
 READ_NEXT_SYMBOL_8:
-    ce6b  fe 12      CPI A, 12                  ; Check if this Ctrl-R keyboard combination
+    ce6b  fe 12      CPI A, 12                  ; Check if this Ctrl-R keyboard combination (retype)
     ce6d  c2 a6 ce   JNZ READ_CONSOLE_STORE_SYMBOL (cea6)
 
 
@@ -925,14 +935,13 @@ REPRINT_BUFFER_LOOP_2:
     ce99  cd a4 cd   CALL PRINT_BACKSPACE (cda4); Print spaces back until calculated position reached
     
     ce9c  21 0a cf   LXI HL, COMP_CURSOR_POSITION (cf0a)
-    ce9f  35         DCR M                      ; Eventual this will zero cf0a flag here, and reenable
-    cea0  c2 99 ce   JNZ REPRINT_BUFFER_LOOP_2 (ce99)   ; symbols printing
+    ce9f  35         DCR M                      ; Eventualy this will reset COMP_CURSOR_POSITION flag, 
+    cea0  c2 99 ce   JNZ REPRINT_BUFFER_LOOP_2 (ce99)   ; and reenable symbols printing
 
     cea3  c3 f1 cd   JMP READ_NEXT_SYMBOL_2 (cdf1)  ; Then we are ready to wait for the next symbol
 
 
-
-
+; Continuation of READ_CONSOLE function, process regular symbols here.
 READ_CONSOLE_STORE_SYMBOL:
     cea6  23         INX HL                     ; Store entered symbol in the input buffer
     cea7  77         MOV M, A
@@ -966,10 +975,16 @@ READ_CONSOLE_BUFFER_EOL:
     cec5  c3 48 cd   JMP DO_PUT_CHAR (cd48)
 
 
+
 ; Function 0x01 - Console input
+;
+; The function waits for a console character (if not received already), and echo it on the screen
+;
+; Return: A - entered character code
 CONSOLE_INPUT:
     cec8  cd 06 cd   CALL DO_CONSOLE_INPUT (cd06)
     cecb  c3 01 cf   JMP FUNCTION_EXIT (cf01)
+
 
 ; Function 0x03 - Input byte from the tape reader
 ; 
@@ -978,13 +993,14 @@ IN_BYTE:
     cece  cd 15 da   CALL BIOS_IN_BYTE (da15)   ; Input a byte using BIOS/Monitor functions
     ced1  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 
+
 ; Function 0x06 - Direct console input or output
 ;
 ; As output: The function prints the character directly using BIOS routines, without Ctrl-S key 
 ; combination handling.
 ;
 ; Arguments:
-; E (or C)  - 0xff for input, or a character symbol for output
+; C - 0xff for input char, 0xfe for checking for a key press, or a character symbol for output otherwise
 ; 
 ; Returns:
 ; A - char code of the input character, or 0x00 if no character ready (input mode only)
@@ -993,7 +1009,7 @@ DIRECT_CONSOLE_IO:
     ced5  3c         INR A
     ced6  ca e0 ce   JZ DIRECT_CONSOLE_INPUT (cee0)
 
-    ced9  3c         INR A                      ; ??????
+    ced9  3c         INR A                      ; Check if the byte is 0xfe
     ceda  ca 06 da   JZ BIOS_IS_KEY_PRESSED (da06)
 
     cedd  c3 0c da   JMP BIOS_PUT_CHAR (da0c)   ; In output mode - print characters as usual
@@ -1034,6 +1050,7 @@ PRINT_STRING:
     cefa  44         MOV B, H
     cefb  c3 d3 cd   JMP DO_PRINT_STRING (cdd3)
 
+
 ; Function 0x0b - check console status (check if a symbol entered on keyboard)
 ;
 ; Returns: A=01 if a key is pressed, A=00 if no key pressed
@@ -1041,6 +1058,7 @@ GET_CONSOLE_STATUS:
     cefe  cd 23 cd   CALL IS_KEY_PRESSED (cd23)
 
 
+; A handy function that does function exit and stores exit code from A to a variable to be used later.
 FUNCTION_EXIT:
     cf01  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)   ; Store A in the predefined variable
 
@@ -1048,6 +1066,7 @@ FUNC_26:
 FUNC_27:
     cf04  c9         RET
 
+; A handy function that signals an error from a function
 EXIT_WITH_ERROR:
     cf05  3e 01      MVI A, 01                  ; Set the return code to 1 and exit
     cf07  c3 01 cf   JMP FUNCTION_EXIT (cf01)
@@ -1069,77 +1088,33 @@ CONSOLE_KEY_PRESSED:
     cf0e  00           db 00                    ; Buffer for the entered symbol
 
 BDOS_SAVE_SP:
-    cf0f  00 00        dw 0000
+    cf0f  00 00        dw 0000                  ; User stack pointer (BDOS switches to its own stack)
 
-cf11  00         NOP
-cf12  00         NOP
-cf13  00         NOP
-cf14  00         NOP
-cf15  00         NOP
-cf16  00         NOP
-cf17  00         NOP
-cf18  00         NOP
-cf19  00         NOP
-cf1a  00         NOP
-cf1b  00         NOP
-cf1c  00         NOP
-cf1d  00         NOP
-cf1e  00         NOP
-cf1f  00         NOP
-cf20  00         NOP
-cf21  00         NOP
-cf22  00         NOP
-cf23  00         NOP
-cf24  00         NOP
-cf25  00         NOP
-cf26  00         NOP
-cf27  00         NOP
-cf28  00         NOP
-cf29  00         NOP
-cf2a  00         NOP
-cf2b  00         NOP
-cf2c  00         NOP
-cf2d  00         NOP
-cf2e  00         NOP
-cf2f  00         NOP
-cf30  00         NOP
-cf31  00         NOP
-cf32  00         NOP
-cf33  00         NOP
-cf34  00         NOP
-cf35  00         NOP
-cf36  00         NOP
-cf37  00         NOP
-cf38  00         NOP
-cf39  00         NOP
-cf3a  00         NOP
-cf3b  00         NOP
-cf3c  00         NOP
-cf3d  00         NOP
-cf3e  00         NOP
-cf3f  00         NOP
-cf40  00         NOP
+BDOS_STACK_BUF:
+    cf11  0x30 *00     dw 0x30 * 0x00           ; BDOS stack area
 
-BDOS_STACK:     ; The stack growth up
+BDOS_STACK:                                     ; Top of the stack                 
 
 USER_CODE:
-    cf41  00         db 00
+    cf41  00           db 00                    ; user code (get/set by function 0x20)
 
 CURRENT_DISK:
-    cf42  00         db 00
+    cf42  00           db 00                    ; Current disk
 
 
 FUNCTION_ARGUMENTS:
-    cf43  00 00      dw 0000
+    cf43  00 00        dw 0000                  ; Function arguments, so that functions can refer to it any time
 
 FUNCTION_RETURN_VALUE:
-    cf45  00 00      dw 0000
+    cf45  00 00        dw 0000                  ; Function return value, passed via a variable, not register
 
 
 
 HANDLE_DISK_SELECT_ERROR:
     cf47  21 0b cc   LXI HL, DISK_SELECT_ERROR_PTR (cc0b)
 
+
+; A helper function that jumps to the error handler address stored at [HL]
 ROUTE_TO_ERROR_HANDLER:
     cf4a  5e         MOV E, M                   ; Load handler address to DE
     cf4b  23         INX HL
@@ -1149,7 +1124,7 @@ ROUTE_TO_ERROR_HANDLER:
     cf4e  e9         PCHL
 
 
-; Copy C number of bytes from [DE] to [HL]
+; Copy C bytes from [DE] to [HL]
 MEMCOPY_DE_HL:
     cf4f  0c         INR C
 
@@ -1164,6 +1139,13 @@ MEMCOPY_DE_HL_LOOP:
     cf56  c3 50 cf   JMP MEMCOPY_DE_HL_LOOP (cf50)
 
 
+; Select disk specified in CURRENT_DISK variable, and perform disk initialization routines
+;
+; The function performs the following steps:
+; - Select the disk in BIOS
+; - Parses disk descriptor and stores its values in BDOS variables
+; - Parses disk parameter block and store its values in BDOS variables
+; - Depending on the disk size prepare for 1-byte or 2-byte allocation records
 DO_SELECT_DISK:
     cf59  3a 42 cf   LDA CURRENT_DISK (cf42)    ; Select the disk
     cf5c  4f         MOV C, A
@@ -1178,7 +1160,7 @@ DO_SELECT_DISK:
     cf65  56         MOV D, M
     cf66  23         INX HL
 
-    cf67  22 b3 d9   SHLD LAST_DIR_ENTRY_NUM_ADDR (d9b3)  ; Store the poitner last directory entry number
+    cf67  22 b3 d9   SHLD LAST_DIR_ENTRY_NUM_ADDR (d9b3)  ; Store the pointer last directory entry number
 
     cf6a  23         INX HL                     ; Store the pointer to current track variable
     cf6b  23         INX HL
@@ -1195,10 +1177,10 @@ DO_SELECT_DISK:
     cf77  22 d0 d9   SHLD SECTOR_TRANS_TABLE (d9d0) ; Store sector translation table
 
     cf7a  21 b9 d9   LXI HL, DIRECTORY_BUFFER_ADDR (d9b9)   ; Copy directory buffer ptr, disk param block ptr,
-    cf7d  0e 08      MVI C, 08                              ; scratchpad address ????, and disk allocation
-    cf7f  cd 4f cf   CALL MEMCOPY_DE_HL (cf4f)              ; information addr ????
+    cf7d  0e 08      MVI C, 08                              ; directory CRC vector addr, allocation vector addr
+    cf7f  cd 4f cf   CALL MEMCOPY_DE_HL (cf4f)
 
-    cf82  2a bb d9   LHLD DISK_PARAMS_BLOCK_ADDR (d9bb) ; Copy disk parameters block
+    cf82  2a bb d9   LHLD DISK_PARAMS_BLOCK_ADDR (d9bb) ; Copy disk parameters block into separate variables
     cf85  eb         XCHG
     cf86  21 c1 d9   LXI HL, DISK_PARAMETER_BLOCK (d9c1)
     cf89  0e 0f      MVI C, 0f
@@ -1207,8 +1189,8 @@ DO_SELECT_DISK:
     cf8e  2a c6 d9   LHLD DISK_TOTAL_STORAGE_CAPACITY (d9c6)    ; Check if disk capacity is small enough
     cf91  7c         MOV A, H
     cf92  21 dd d9   LXI HL, SINGLE_BYTE_ALLOCATION_MAP (d9dd)
-    cf95  36 ff      MVI M, ff                          ; if small - use the single byte records for file
-    cf97  b7         ORA A                              ; allocation table
+    cf95  36 ff      MVI M, ff                          ; if small - use the single byte allocation records
+    cf97  b7         ORA A                              ; for file allocation table
     cf98  ca 9d cf   JZ DO_SELECT_DISK_EXIT (cf9d)
     cf9b  36 00      MVI M, 00                          ; otherwise it will be double byte records
 
@@ -1218,6 +1200,7 @@ DO_SELECT_DISK_EXIT:
     cfa0  c9         RET
 
 
+; Move to track zero and reset all track/sector counters
 SET_TRACK_ZERO:
     cfa1  cd 18 da   CALL BIOS_SET_TRACK_ZERO (da18)
 
@@ -1234,14 +1217,20 @@ SET_TRACK_ZERO:
 
     cfb1  c9         RET
 
-
+; Read a sector
+;
+; This function is a little wrapper over BIOS' read sector function, with the addition of error handling
 READ_SECTOR:
     cfb2  cd 27 da   CALL BIOS_READ_SECTOR (da27)
     cfb5  c3 bb cf   JMP CHECK_READ_WRITE_ERROR (cfbb)
 
+; Write a sector
+;
+; This function is a little wrapper over BIOS' write sector function, with the addition of error handling
 WRITE_SECTOR:
     cfb8  cd 2a da   CALL BIOS_WRITE_SECTOR (da2a)
 
+; Check the read/write sector function error code, and handle it if necessary
 CHECK_READ_WRITE_ERROR:
     cfbb  b7         ORA A
     cfbc  c8         RZ
@@ -1251,13 +1240,16 @@ CHECK_READ_WRITE_ERROR:
 
 
 ; Seek to directory entry
+;
+; The function converts the directory entry index (counter) to the index of the sector that contains
+; the desired entry.
 SEEK_TO_DIR_ENTRY:
     cfc3  2a ea d9   LHLD DIRECTORY_COUNTER (d9ea)  ; Calculate sector number of the directory entry
     cfc6  0e 02      MVI C, 02                      ; (having just 4 entries on the sector, the sector number
     cfc8  cd ea d0   CALL SHIFT_HL_RIGHT (d0ea)     ; is entry number divided by 4)
 
-    cfcb  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)      ; Set the desired sector
-    cfce  22 ec d9   SHLD CURRENT_DIR_ENTRY_SECTOR (d9ec)
+    cfcb  22 e5 d9   SHLD ACTUAL_SECTOR (d9e5)      ; Set the desired sector (assuming directory sectors are
+    cfce  22 ec d9   SHLD CURRENT_DIR_ENTRY_SECTOR (d9ec)   ; in the beginning of the disk)
 
 
 ; Seek to selected sector
@@ -1411,7 +1403,12 @@ SEEK_TO_SECTOR_EXIT:
 ; 8k            64                      6               sect/64 + extval*2
 ; 16k           128                     7               sect/128 + extval
 ; Where sect is a record (sector) number within the current extent, and extval is a extent number masked
-; with disk extent mask
+; with disk extent mask.
+;
+; In other words this function calculates the position of the byte in the allocation vector that corresponds
+; to the given file record.
+;
+; Return: calculated value is in A register
 CALC_DISK_MAP_POS:
     d03e  21 c3 d9   LXI HL, DISK_BLOCK_SHIFT_FACTOR (d9c3)
     d041  4e         MOV C, M
@@ -1489,7 +1486,8 @@ GET_BLOCK_NUM_FOR_RECORD_1:
 ; Algorithm:
 ; - Take current sector index and convert it into the block index
 ; - Read the block number from the FCB allocation vector at the calculated index
-; - Store calculated block number into ACTUAL_SECTOR variable ????
+; - Store calculated block number into ACTUAL_SECTOR variable (yeah, temporary ACTUAL_SECTOR variable
+;   contains the block number)
 ; - Calculated block number is returned in HL
 CALC_BLOCK_NUMBER:
     d077  cd 3e d0   CALL CALC_DISK_MAP_POS (d03e)
