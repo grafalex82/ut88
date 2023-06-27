@@ -65,6 +65,7 @@ class Configuration:
         self._suppressed_logs = []
 
         self.configure_logging()
+        self.setup_special_breakpoints()
 
 
     def create_memories(self):
@@ -76,6 +77,10 @@ class Configuration:
 
 
     def configure_logging(self):
+        pass
+
+
+    def setup_special_breakpoints(self):
         pass
 
 
@@ -111,6 +116,7 @@ class Configuration:
             pygame.display.flip()
             self._clock.tick(60)
             pygame.display.set_caption(f"UT-88 Emulator (FPS={self._clock.get_fps()})")
+
 
     def suppress_logging(self, startaddr, endaddr, msg):
         self._suppressed_logs.append((startaddr, endaddr, msg))
@@ -179,9 +185,12 @@ class BasicConfiguration(Configuration):
 
 
     def configure_logging(self):
+        # Monitor 0 suppression
         self.suppress_logging(0x0008, 0x0120, "RST 1: Out byte")
         self.suppress_logging(0x0018, 0x005e, "RST 3: Wait 1s")
         self.suppress_logging(0x0021, 0x006d, "RST 4: Wait a button")
+
+        # Calculator firmware suppression
         self.suppress_logging(0x0a92, 0x0a97, "STORE A-B-C to [HL]")
         self.suppress_logging(0x0a8c, 0x0a91, "LOAD [HL] to A-B-C")
         self.suppress_logging(0x0b08, 0x0b6a, "POWER")
@@ -313,6 +322,39 @@ class QuasiDiskConfiguration(VideoConfiguration):
 
         self._quasidisk = QuasiDisk("QuasiDisk.bin")
         self._machine.set_quasi_disk(self._quasidisk)
+
+
+    def setup_special_breakpoints(self):
+        # Use same special breakpoints as in Video Configuration
+        VideoConfiguration.setup_special_breakpoints(self)
+
+        # Additionally set a few more specific to CP/M
+
+        # There is a mismatch between MonitorF input char function and CP/M BIOS/BDOS expectations of this
+        # function. MonitorF implementation has a feature of auto-repeat symbol - when a button is pressed,
+        # the function returns the entered key, but raises a flag that the key is still pressed, and in some
+        # time may generate more keypress events. At the same time BDOS console input function works as
+        # follows:
+        # - Wait for a button press using BIOS/MonitorF facilities
+        # - Echo the entered symbol. And here is most interesting begins:
+        #   - BDOS Put char function, despite it outputs the character, it also checks keyboad input in order
+        #     to handle Ctrl-C or Ctrl-S key combination. 
+        #   - Put char function calls BIOS' Is key pressed function, and it returns True since the key is
+        #     really (still) pressed
+        #   - Since put char function detects that the key is still pressed, it calls BIOS' wait for key press
+        #     function again. But since the key is still pressed there are 2 ways
+        #     - User holds the key until auto-repeat feature is triggered in a second or so, in this case
+        #       previous key code is generated
+        #     - User will release te button, and the function will enter a wait loop until the next button is
+        #       pressed
+        # The issue is this is still a single key processing, while implementation does 2 separate wait-for-key
+        # loops.
+        #
+        # The workaround is to remove keyboard checking while printing the character. The cost of this
+        # workaround is that it will be impossible to cancel long lasting printing with Ctrl-C combination,
+        # but that is ok, since the emulator provides the reset function which may do basically the same.
+        self._emulator.add_breakpoint(0xcd30, lambda: self._emulator._cpu.set_pc(0xcd41))
+        
 
 
 def main():
