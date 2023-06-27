@@ -1846,14 +1846,14 @@ BEEP:
     fe4b  0e bf      MVI C, bf                  ; Beep duration
 
 BEEP_LOOP:
-    fe4d  cd 5c fe   CALL fe5c
+    fe4d  cd 5c fe   CALL BEEP_DELAY (fe5c)
     fe50  d3 a1      OUT a1                     ; Out positive pulse
     fe52  2f         CMA
 
-    fe53  cd 5c fe   CALL fe5c
+    fe53  cd 5c fe   CALL BEEP_DELAY (fe5c)
     fe56  d3 a1      OUT a1                     ; Out negative pulse
     fe58  0d         DCR C
-    fe59  c2 4d fe   JNZ fe4d                   ; Repeat
+    fe59  c2 4d fe   JNZ BEEP_LOOP (fe4d)       ; Repeat
 
 BEEP_DELAY:
     fe5c  06 2f      MVI B, 2f          
