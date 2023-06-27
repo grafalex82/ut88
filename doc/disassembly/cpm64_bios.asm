@@ -109,7 +109,7 @@ DISK_DESCRIPTION:
     da3b  f6 db      dw DIRECTORY_BUFFER (dbf6)         ; Pointer to the 128b buffer for directory operations
     da3d  4b da      dw DISK_PARAMETER_BLOCK (da4b)     ; Pointer to the Disk Parameter Block (DPB)
     da3f  95 dc      dw DIR_ENTRY_CRC_VECTOR (dc95)     ; Address of directory sectors CRC vector
-    da41  76 dc      dw dc76                            ; Address of disk allocation information ????
+    da41  76 dc      dw DISK_ALLOCATION_VECTOR (dc76)   ; Address of disk allocation vector
     
 SECTOR_TRANSLATION_TABLE:
     da43  01 02 03 04 05 06 07 08
@@ -510,8 +510,8 @@ SAVE_SP:
 DIRECTORY_BUFFER:
     dbf6  00         db 128*0x00                ; 128 byte buffer for directory operations
 
-DISK_ALLOCATION_INFO:
-    dc76  00         db 00
+DISK_ALLOCATION_VECTOR:
+    dc76  0x20 x 00  db 0x20*00                 ; Disk allocation vector, 1 bit per block
 
 DIR_ENTRY_CRC_VECTOR:
     dc95  8 x 00     db 8 x 00                  ; CRC of 8 directory sectors

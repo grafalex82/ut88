@@ -185,6 +185,10 @@
 ;   - A byte at offset 0x00 of FCB represent the disk number that the operation is related to. This allows
 ;     working with several disk drives simultaneously by specifying their disk codes in different FCBs
 ;
+;   - MSB of the byte at offset 0x0e (extent number high byte) indicates that file or directory entry was
+;     created, but no data yet to be written on the disk, and therefore this entry is not yet valid. File
+;     close operation prevents closing files with such a flag.
+;
 ;   - A byte at offset 0x20 is a current record counter for sequental operations. Represent the current
 ;     record (sector) index within the current extent. When the record counter reaches a value of 0x80, the
 ;     sequental operation switches to the next extent (create a new one for write operation if necessary)
@@ -205,6 +209,13 @@
 ;   identifiers, each BDOS file function searches the corresponding directory entry by the name or pattern
 ;   provided in the FCB. Some functions return so called directory code from 0 to 3, which in fact is an
 ;   index of a directory entry on a currently loaded directory sector (4 entries per sector).
+;
+; - Original CP/M system is single user, but later it was added with a multi-user extensions. Technically
+;   each file got a label called user code, which is an integer from 0 to 31. Each user has its own label,
+;   and search first/next operation returns only files with the matching user code. There was no special
+;   protection in order to forbid users to read other's files, just filtering on the directory level. User
+;   program may still use search first/next functions, specify '?' in the user code field, and get all files
+;   on the disk regardless the user code.
 ;
 ; - Disk Parameter Block structure (returned by BIOS) for the UT-88 Quasi disk is the following:
 ;   - 0x0008 (2 bytes)  - sectors per track
@@ -245,30 +256,48 @@
 ; cf42  - current disk
 ; cf43  - function arguments (2 byte)
 ; cf45  - function return code or return value(2 byte)
-
-
-FUNCTION_ARGUMENTS:
-    cf43  00 00      dw 0000
-
-FUNCTION_RETURN_VALUE:
-    cf45  00 00      dw 0000
-
-; d9ac  - Signature of an empty directory entry
-; d9ad  - Pointer to read only vector
-; d9af  - Disk Login Vector
-; d9b1  - ???? Disk buffer address
+; d9ad  - Read only vector (Bitmask of the disks currently marked as read only)
+; d9af  - Disk Login Vector (Bitmask of the disks currently marked as online)
+; d9b1  - Pointer to the currently set data buffer
 ; d9b3  - Address of the variable containing last directory entry number
 ; d9b5  - Address of the variable containing current track number
 ; d9b7  - Address of the variable containing current track first sector number
 ; d9b9  - Pointer to the directory buffer
 ; d9bb  - Address of Disk Params Block (DPB)
 ; d9bd  - Address of CRC vector for directory sectors
-; d9bf  - Address of disk allocation information ????
+; d9bf  - Address of disk allocation vector
+; d9c1  - Disk Parameters Block: sectors per track
+; d9c3  - Disk Parameters Block: block shift factor
+; d9c4  - Disk Parameters Block: block number mask
+; d9c5  - Disk Parameters Block: extent number mask
+; d9c6  - Disk Parameters Block: total number of blocks on the disk - 1
+; d9c8  - Disk Parameters Block: number of directory entries - 1
+; d9ca  - Disk Parameters Block: bitmap of directory entry blocks
+; d9cc  - Disk Parameters Block: Size of the directory check vector
+; d9ce  - Disk Parameters Block: Number of reserved tracks
+; d9d0  - Pointer to the sector translation table
+; d9d2  - Flag indicating the FCB has been flushed to directory entry
+; d9d3  - read/write type (0 for write, 0xff for read)
+; d9d4  - Search in progress flag (file has not yet been found)
+; d9d5  - operation type (0 - random read/write, 1 - sequenta, 2 - random write with zero blocks)
 ; d9d6  - function argument (low byte)
+; d9d7  - Current record block index in FCB alloc vector
+; d9d8  - number of bytes to match during search first/next operation
+; d9d9  - Current search FCB (used for subsequent SEARCH_NEXT calls)
+; d9dd  - Flag indicating that total disk capacity high byte is 0, and 1-byte allocation entries can be used
+; d9de  - Flag indicating that disk needs to be restored on exit
+; d9df  - Previously selected disk
+; d9e0  - Drive code passed as a first byte of FCB
+; d9e1  - Total records (sector) in current extent
+; d9e2  - Current extent number (masked with extent mask)
+; d9e3  - Index of the current sector for sequental read/write ops
 ; d9e5  - Actual sector number (similar to LBA concept)
+; d9e7  - index of the first sector of the block
 ; d9e9  - Directory entry offset (on the current sector)
-; d9ea  - ???? Directory counter
+; d9ea  - Directory entries counter (while iterating over directory)
+; d9eb  - ????
 ; d9ec  - Sector number of the current directory entry (LBA)
+
 
 
 ; Unknown piece of data, probably a serial number
@@ -1677,6 +1706,13 @@ SET_DISK_BIT_MASK:
 
     d11d  c9         RET
 
+; Check if the disk is read only
+;
+; Arguments:
+; A - disk number
+; 
+; Returns:
+; Z flag set if disk is writable, Z flag reset read only
 IS_DISK_READ_ONLY:
     d11e  2a ad d9   LHLD READ_ONLY_VECTOR (d9ad)   ; Get read only vector
 
@@ -1719,12 +1755,13 @@ WRITE_PROTECT_DISK:
 CHECK_FILE_READ_ONLY:
     d144  cd 5e d1   CALL GET_DIR_ENTRY_ADDR (d15e) ; Load directory entry address in HL
 
-; Check the file read only flag for record address in HL
+; Check the file read only flag for record address in HL.
+; If file is read only corresponding message is printed, and system restarted.
 CHECK_FILE_READ_ONLY_FLAG:
     d147  11 09 00   LXI DE, 0009               ; Offset to file extension
     d14a  19         DAD DE
 
-    d14b  7e         MOV A, M                   ; Return if file is read write (MSB of first extension byte
+    d14b  7e         MOV A, M                   ; Return if file is writable (MSB of first extension byte
     d14c  17         RAL                        ; is 0)
     d14d  d0         RNC
 
@@ -1732,7 +1769,8 @@ CHECK_FILE_READ_ONLY_FLAG:
     d151  c3 4a cf   JMP ROUTE_TO_ERROR_HANDLER (cf4a)
 
 
-; Check if the disk is read only, and report an error
+; Check if the disk is read only, and report an error.
+; If the disk is read only, corresponding message is printed, and system restarted.
 CHECK_DISK_READ_ONLY:
     d154  cd 1e d1   CALL IS_DISK_READ_ONLY (d11e)
     d157  c8         RZ
@@ -1755,27 +1793,27 @@ HL_ADD_A:
     d168  c9         RET
 
 
-; Get S2 byte of the File Control Block (FCB)
+; Get extent number high byte (S2 byte) of the File Control Block (FCB)
 ;
 ; Returns:
 ; HL = HL + 0x0e
 ; A = [HL]
-GET_FCB_S2:
+GET_FCB_EXT_NUM_HIGH:
     d169  2a 43 cf   LHLD FUNCTION_ARGUMENTS (cf43)
     d16c  11 0e 00   LXI DE, 000e
     d16f  19         DAD DE
     d170  7e         MOV A, M
     d171  c9         RET
 
-; Clear the S2 byte in the File Control Block (FCB)
-CLEAR_FCB_S2:
-    d172  cd 69 d1   CALL GET_FCB_S2 (d169)
+; Clear the extent number high byte (S2 byte) in the File Control Block (FCB)
+CLEAR_FCB_EXT_NUM_HIGH:
+    d172  cd 69 d1   CALL GET_FCB_EXT_NUM_HIGH (d169)
     d175  36 00      MVI M, 00
     d177  c9         RET
 
-; Set the high bit in S2 byte of the File Control Block (FCB)
-SET_FCB_S2:
-    d178  cd 69 d1   CALL GET_FCB_S2 (d169)
+; Set the high bit in S2 byte of the File Control Block (FCB) indicating that the file is in write mode
+SET_FILE_WRITE_FLAG:
+    d178  cd 69 d1   CALL GET_FCB_EXT_NUM_HIGH (d169)
     d17b  f6 80      ORI A, 80
     d17d  77         MOV M, A
     d17e  c9         RET
@@ -1821,7 +1859,7 @@ CMP_DE_HL:
 UPDATE_DIR_CHECKSUM:   
     d19c  0e ff      MVI C, ff
 
-; Calculate check or store directory sector checksum
+; Calculate, check or store directory sector checksum
 ;
 ; The function calculates the CRC for current directory sector, and compares it to one stored
 ; in the CRC vector. If does not match - the disk will be marked as read only to avoid further corruption.
@@ -1868,7 +1906,9 @@ STORE_NEW_CHECKSUM:
 
 
 
-
+; Write an updated directory sector
+;
+; The function switches the data buffer to the directory buffer, writes the directory sector, and restores buffer back
 WRITE_DIRECTORY_SECTOR:
     d1c6  cd 9c d1   CALL UPDATE_DIR_CHECKSUM (d19c); Update directory checksum
     
@@ -1906,13 +1946,17 @@ SET_DISK_BUFFER:
     d1e5  46         MOV B, M
     d1e6  c3 24 da   JMP BIOS_SET_DISK_BUFFER (da24)
 
-
+; Copy data from directory buffer to the disk buffer.
+;
+; Search file functions need to return directory data, and therefore have to copy data from the private directory buffer to the 
+; public data buffer.
 COPY_DIR_BUF_TO_DISK_BUF:
     d1e9  2a b9 d9   LHLD DIRECTORY_BUFFER_ADDR (d9b9)
     d1ec  eb         XCHG
     d1ed  2a b1 d9   LHLD DISK_BUFFER_ADDR (d9b1)
     d1f0  0e 80      MVI C, 80
     d1f2  c3 4f cf   JMP MEMCOPY_DE_HL (cf4f)
+
 
 ; Check if directory counter is 0xffff
 ;
@@ -2083,11 +2127,12 @@ UPDATE_DISK_MAP:
     d273  0e 11      MVI C, 11                  ; Size of the map field + 1
 
 UPDATE_DISK_MAP_LOOP:
-    d275  d1         POP DE                     ; Recall the parity parameter ????
+    d275  d1         POP DE                     ; Recall the argument (bit to set or clear) in E
+
     d276  0d         DCR C                      ; Continue until all bytes of the map are processed
     d277  c8         RZ
 
-    d278  d5         PUSH DE                    ; Save the parity parameter until the next cycle
+    d278  d5         PUSH DE                    ; Save the argument for the next cycle
 
     d279  3a dd d9   LDA SINGLE_BYTE_ALLOCATION_MAP (d9dd)  ; Check map contains 1-byte values
     d27c  b7         ORA A
@@ -2128,19 +2173,25 @@ UPDATE_DISK_MAP_NEXT:
 
 
 
-
+; Initialize the drive, and update all internal data structures.
+;
+; The function performs the following actions:
+; - Clear the disk allocation vector
+; - Set bits that correspond to directory entry blocks as allocated
+; - Iterate over all files and their extents, mark blocks used by the file as allocated in allocation vector
+; - Calculate actual number of directory entries
 DISK_INITIALIZE:
-    d2a3  2a c6 d9   LHLD DISK_TOTAL_STORAGE_CAPACITY (d9c6); ???
-    d2a6  0e 03      MVI C, 03
+    d2a3  2a c6 d9   LHLD DISK_TOTAL_STORAGE_CAPACITY (d9c6); Disk allocation vector size is total number of blocks / 8 + 1
+    d2a6  0e 03      MVI C, 03                              ; (one bit per block)
     d2a8  cd ea d0   CALL SHIFT_HL_RIGHT (d0ea)
+    d2ab  23         INX HL
 
-    d2ab  23         INX HL                     ; ??? +1 and store it in BC
-    d2ac  44         MOV B, H                   ; This will be disk allocation vector size in bytes
+    d2ac  44         MOV B, H                   ; Store allocation vector size to BC
     d2ad  4d         MOV C, L
 
     d2ae  2a bf d9   LHLD DISK_ALLOCATION_VECTOR_PTR (d9bf)
 DISK_INITIALIZE_ALLOC_LOOP:
-    d2b1  36 00      MVI M, 00                  ; Reset the disk allocation vector
+    d2b1  36 00      MVI M, 00                  ; Reset the disk allocation vector with zeros
     d2b3  23         INX HL
     d2b4  0b         DCX BC
     d2b5  78         MOV A, B
@@ -2151,14 +2202,14 @@ DISK_INITIALIZE_ALLOC_LOOP:
     d2bd  eb         XCHG                       ; Load reserved directory blocks number to DE
 
     d2be  2a bf d9   LHLD DISK_ALLOCATION_VECTOR_PTR (d9bf)
-    d2c1  73         MOV M, E                   ; ????
+    d2c1  73         MOV M, E                   ; Apply directory block map to the disk allocation vector
     d2c2  23         INX HL
     d2c3  72         MOV M, D
 
     d2c4  cd a1 cf   CALL SET_TRACK_ZERO (cfa1) ; Move to track #0, zero track/sector numbers
 
-    d2c7  2a b3 d9   LHLD LAST_DIR_ENTRY_NUM_ADDR (d9b3)  ; Store 0003 as a last directory entry number
-    d2ca  36 03      MVI M, 03
+    d2c7  2a b3 d9   LHLD LAST_DIR_ENTRY_NUM_ADDR (d9b3)    ; Store 0003 as a last directory entry number
+    d2ca  36 03      MVI M, 03                              ; (one sector. This will be updated later)
     d2cc  23         INX HL
     d2cd  36 00      MVI M, 00
 
@@ -2186,7 +2237,7 @@ DISK_INITIALIZE_NEXT_FILE:
     d2ed  d6 24      SUI A, 24
     d2ef  c2 f6 d2   JNZ DISK_INITIALIZE_1 (d2f6)
 
-    d2f2  3d         DCR A                      ; Set return code to 0xff ????
+    d2f2  3d         DCR A                      ; Files that start with '$' cause error condition
     d2f3  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
 
 DISK_INITIALIZE_1:
@@ -2333,7 +2384,7 @@ SEARCH_NEXT_ADVANCE:
 
 SEARCH_MATCHED:
     d383  3a ea d9   LDA DIRECTORY_COUNTER (d9ea)   ; Return the index of the directory entry within the
-    d386  e6 03      ANI A, 03                      ; current directory sector ????
+    d386  e6 03      ANI A, 03                      ; current directory sector
     d388  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
 
     d38b  21 d4 d9   LXI HL, SEARCH_IN_PROGRESS (d9d4)  ; Return if file was found previously
@@ -2347,7 +2398,7 @@ SEARCH_MATCHED:
 
 
 SEARCH_NEXT_NO_MORE_ENTRIES:
-    d394  cd fe d1   CALL RESET_DIRECTORY_COUNTER (d1fe); Reset the counter
+    d394  cd fe d1   CALL RESET_DIRECTORY_COUNTER (d1fe)    ; Reset the counter
     d397  3e ff      MVI A, ff                  ; And report that no more entries left
     d399  c3 01 cf   JMP FUNCTION_EXIT (cf01)
 
@@ -2388,7 +2439,7 @@ DELETE_FILE_LOOP:
 ; bit for the found block, marking the block allocated.
 ;
 ; The function does its work in a pretty interesting way - it searches in both left and right direction, 
-; until zero block number is reached at the left, or total number of blocks reached on the right.
+; until block number 0 is reached at the left, or total number of blocks reached on the right.
 ;
 ; Arguments:
 ; BC - Start block number
@@ -2478,6 +2529,7 @@ FLUSH_DIR_SECTOR:
     d410  cd c3 cf   CALL SEEK_TO_DIR_ENTRY (cfc3)  ; Seek to the directory entry sector
     d413  c3 c6 d1   JMP WRITE_DIRECTORY_SECTOR (d1c6)  ; And update with the new data
 
+
 ; Rename file
 ;
 ; Argument:
@@ -2509,6 +2561,10 @@ RENAME_FILE_LOOP:
     d438  c3 27 d4   JMP RENAME_FILE_LOOP (d427)
 
 
+; Set file attributes
+;
+; The function copies file attributes (high bits of each name or extension byte) from FCB to the
+; directory entry.
 SET_FILE_ATTRS:
     d43b  0e 0c      MVI C, 0c                  ; Search for the file
     d43d  cd 18 d3   CALL SEARCH_FIRST (d318)
@@ -2556,7 +2612,7 @@ UPDATE_FCB_FOR_NEXT_EXTENT:
     d469  d5         PUSH DE
     d46a  cd 4f cf   CALL MEMCOPY_DE_HL (cf4f)
 
-    d46d  cd 78 d1   CALL SET_FCB_S2 (d178)     ; ?????
+    d46d  cd 78 d1   CALL SET_FILE_WRITE_FLAG (d178); Set the file write mode
 
     d470  d1         POP DE                     ; Load extent number from the directory entry to C
     d471  21 0c 00   LXI HL, 000c
@@ -2615,7 +2671,7 @@ MERGE_ALLOC_ENTRIES:
 ; Close file
 ;
 ; Function algorithm:
-; - Check S2 flag ???
+; - Check file write flag
 ; - Find the directory entry that matches current FCB
 ; - Merge FCB and directory entry allocation records (1- or 2-byte records supported)
 ; - Update extent number and record counter from FCB to directory entry
@@ -2631,7 +2687,7 @@ CLOSE_FILE:
     d4ac  cd 1e d1   CALL IS_DISK_READ_ONLY (d11e)  ; Can't proceed if the disk is read only
     d4af  c0         RNZ
 
-    d4b0  cd 69 d1   CALL GET_FCB_S2 (d169)     ; ???? Return is S2 byte is not empty???
+    d4b0  cd 69 d1   CALL GET_FCB_EXT_NUM_HIGH (d169)   ; Do not close the file if it has unwritten entries
     d4b3  e6 80      ANI A, 80
     d4b5  c0         RNZ
 
@@ -2776,7 +2832,7 @@ CREATE_FILE_CLEAR_LOOP:
 
     d554  cd fd d3   CALL COPY_FCB_TO_DIR (d3fd); Copy FCB to the directory entry
 
-    d557  c3 78 d1   JMP SET_FCB_S2 (d178)      ; ???? Set the write flag???
+    d557  c3 78 d1   JMP SET_FILE_WRITE_FLAG (d178) ; Set the write flag
 
 
 
@@ -2785,7 +2841,7 @@ CREATE_FILE_CLEAR_LOOP:
 ;
 ; If all records of the current extent are processed, this function closes the extent, and advances
 ; to the next one. In case of reading or updating operations the extent must already exist. In case
-; of sequental writing, the new extent is created.] 
+; of sequental writing, the new extent is created. 
 ADVANCE_TO_NEXT_EXTENT:
     d55a  af         XRA A                      ; Indicate FCB needs to be flushed on the disk
     d55b  32 d2 d9   STA FCB_COPIED_TO_DIR (d9d2)
@@ -2817,11 +2873,11 @@ ADVANCE_TO_NEXT_EXTENT:
     d580  c3 ac d5   JMP ADVANCE_TO_NEXT_EXTENT_3 (d5ac)
 
 ADVANCE_TO_NEXT_EXTENT_1:
-    d583  01 02 00   LXI BC, 0002               ; Advance to S2 byte of FCB
+    d583  01 02 00   LXI BC, 0002               ; Advance to high byte of the extent number
     d586  09         DAD BC
 
-    d587  34         INR M                      ; ???? Increment S2 byte, and check if it reached 0x10?
-    d588  7e         MOV A, M
+    d587  34         INR M                      ; Increment extent number high byte until it reaches 0x10
+    d588  7e         MOV A, M                   ; (only 4 bits of the byte are used)
     d589  e6 0f      ANI A, 0f
     d58b  ca b6 d5   JZ ADVANCE_TO_NEXT_EXTENT_EXIT_ERROR (d5b6)
 
@@ -2855,7 +2911,7 @@ ADVANCE_TO_NEXT_EXTENT_EXIT:
 
 ADVANCE_TO_NEXT_EXTENT_EXIT_ERROR:
     d5b6  cd 05 cf   CALL EXIT_WITH_ERROR (cf05); Exit with error
-    d5b9  c3 78 d1   JMP SET_FCB_S2 (d178)
+    d5b9  c3 78 d1   JMP SET_FILE_WRITE_FLAG (d178) ; Indicate that entry is not valid
 
 
 
@@ -3054,7 +3110,6 @@ DISK_WRITE_ZERO_BLOCK_LOOP:
 
     d6a2  cd b8 cf   CALL WRITE_SECTOR (cfb8)   ; Write the zeroed sector
 
-    
     d6a5  2a e5 d9   LHLD ACTUAL_SECTOR (d9e5)  ; Get the current sector number
     d6a8  0e 00      MVI C, 00
 
@@ -3096,8 +3151,8 @@ DISK_WRITE_6:
     d6d3  0d         DCR C
     d6d4  c2 df d6   JNZ DISK_WRITE_7 (d6df)
 
-    d6d7  f5         PUSH PSW                       ; If yes, clear the S2 high bit   ????
-    d6d8  cd 69 d1   CALL GET_FCB_S2 (d169)
+    d6d7  f5         PUSH PSW                       ; Clear the file write flag, to indicate that current
+    d6d8  cd 69 d1   CALL GET_FCB_EXT_NUM_HIGH (d169)   ; extent has valid data
     d6db  e6 7f      ANI A, 7f
     d6dd  77         MOV M, A
     d6de  f1         POP PSW
@@ -3131,7 +3186,7 @@ DISK_WRITE_9:
 
 ; Select sector for random read or write
 ;
-; Prepare for random access read or write operation. The function parses bytes 33-35 of the FCB, that
+; Prepare for random access read or write operation. The function parses bytes 0x21-0x23 of the FCB, that
 ; indicates record index of the file to be read or written. The requested record index is converted to
 ; a triple of extent high byte, extent low byte, and extent record index parameters. These parameters
 ; are then written to the FCB. The function also loads needed extent of the file, and reads file allocation
@@ -3142,7 +3197,7 @@ DISK_WRITE_9:
 ;
 ; Arguments:
 ; C - operation type (0xff - read, 0x00 - write)
-; Bytes 33-35 of FCB specify file position (in sectors) to read or write
+; Bytes 0x21-0x23 of FCB specify file position (in sectors) to read or write
 SELECT_FILE_SECTOR:
     d703  af         XRA A                      ; Mark this is a random access operation (not sequental)
     d704  32 d5 d9   STA SEQUENTAL_OPERATION (d9d5)
@@ -3174,7 +3229,7 @@ SELECT_FILE_SECTOR_1:
     d71f  1f         RAR
     d720  1f         RAR
     d721  e6 0f      ANI A, 0f
-    d723  47         MOV B, A               ; Store calculated extent number high byte to B
+    d723  47         MOV B, A                   ; Store calculated extent number high byte to B
 
     d724  f1         POP PSW                    ; Ensure the 3rd byte is zero
     d725  23         INX HL
@@ -3239,7 +3294,8 @@ SELECT_FILE_SECTOR_2:
     d770  ca 84 d7   JZ SELECT_FILE_SECTOR_ERROR (d784)
 
     d773  cd 24 d5   CALL CREATE_FILE (d524)    ; Create extent if needed
-    d776  2e 05      MVI L, 05                  ; error code ????
+
+    d776  2e 05      MVI L, 05                  ; not documented error code ????
     d778  3a 45 cf   LDA FUNCTION_RETURN_VALUE (cf45)   ; Was there an error?
     d77b  3c         INR A
     d77c  ca 84 d7   JZ SELECT_FILE_SECTOR_ERROR (d784)
@@ -3251,21 +3307,21 @@ SELECT_FILE_SECTOR_EXIT:
 
 SELECT_FILE_SECTOR_ERROR:
     d784  e5         PUSH HL
-    d785  cd 69 d1   CALL GET_FCB_S2 (d169)     ; Clear high extent byte, and set some flags????
-    d788  36 c0      MVI M, c0
+    d785  cd 69 d1   CALL GET_FCB_EXT_NUM_HIGH (d169)   ; Raise write flag, indicating the error mode, and file
+    d788  36 c0      MVI M, c0                          ; cannot be closed
     d78a  e1         POP HL
 
 SELECT_FILE_SECTOR_ERROR_1:
     d78b  c1         POP BC                     ; Set error code from L and exit
     d78c  7d         MOV A, L
     d78d  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
-    d790  c3 78 d1   JMP SET_FCB_S2 (d178)
+    d790  c3 78 d1   JMP SET_FILE_WRITE_FLAG (d178)  ; Raise write flag, so that file can't be closed
 
 
 
 ; Function 0x21 - Read randomly accessed sector
 ;
-; DE - pointer to the FCB with fillex bytes 0x20-0x22 indicating file offset to read
+; DE - pointer to the FCB with filled bytes 0x21-0x22 indicating file offset to read
 READ_RANDOM:
     d793  0e ff      MVI C, ff
     d795  cd 03 d7   CALL SELECT_FILE_SECTOR (d703)
@@ -3274,7 +3330,7 @@ READ_RANDOM:
 
 ; Function 0x22 - Write randomly accessed sector
 ;
-; DE - pointer to the FCB with fillex bytes 0x20-0x22 indicating file offset to read
+; DE - pointer to the FCB with filled bytes 0x21-0x22 indicating file offset to read
 WRITE_RANDOM:
     d79c  0e 00      MVI C, 00
     d79e  cd 03 d7   CALL SELECT_FILE_SECTOR (d703)
@@ -3352,7 +3408,7 @@ CONVERT_RECORD_TO_SECTOR:
 ; Get file size (in sectors)
 ;
 ; The function calculates the file size (counting in 128 byte sectors) and stores the value in the bytes
-; 33-35 of the FCB. These bytes may be further used for write operations in case the file is appeneded.
+; 0x21-0x23 of the FCB. These bytes may be further used for write operations in case the file is appeneded.
 ;
 ; The algorithm iterates over all extents of the selected file, and calculates sector index, based on
 ; number of records in the extent. The function selects the biggest value, which will will be the file
@@ -3368,7 +3424,7 @@ GET_FILE_SIZE:
     d7da  11 21 00   LXI DE, 0021
     d7dd  19         DAD DE
 
-    d7de  e5         PUSH HL                    ; Zero output bytes (bytes 33-35 of FCB)
+    d7de  e5         PUSH HL                    ; Zero output bytes (bytes 0x21-0x23 of FCB)
     d7df  72         MOV M, D
     d7e0  23         INX HL
     d7e1  72         MOV M, D
@@ -3442,7 +3498,7 @@ SET_RANDOM_REC_FUNC:
 
 ; Select disk
 ;
-; ????
+; THe function selects and initializes the specified disk, and updates login vector.
 ;
 ; Arguments:
 ; E - disk number (0 for A, 1 for B, and so on)
@@ -3479,8 +3535,6 @@ SELECT_DISK:
 ;
 ; Arguments:
 ; E - disk number (0 for A, 1 for B, and so on)
-;
-; Return: ????
 SELECT_DISK_FUNC:
     d845  3a d6 d9   LDA FUNCTION_BYTE_ARGUMENT (d9d6)  ; Get the disk number argument
 
@@ -3491,6 +3545,7 @@ SELECT_DISK_FUNC:
     d84d  77         MOV M, A                   ; Store the new disk index
 
     d84e  c3 21 d8   JMP SELECT_DISK (d821)
+
 
 ; Switch to a drive requested in FCB, if needed
 ;
@@ -3569,7 +3624,7 @@ RESET_DISK_SYSTEM:
 ; Arguments:
 ; DE - Pointer to FCB
 OPEN_FILE_FUNC:
-    d89c  cd 72 d1   CALL CLEAR_FCB_S2 (d172)
+    d89c  cd 72 d1   CALL CLEAR_FCB_EXT_NUM_HIGH (d172)
     d89f  cd 51 d8   CALL RESELECT_DISK (d851)
     d8a2  c3 51 d4   JMP OPEN_FILE (d451)
 
@@ -3606,7 +3661,7 @@ SEARCH_FIRST_FUNC:
     d8b7  7e         MOV A, M
 
     d8b8  fe 3f      CPI A, 3f                  ; If the extent number is '?', then S2 code will be cleared
-    d8ba  c4 72 d1   CNZ CLEAR_FCB_S2 (d172)
+    d8ba  c4 72 d1   CNZ CLEAR_FCB_EXT_NUM_HIGH (d172)
 
     d8bd  cd 51 d8   CALL RESELECT_DISK (d851)  ; Re-select disk if needed
 
@@ -3687,7 +3742,7 @@ WRITE_SEQUENTAL_FUNC:
 ; Return:
 ; A - directory code (0-3 for entry index on current directory sector, or 0xff if file not found)
 CREATE_FILE_FUNC:
-    d8ec  cd 72 d1   CALL CLEAR_FCB_S2 (d172)
+    d8ec  cd 72 d1   CALL CLEAR_FCB_EXT_NUM_HIGH (d172)
     d8ef  cd 51 d8   CALL RESELECT_DISK (d851)
     d8f2  c3 24 d5   JMP CREATE_FILE (d524)
 
@@ -3753,10 +3808,15 @@ GET_READ_ONLY_VECTOR:
 
 
 
+; Function 0x1e - Set file attributes
+;
+; Arguments:
+; DE - Pointer to FCB with new attributes set
 SET_FILE_ATTRS_FUNC:
-d91d  cd 51 d8   CALL RESELECT_DISK (d851)
-d920  cd 3b d4   CALL SET_FILE_ATTRS (d43b)
-d923  c3 01 d3   JMP RETURN_DIRECTORY_CODE (d301)
+    d91d  cd 51 d8   CALL RESELECT_DISK (d851)
+    d920  cd 3b d4   CALL SET_FILE_ATTRS (d43b)
+    d923  c3 01 d3   JMP RETURN_DIRECTORY_CODE (d301)
+
 
 ; Function 0x1f - Get Address of Disk Params Block
 ;
@@ -3798,12 +3858,14 @@ READ_RANDOM_FUNC:
     d941  cd 51 d8   CALL RESELECT_DISK (d851)
     d944  c3 93 d7   JMP READ_RANDOM (d793)
 
+
 ; Function 0x22 - Write randomly accessed sector
 ;
 ; DE - pointer to the FCB with filled bytes 0x20-0x22 indicating file offset to read
 WRITE_RANDOM_FUNC:
     d947  cd 51 d8   CALL RESELECT_DISK (d851)
     d94a  c3 9c d7   JMP WRITE_RANDOM (d79c)
+
 
 ; Function 0x23 - Get file size
 ;
@@ -3858,7 +3920,10 @@ RESET_DRIVE_FUNC:
 
 
 
-
+; BDOS function epiloque
+;
+; This is a final part of every BDOS function execution. It restores previously selected disk,
+; restores user's stack pointer, and loads function return code to registers to be returned to the caller.
 BDOS_HANDLER_RETURN:
     d974  3a de d9   LDA RESELECT_DISK_ON_EXIT (d9de)   ; Check if the disk was changed, and needs to be
     d977  b7         ORA A                              ; re-selected back
@@ -3878,7 +3943,7 @@ BDOS_HANDLER_RETURN:
     d98e  cd 45 d8   CALL SELECT_DISK_FUNC (d845)
 
 BDOS_HANDLER_RETURN_EXIT:
-    d991  2a 0f cf   LHLD BDOS_SAVE_SP (cf0f)       ; Restore SO
+    d991  2a 0f cf   LHLD BDOS_SAVE_SP (cf0f)       ; Restore SP
     d994  f9         SPHL
 
     d995  2a 45 cf   LHLD FUNCTION_RETURN_VALUE (cf45)  ; Load function return value to AB
@@ -3913,13 +3978,13 @@ EMPTY_ENTRY_SIGNATURE:
     d9ac  e5          db e5                     ; A first byte of FCB/direntry that marks entry as empty
 
 READ_ONLY_VECTOR:
-    d9ad 00 00        dw 0000
+    d9ad 00 00        dw 0000                   ; Bitmask of the disks currently marked as read only
 
 LOGIN_VECTOR:
-    d9af 00 00        dw 0000 
+    d9af 00 00        dw 0000                   ; Bitmask of the disks currently marked as online
 
 DISK_BUFFER_ADDR:
-    d9b1 00 00        dw 0000
+    d9b1 00 00        dw 0000                   ; Pointer to the currently set data buffer
 
 LAST_DIR_ENTRY_NUM_ADDR:
     d9b3 00 00        dw 0000                   ; Pointer to latest directory entry number
@@ -3934,21 +3999,21 @@ CUR_TRACK_SECTOR_ADDR:
                                                 ; track, counting from very first sector on the disk
 
 DIRECTORY_BUFFER_ADDR:
-    d9b9 00 00        dw 0000
+    d9b9 00 00        dw 0000                   ; Pointer to the data buffer for directory operations
 
 DISK_PARAMS_BLOCK_ADDR:
-    d9bb 00 00        dw 0000
+    d9bb 00 00        dw 0000                   ; Pointer to the current disk parameter block
 
 DIR_CRC_VECTOR_PTR:
-    d9bd 00 00        dw 0000
+    d9bd 00 00        dw 0000                   ; Pointer to directory CRC vector
 
 DISK_ALLOCATION_VECTOR_PTR:
-    d9bf 00 00        dw 0000
+    d9bf 00 00        dw 0000                   ; Pointer to disk allocation vector
 
 
 DISK_PARAMETER_BLOCK:
 DISK_SECTORS_PER_TRACK:
-    d9c1  00 00      dw 0000                    ; Sectors per table (8)
+    d9c1  00 00      dw 0000                    ; Sectors per track (8)
 
 DISK_BLOCK_SHIFT_FACTOR:
     d9c3  03         db 03                      ; Block shift factor
@@ -3957,16 +4022,16 @@ DISK_BLOCK_BLM:
     d9c4  07         db 07                      ; Block number mask 
 
 DISK_EXTENT_MASK:
-    d9c5  00         db 00                      ; Extent mask ????
+    d9c5  00         db 00                      ; Extent mask
 
 DISK_TOTAL_STORAGE_CAPACITY:
-    d9c6  39 00      dw 0039                    ; Total storage capacity ????
+    d9c6  39 00      dw 0039                    ; Total number of blocks on disk (not counting reserved tracks)
 
 DISK_NUM_DIRECTORY_ENTRIES:
     d9c8  1f 00      dw 001f                    ; Number of directory entries
 
 DISK_RESERVED_DIRECTORY_BLOCKS:
-    d9ca  80 00      dw 0080                    ; AL0 & AL1 ???? Reserved directory blocks
+    d9ca  80 00      dw 0080                    ; Reserved directory blocks map
 
 DISK_DIRECTORY_CHECK_VECT_SIZE:
     d9cc  08 00      dw 0008                    ; Size of the directory check vector
@@ -3977,12 +4042,23 @@ DISK_NUM_RESERVED_TRACKS:
 SECTOR_TRANS_TABLE:
     d9d0 00 00        dw 0000                   ; Pointer to the sector translation table
 
+FCB_COPIED_TO_DIR:
+    d9d2 00           db 00                     ; Flag indicating the FCB copied to directory entry
+
+READ_OR_WRITE:
+    d9d3 00           db 00                     ; 0 for write, 0xff for read
 
 SEARCH_IN_PROGRESS:
     d9d4 00           db 00                     ; Search in progress flag (file has not yet been found)
 
+SEQUENTAL_OPERATION:
+    d9d5 00           db 00                     ; Operation type (0 - random read/write, 1 - sequental, 
+                                                ; 2 - random write with zero fill of unallocated blocks)
 FUNCTION_BYTE_ARGUMENT:
-    d9d6 00           db 00 
+    d9d6 00           db 00                     ; Function argument (byte size)
+
+CUR_RECORD_BLOCK_INDEX:
+    d9d7 00           db 00                     ; Current record block index in FCB alloc vector
 
 NUM_BYTES_TO_MATCH:
     d9d8 00           db 00                     ; Number of bytes of FCB to match while doing file search
@@ -3992,36 +4068,6 @@ CURRENT_SEARCH_FCB:
 
 SINGLE_BYTE_ALLOCATION_MAP:
     d9dd 00           db 00                     ; Flag indicating that total disk capacity high byte is 0
-
-
-ACTUAL_SECTOR:
-    d9e5 00           db 00                     ; Actual sector number - a logical sector index starting from 
-                                                ; very first sector on the disk, counting through all the
-                                                ; tracks on the disk. Though it does not count reserved tracks. 
-                                                ; Overall this is something line a LBA on modern computers)
-
-DIRECTORY_ENTRY_OFFSET:
-    d9e9 00           db 00                     ; Offset of the current directory entry from the beginning of
-                                                ; current directory sector
-
-DIRECTORY_COUNTER:
-    d9ea 00 00        dw 0000                   ; ??????
-
-CURRENT_DIR_ENTRY_SECTOR:
-    d9ec 00           db 00                     ; Sector number of the current directory entry
-
-FCB_COPIED_TO_DIR:
-    d9d2 00           db 00                     ; Flag indicating the FCB copied to directory entry
-
-READ_OR_WRITE:
-    d9d3 00           db 00                     ; 0 for write, 0xff for read
-
-SEQUENTAL_OPERATION:
-    d9d5 00           db 00                     ; Operation type (0 - random read/write, 1 - sequental, 
-                                                ; 2 - random write with zero fill of unallocated blocks)
-
-CUR_RECORD_BLOCK_INDEX:
-    d9d7 00           db 00                     ; Current record block index in FCB alloc vector
 
 RESELECT_DISK_ON_EXIT:
     d9de 00           db 00                     ; Flag indicating that disk needs to be re-selected on exit
@@ -4041,8 +4087,26 @@ EXTENT_NUMBER_MASKED:
 CURRENT_RECORD_INDEX:
     d9e3 00           db 00                     ; Index of the current sector for sequental read/write ops
 
+
+ACTUAL_SECTOR:
+    d9e5 00 00        db 0000                   ; Actual sector number - a logical sector index starting from 
+                                                ; very first sector on the disk, counting through all the
+                                                ; tracks on the disk. Though it does not count reserved tracks. 
+                                                ; Overall this is something line a LBA on modern computers)
+
 BLOCK_FIRST_SECTOR:
-    d9e7 00           db 00                     ; First sector number for a given block
+    d9e7 00 00        db 0000                   ; First sector number for a given block
+
+DIRECTORY_ENTRY_OFFSET:
+    d9e9 00           db 00                     ; Offset of the current directory entry from the beginning of
+                                                ; current directory sector
+
+DIRECTORY_COUNTER:
+    d9ea 00 00        dw 0000                   ; Current directory entry index (while iterating the directory)
 
 ????:
     d9eb 00           db 00
+    
+CURRENT_DIR_ENTRY_SECTOR:
+    d9ec 00           db 00                     ; Sector number of the current directory entry
+
