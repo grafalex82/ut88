@@ -296,7 +296,16 @@ class QuasiDiskConfiguration(VideoConfiguration):
         self._machine.add_memory(RAM(0xf400, 0xf7ff))
         self._machine.add_memory(ROM(f"{resources_dir}/MonitorF.bin", 0xf800))
 
-        self._emulator.load_memory(f"{tapes_dir}/CPM64.RKU")
+        # Load full CPM64 image, just in case if someone wants start with boot loader
+        # Start address: 0x3100
+        self._emulator.load_memory(f"{tapes_dir}/cpm64.RKU")    
+
+        # Already loaded CP/M parts for a faster boot
+        # Start address: 0xda00
+        self._emulator.load_memory(f"{tapes_dir}/cpm64_ccp.rku")
+        self._emulator.load_memory(f"{tapes_dir}/cpm64_bdos.rku")
+        self._emulator.load_memory(f"{tapes_dir}/cpm64_bios.rku")
+        self._emulator.load_memory(f"{tapes_dir}/cpm64_monitorf_addon.rku")
 
 
     def create_peripherals(self):
