@@ -249,6 +249,8 @@ class VideoConfiguration(Configuration):
         self.suppress_logging(0xfb71, 0xfc2d, "Input byte")
         self.suppress_logging(0xfba1, 0xfbac, "Tape read delay")
 
+
+    def setup_special_breakpoints(self):
         # Monitor F wipes out 0xf7b0-f7ff range during initialization. This range contains monitor's
         # variables, including 0xf7b2, which contains cursor address. Char printing code does invert of 
         # the symbol at cursor address, which in this case causing writing into 0x0000 ROM area. This
@@ -323,6 +325,13 @@ class QuasiDiskConfiguration(VideoConfiguration):
 
         self._quasidisk = QuasiDisk("QuasiDisk.bin")
         self._machine.set_quasi_disk(self._quasidisk)
+
+
+    def configure_logging(self):
+        # Use same log suppression as in Video configuration
+        VideoConfiguration.configure_logging(self)
+
+        self.suppress_logging(0xcc06, 0xd99a, lambda: print(f"BDOS function {self._emulator._cpu.c:02x}"))
 
 
     def setup_special_breakpoints(self):
