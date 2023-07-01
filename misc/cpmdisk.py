@@ -233,8 +233,6 @@ class CPMDisk():
         name = f"{name.strip().upper():8}"
         ext = f"{ext.strip().upper():3}"
 
-        print(f"Name='{name}' extension='{ext}'")
-
         # Iterate through the directory entries
         dir_offset = self.params['reserved_tracks'] * self.params['sectors_per_track'] * SECTOR_SIZE
         for i in range(self.params['num_dir_entries']):
