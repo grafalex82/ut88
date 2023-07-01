@@ -170,3 +170,25 @@ def test_delete_small_file(tmp_disk_file, data_size):
 
     # Ensure no files on the disk
     assert len(disk.list_dir()) == 0
+
+
+def test_overwrite_file(tmp_disk_file):
+    # Create a file
+    disk = CPMDisk(tmp_disk_file)
+    content = gen_content(8)
+    disk.write_file('TEST.TXT', str2bin(content))
+
+    # Verify its size
+    assert disk.list_dir()['TEST.TXT']['num_records'] == 1
+
+    # Write another file with the same name
+    content = gen_content(512)
+    disk.write_file('TEST.TXT', str2bin(content))
+
+    # Verify the file was overwrittent
+    for entry in disk.list_dir_raw():
+        print(entry)
+        
+    assert len(disk.list_dir()) == 1
+    assert disk.list_dir()['TEST.TXT']['num_records'] == 64
+    assert bin2str(disk.read_file('TEST.TXT')) == content

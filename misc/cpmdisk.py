@@ -195,6 +195,10 @@ class CPMDisk():
     
 
     def write_file(self, filename, data, user_code = 0):
+        # Delete the file, if another file with the same name exists
+        self.delete_file(filename)
+
+        # Pre-calculate variables
         free_blocks = self.get_free_blocks()
         block_size = self.params['block_size']
         data_offset = 0
@@ -202,6 +206,7 @@ class CPMDisk():
         extent_allocation = []
         extent_records = 0
 
+        # Iterate over data sectors
         while(data_offset < len(data)):
             data_len = min(len(data) - data_offset, block_size)
             block = free_blocks.pop(0)
