@@ -243,7 +243,8 @@ class VideoConfiguration(Configuration):
         self.suppress_logging(0xfd92, 0xfd95, "Beep")
         self.suppress_logging(0xfd57, 0xfd99, "Keyboard input")
         self.suppress_logging(0xfd9a, 0xfdad, "Scan keyboard")
-        self.suppress_logging(0xfc43, 0xfccd, "Put char")
+        self.suppress_logging(0xfc47, 0xfccd, "Put char")   # Function starts at fc43, but CP/M BIOS makes
+                                                            # direct jump to fc47
         self.suppress_logging(0xfbee, 0xfc2d, "Out byte")
         self.suppress_logging(0xfb71, 0xfc2d, "Input byte")
         self.suppress_logging(0xfba1, 0xfbac, "Tape read delay")
