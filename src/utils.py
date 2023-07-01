@@ -14,7 +14,7 @@ class NestedLogger():
         self._level = 0
 
     def enter(self, msg):
-        logging.debug(msg)
+        logging.debug(msg() if callable(msg) else msg)
 
         self._level += 1
         logging.disable(logging.DEBUG)
