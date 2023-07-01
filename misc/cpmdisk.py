@@ -69,14 +69,18 @@ class CPMDisk():
             f.write(bytearray(self.do_sector_translation(self.data, True)))
 
 
-    def list_dir_raw(self):
+    def get_dir_entries(self):
         dir_offset = self.params['reserved_tracks'] * self.params['sectors_per_track'] * SECTOR_SIZE
-        res = []
         for i in range(self.params['num_dir_entries']):
-            entry_offset = i * DIR_ENTRY_SIZE
-            entry = self.data[dir_offset + entry_offset : dir_offset + entry_offset + DIR_ENTRY_SIZE] 
+            yield dir_offset + i * DIR_ENTRY_SIZE
 
-            code = self.data[dir_offset + entry_offset + 0]
+
+    def list_dir_raw(self):
+        res = []
+        for entry_offset in self.get_dir_entries():
+            entry = self.data[entry_offset : entry_offset + DIR_ENTRY_SIZE] 
+
+            code = self.data[entry_offset + 0]
             if code == 0xe5:        # Entries that start with 0xe5 byte are deleted/empty
                 continue
 
@@ -157,9 +161,7 @@ class CPMDisk():
 
     def write_directory_entry(self, filename, extent, extent_allocation, extent_records, user_code = 0):
         # Search for an empty entry
-        dir_offset = self.params['reserved_tracks'] * self.params['sectors_per_track'] * SECTOR_SIZE
-        for i in range(self.params['num_dir_entries']):
-            entry_offset = i * DIR_ENTRY_SIZE + dir_offset
+        for entry_offset in self.get_dir_entries():
             if self.data[entry_offset] != 0xe5:
                 continue
 
@@ -234,10 +236,7 @@ class CPMDisk():
         ext = f"{ext.strip().upper():3}"
 
         # Iterate through the directory entries
-        dir_offset = self.params['reserved_tracks'] * self.params['sectors_per_track'] * SECTOR_SIZE
-        for i in range(self.params['num_dir_entries']):
-            entry_offset = i * DIR_ENTRY_SIZE + dir_offset
-
+        for entry_offset in self.get_dir_entries():
             # Skip already deleted entries
             if self.data[entry_offset] == 0xe5:
                 continue
@@ -250,3 +249,4 @@ class CPMDisk():
 
             # Mark the found entry as deleted
             self.data[entry_offset] = 0xe5
+
