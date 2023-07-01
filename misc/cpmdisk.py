@@ -208,6 +208,10 @@ class CPMDisk():
         extent_allocation = []
         extent_records = 0
 
+        # Pad the data to sector boundary
+        bytes_to_pad = (128 - len(data) % 128) % 128
+        data.extend(bytearray([0x1e] * bytes_to_pad))
+
         # Iterate over data sectors
         while(data_offset < len(data)):
             data_len = min(len(data) - data_offset, block_size)

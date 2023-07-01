@@ -132,6 +132,21 @@ def test_write_file(tmp_disk_file, data_size):
     assert content == data
 
 
+def test_write_with_padding(tmp_disk_file):
+    # Generate test content <128 bytes
+    content = gen_content(2)
+
+    # Create the disk, and write the content to a new file
+    disk = CPMDisk(tmp_disk_file)
+    disk.write_file('TEST.TXT', str2bin(content))
+    disk.flush()
+
+    # Read the file and check the content
+    data = disk.read_file('TEST.TXT')
+    assert bin2str(data[0:32]) == content   # First bytes match the generated content
+    assert data[32:128] == [0x1e] * 96      # Remainder of the sector was padded with EOF bytes
+
+
 def test_create_file_with_user_code(tmp_disk_file):
     # Generate test content
     content = gen_content(16)
@@ -188,7 +203,7 @@ def test_overwrite_file(tmp_disk_file):
     # Verify the file was overwrittent
     for entry in disk.list_dir_raw():
         print(entry)
-        
+
     assert len(disk.list_dir()) == 1
     assert disk.list_dir()['TEST.TXT']['num_records'] == 64
     assert bin2str(disk.read_file('TEST.TXT')) == content
