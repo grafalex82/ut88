@@ -143,8 +143,8 @@ def test_write_with_padding(tmp_disk_file):
 
     # Read the file and check the content
     data = disk.read_file('TEST.TXT')
-    assert bin2str(data[0:32]) == content   # First bytes match the generated content
-    assert data[32:128] == [0x1e] * 96      # Remainder of the sector was padded with EOF bytes
+    assert bin2str(data[0:32]) == content           # First bytes match the generated content
+    assert data[32:128] == bytearray([0x1e] * 96)   # Remainder of the sector was padded with EOF bytes
 
 
 def test_create_file_with_user_code(tmp_disk_file):
