@@ -131,6 +131,7 @@ def test_write_file(tmp_disk_file, data_size):
     data = bin2str(disk.read_file('TEST.TXT'))
     assert content == data
 
+
 def test_create_file_with_user_code(tmp_disk_file):
     # Generate test content
     content = gen_content(16)
@@ -147,3 +148,25 @@ def test_create_file_with_user_code(tmp_disk_file):
     assert entries['TEST1.TXT']['user_code'] == 1
     assert entries['TEST2.TXT']['user_code'] == 2
     assert entries['TEST3.TXT']['user_code'] == 3
+
+
+@pytest.mark.parametrize("data_size", [
+    1024,   # one full extent
+    4096,   # several extents
+])
+def test_delete_small_file(tmp_disk_file, data_size):
+    # Create a file on the disk
+    disk = CPMDisk(tmp_disk_file)
+    content = gen_content(data_size)
+    disk.write_file('TEST.TXT', str2bin(content))
+
+    # Check the file is on the disk
+    entries = disk.list_dir()
+    assert len(entries) == 1
+    assert 'TEST.TXT' in entries
+
+    # Delete the file
+    disk.delete_file('TEST.TXT')
+
+    # Ensure no files on the disk
+    assert len(disk.list_dir()) == 0

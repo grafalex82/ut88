@@ -26,6 +26,10 @@ UT88DiskParams = {
 SECTOR_SIZE = 128
 DIR_ENTRY_SIZE = 32
 
+def bytes2str(data):
+    return ''.join(chr(code) for code in data)
+
+
 class CPMDisk():
     def __init__(self, filename, params=StandardDiskParams):
         self.filename = filename
@@ -78,8 +82,8 @@ class CPMDisk():
 
             record = {}
             record['user_code'] = code
-            record['name'] = ''.join(chr(code) for code in entry[1:9]).strip()
-            record['ext'] = ''.join(chr(code) for code in entry[9:12]).strip()
+            record['name'] = bytes2str(entry[1:9]).strip()
+            record['ext'] = bytes2str(entry[9:12]).strip()
             record['EX'] = entry[12]
             record['S2'] = entry[14]
             record['entry'] = ((DIR_ENTRY_SIZE * entry[14]) + entry[12]) // (self.params['extent_mask'] + 1) # as per spec
@@ -216,3 +220,30 @@ class CPMDisk():
 
         # Write the final extent entry (may cause an extra empty extent entry, but this is correct)
         self.write_directory_entry(filename, extent, extent_allocation, extent_records, user_code)
+
+
+    def delete_file(self, filename):
+        # Prepare file name and extension
+        name, ext = filename.split('.')
+        name = f"{name.strip().upper():8}"
+        ext = f"{ext.strip().upper():3}"
+
+        print(f"Name='{name}' extension='{ext}'")
+
+        # Iterate through the directory entries
+        dir_offset = self.params['reserved_tracks'] * self.params['sectors_per_track'] * SECTOR_SIZE
+        for i in range(self.params['num_dir_entries']):
+            entry_offset = i * DIR_ENTRY_SIZE + dir_offset
+
+            # Skip already deleted entries
+            if self.data[entry_offset] == 0xe5:
+                continue
+
+            # Match the file name and extension
+            if bytes2str(self.data[entry_offset + 1 : entry_offset + 9]) != name:
+                continue
+            if bytes2str(self.data[entry_offset + 9 : entry_offset + 12]) != ext:
+                continue
+
+            # Mark the found entry as deleted
+            self.data[entry_offset] = 0xe5
