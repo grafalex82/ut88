@@ -387,6 +387,20 @@ def test_read_file_sequentally(cpm, data_size, disk):
     assert content == data
 
 
+def test_read_eof(cpm, disk):
+    # Write file of 2 sectors
+    content = gen_content(16)
+    writer = CPMDisk(disk.filename, params=UT88DiskParams)
+    writer.write_file('FOO.TXT', str2bin(content))
+    writer.flush()
+    disk.reload()
+
+    assert open_file(cpm, 'FOO.TXT') == 0
+    assert call_bdos_function(cpm, 0x14, 0x1000) == 0   # First read shall succeed
+    assert call_bdos_function(cpm, 0x14, 0x1000) == 0   # Second read will succeed too
+    assert call_bdos_function(cpm, 0x14, 0x1000) == 1   # Third will indicate end of file
+
+
 def test_read_file_random(cpm, disk):
     # Prepare a file on disk
     content = gen_content(2048)
