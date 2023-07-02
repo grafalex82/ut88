@@ -16,6 +16,7 @@ from keyboard import Keyboard
 from display import Display
 from utils import NestedLogger
 from quasidisk import QuasiDisk
+from bios_emulator import *
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 tapes_dir = os.path.join(os.path.dirname(__file__), "../tapes")
@@ -150,6 +151,10 @@ class Configuration:
 
                 exit = LoggerExitFunctor(self._logger, msg)
                 self._emulator.add_breakpoint(endaddr, exit)
+
+
+    def enable_bios_emulation(self):
+        pass
 
 
     def handle_event(self, event):
@@ -297,6 +302,10 @@ class VideoConfiguration(Configuration):
         self._keyboard.handle_key_event(event)
 
 
+    def enable_bios_emulation(self):
+        setup_bios_put_char_emulation(self._emulator)
+
+
 
 class QuasiDiskConfiguration(VideoConfiguration):
     def __init__(self):
@@ -374,6 +383,7 @@ def main():
     
     parser.add_argument('configuration', choices=["basic", "video", "cpm64"])
     parser.add_argument('-d', '--debug', help="enable CPU instructions logging", action='store_true')
+    parser.add_argument('-b', '--emulate_bios', help="emulate BIOS and MonitorF I/O functions", action='store_true')
     args = parser.parse_args()
 
     pygame.init()
@@ -387,6 +397,8 @@ def main():
         configuration = QuasiDiskConfiguration()
     
     configuration.enable_logging(args.debug)
+    if args.emulate_bios:
+        configuration.enable_bios_emulation()
 
     configuration.run()
 
