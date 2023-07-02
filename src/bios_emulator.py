@@ -4,10 +4,27 @@ CURSOR_POS_ADDR = 0xf7b2
 VIDEO_MEMORY_ADDR = 0xe800
 VIDEO_MEMORY_SIZE = 0x0700
 
+"""
+    MonitorF and CP/M BIOS provide functions to print characters to the console. UT-88 emulator does a
+    good job emulating all the instructions in this code, as they would be executed on a real CPU. 
+    
+    At the same time printing a character is a pretty heavy operation, and consumes a lot of CPU cycles.
+
+    This class hooks calls to the BIOS and Monitor put char functions, and perform the same operations
+    put in python. This provides up to 5x performance boost on operatons that print a lot of data on the
+    screen.
+
+    The implementation of the put char function made as close as possible to the original i8080 code.
+    - Normal characters are printed at the cursor position, and cursor advances 1 position right
+    - If end of the screen is reached, the display contents is scrolled one position up
+    - Clear screen, and cursor move up/down/left/right/home characters processed accordingly
+    - The implementation handles <0x1b> - 'Y' - <y_pos> - <x_pos> sequence for direct cursor movement
+      (MonitorF functionality)
+"""
 class BIOSDisplayEmulator():
     def __init__(self, machine):
         self._machine = machine
-
+        self._sequence_byte = 0
 
     def _get_cursor_position(self):
         return self._machine.read_memory_word(CURSOR_POS_ADDR)
@@ -83,6 +100,31 @@ class BIOSDisplayEmulator():
             self._machine.write_memory_byte(addr, 0x20)
 
 
+    def _handle_direct_cursor_move(self, pos, char):
+        if self._sequence_byte == 0 and char == 0x1b:    # Esc
+            self._sequence_byte = 1
+            return pos
+        
+        if self._sequence_byte == 1 and char == 0x59:    # Y
+            self._sequence_byte = 2
+            return pos
+        
+        if self._sequence_byte == 2:
+            # Move cursor to selected line, preserve column position
+            pos = ((char - 0x20) * 0x40 + VIDEO_MEMORY_ADDR)  +  (pos % 64) 
+            self._sequence_byte = 3
+            return pos
+
+        if self._sequence_byte == 3:
+            # Move cursor to the selected column, preserve the line
+            pos = (pos & 0xffc0)  + (char - 0x20)
+
+        # Reset the sequence mode
+        self._sequence_byte = 0
+        return pos
+
+
+
     def _put_normal_char(self, pos, char):
         self._machine.write_memory_byte(pos, char)
         return pos + 1
@@ -107,6 +149,8 @@ class BIOSDisplayEmulator():
             pos = self._move_cursor_down(pos)
         elif char == 0x0a:
             pos = self._carriage_return(pos)
+        elif char == 0x1b or self._sequence_byte != 0:
+            pos = self._handle_direct_cursor_move(pos, char)
         else:   # Otherwise print character normally
             pos = self._put_normal_char(pos, char)
 
