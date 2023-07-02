@@ -211,7 +211,7 @@ class CPMDisk():
         # Pad the data to sector boundary
         bytes_to_pad = (128 - len(data) % 128) % 128
         data = bytearray(data)
-        data.extend(bytearray([0x1e] * bytes_to_pad))
+        data.extend(bytearray([0x1a] * bytes_to_pad))
 
         # Iterate over data sectors
         while(data_offset < len(data)):
