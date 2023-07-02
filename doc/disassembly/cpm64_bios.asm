@@ -71,7 +71,7 @@
 ; Important variables:
 ; 0x0000    - JMP WARM_BOOT opcode
 ; 0x0003    - I/O Byte ?????
-; 0x0004    - ????
+; 0x0004    - user code and drive code (stored by CCP to survive while reboot)
 ; 0x0005    - JMP BDOS_START opcode
 ; 0x0080    - Default read/write buffer (128 bytes)
 ; 0xdbec    - Quasi disk page that matches selected track
@@ -144,7 +144,7 @@ COLD_BOOT:
     da83  21 5a da   LXI HL, WELCOME_STR (da5a) ; Print the welcome message
     da86  cd 93 da   CALL PRINT_STR (da93)
 
-    da89  af         XRA A                      ; ?????
+    da89  af         XRA A                      ; Clear the user code and current disk
     da8a  32 04 00   STA 0004
 
     da8d  32 03 00   STA 0003                   ; Clear the I/O byte
@@ -242,8 +242,8 @@ START_CPM:
     dafc  21 06 cc   LXI HL, BDOS_ENTRY (cc06)
     daff  22 06 00   SHLD 0006
 
-    db02  3a 04 00   LDA 0004                   ; ????
-    db05  4f         MOV C, A
+    db02  3a 04 00   LDA 0004                   ; Load user code and current disk drive info (stored by CCP),
+    db05  4f         MOV C, A                   ; and place it to C register
     db06  c3 00 c4   JMP c400                   ; Jump to CP/M command processor
 
 
