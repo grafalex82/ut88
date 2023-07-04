@@ -162,9 +162,12 @@ class BIOSDisplayEmulator():
         self._set_cursor_position(pos)
         self._show_cursor(pos)
 
-        self._machine._cpu.set_pc(0xfccd)   # Route directly to RET. HACK, do this in a nicer way
+
+def hook_put_char(cpu, emulator):
+    emulator.put_char(cpu.c)
+    cpu.set_pc(0xfccd)  # Route directly to RET instruction
 
 
 def setup_bios_put_char_emulation(emulator):
     de = BIOSDisplayEmulator(emulator._machine)
-    emulator.add_breakpoint(0xfc43, lambda: de.put_char(emulator._cpu.c))
+    emulator.add_breakpoint(0xfc43, lambda: hook_put_char(emulator._cpu, de))
