@@ -181,16 +181,16 @@ Add-on schematics can be found [here](doc/scans/UT18.djvu).
 The Video Module adds a 64x28 chars monochrome display and a full 55-keys keyboard. With this module UT-88 becomes a real computer, and can run text-based video games, text editors, programming language compilers, and many more. Video Module provides good level of compatibility with previously released Radio-86RK and its modifications, so that using/porting of programs for 86RK to UT-88 is not a big problem.
 
 The hardware additions in more details:
-- Video adapter is based on a 2-port memory at the memory range `0xe800`-`0xefff`. One port of this memory is attached to the computer's data bus, and works like a regular memory. A special schematics based on counters and logic gates is reading the video memory through the second port, and converts it to a TV signal. A special 2k ROM (not connected to the data bus) is used as a font generator.
+- Video adapter is based on a 2-port RAM at the address range `0xe800`-`0xefff`. One port of this memory is attached to the computer's data bus, and works like a regular memory. A special schematics based on counters and logic gates is reading the video memory through the second port, and converts it to a TV signal. A special 2k ROM (not connected to the data bus) is used as a font generator.
   Overall, the video adapter can display 64x28 monochrome
-chars 6x8 pixels each. Characters partially comply to 7-bit ASCII table (perhaps this is KOI-7 H2 encoding). Chars in `0x00`-`0x1f` range provide pseudo-graphics symbols. Chars in `0x20`-`0x5f` range match standard ASCII table. Chars in `0x60`-`0x7f` range allocated for Cyrilic symbols. Highest bit sygnals the video controller to invert the symbol.
+chars 6x8 pixels each. Characters partially comply to 7-bit ASCII table (perhaps this is KOI-7 H2 encoding). Chars in `0x00`-`0x1f` range provide pseudo-graphics symbols. Chars in `0x20`-`0x5f` range match standard ASCII table. Chars in `0x60`-`0x7f` range allocated for Cyrilic symbols. Highest bit signals the video controller to invert the symbol.
 - The keyboard is connected via i8255 chip to ports `0x04`-`0x07` (2 lowest bits of the address are inverted). The keyboard is a 7x8 buttons matrix connected to Port A (columns) and Port B (rows) of the i8255. 3 modification keys are used to enter special, control, and Cyrilic symbols. These keys connected to the Port C. Monitor F is responsible for scanning the keyboard matrix, and converting the scan code to the ASCII character value.
 - A 1k RAM at `0xf400`-`0xf7ff` address range
 - A 2k ROM at `0xf800`-`0xffff` range, containing Monitor F
 - An optional 4k RAM can be connected to the `0x3000`-`0x3fff` address range
 - An optional external ROM can be connected via another i8255 chip at ports `0xf8`-`0xfb`. Unfortunately the magazine never published the connection schematics, and the firmware support looks incorrect.
 
-This hardware can work together with the CPU Basic Module components. Thus Video Module is supposed to use Tape Recorder connection at `0xa1` port. It also may use the LCD screen connected to `0x9000`-`0x9002` to display some information (e.g. current time). Some other components such as Monitor 0 ROM (`0x0000`-`0x03ff`) may be disconnected, and replaced with other memory modules (e.g. extra RAM). Hex keyboard is also not used in the Video Module configuration.
+This hardware can work together with the CPU Basic Module components. Thus Video Module is supposed to use Tape Recorder connection at port `0xa1`. It also may use the LCD screen connected to `0x9000`-`0x9002` to display some information (e.g. current time). Some other components such as Monitor 0 ROM (`0x0000`-`0x03ff`) may be disconnected, and replaced with other memory modules (e.g. extra RAM). Hex keyboard is also not used in the Video Module configuration.
 
 The primary firmware for the Video Module is Monitor F (since located starting `0xf800` address). The Monitor F provides a set of routines to work with the new hardware, such as display and keyboard. These routines are accessed via static and predefined entry points. Refer to the [Monitor F disassembly](doc/disassembly/monitorF.asm) for arguments and return values explanation, as well as algorithm description.
 - `0xf800`    - Software reset
@@ -284,9 +284,20 @@ I/O address space map:
 - `0xfb`  - (Optional) external ROM i8255 Control register
 - `0xa1`  - tape recorder
 
-From the software perspective the Video Module makes the UT-88 a classical computer with a keyboard and monitor, and typical terminal-type routines that expected from this kind of computer. It is claimed the UT-88 has partial compatibility with other computers in the same class (particularly Micro-80 and Radio-86RK), but this is true only partially. Programs that communicate with keyboard and display using the Monitor F functions will work as expected. Unfortunately most of the Radio-86RK programs write directly to the video buffer (which is located at different address range), or even re-configure i8275 video controller used in 86RK for a different screen resolution. This makes almost all 86RK games pretty much incompatible, without a quick possibility to port them for UT-88. The only program published with the UT-88 video module is [Tetris game](tapes/TETR1.GAM) ([Disassembly](doc/disassembly/tetris.asm))
+From the software perspective the Video Module makes the UT-88 a classic computer with a keyboard and monitor, and typical terminal-like routines that expected from this kind of computer. The only program published with the UT-88 video module is [Tetris game](tapes/TETR1.GAM) ([Disassembly](doc/disassembly/tetris.asm)).
+
 
 Video module schematics can be found here: [part 1](doc/scans/UT22.djvu), [part 2](doc/scans/UT24.djvu).
+
+
+## 64k Dynamic RAM configuration
+
+The next proposed step in upgrading UT-88 computer was building a 64k dynamic RAM module ([schematics](TBD)). While the RAM module covers whole address space, special logic disables the dynamic RAM for `0xe000`-`0xefff`, and `0xf000`-`0xffff` address ranges (video RAM, and MonitorF RAM/ROM respectively). Thus actual dynamic RAM size is 56k.
+
+Additional RAM allows running programs in other address ranges. It is claimed the UT-88 has partial compatibility with other computers in the same class (particularly Micro-80 and Radio-86RK), but this is true only partially. Programs that communicate with keyboard and display using the Monitor F functions will work as expected. Unfortunately most of the Radio-86RK programs write directly to the video memory (which is located at different address range), or even re-configure i8275 video controller used in 86RK (but not available for UT-88) for a different screen resolution. This makes almost all 86RK games pretty much incompatible. 
+
+Examples of Radio-86RK games that run on UT-88 are Treasure game ([Disassembly](doc/disassembly/klad.asm)), and 2048 game ([Disassembly](doc/disassembly/2048.asm)) which was (surprinsingly) developed recently.
+
 
 # UT-88 Emulator
 
