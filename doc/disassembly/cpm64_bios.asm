@@ -101,7 +101,7 @@ ENTRY_POINTS:
     da2d  c3 09 db   JMP PRINTER_STATUS (db09)      ; Get the printer (list) status
     da30  c3 63 db   JMP TRANSLATE_SECTOR (db63)    ; "Logical" to "physical" sector translation
 
-DISK_DESCRIPTION:
+DISK_DESCRIPTOR:
     da33  43 da      dw SECTOR_TRANSLATION_TABLE (da43) ; Pointer to the sector translation table, or 0000
     da35  00 00      dw 0000                            ; Last directory entry number
     da37  00 00      dw 0000                            ; Currently selected track
@@ -115,7 +115,7 @@ SECTOR_TRANSLATION_TABLE:
     da43  01 02 03 04 05 06 07 08
     
 DISK_PARAMETER_BLOCK:
-    da4b  08 00      dw 0x0008                  ; Sectors per table (8)
+    da4b  08 00      dw 0x0008                  ; Sectors per track (8)
     da4d  03         db 03                      ; BSH (Block shift factor)
     da4e  07         db 07                      ; BLM (Block mask). BSH and BLM determine block size as 1k
     da4f  00         db 00                      ; Extent mask
@@ -280,7 +280,7 @@ SELECT_DISK:
     db23  29         DAD HL
     db24  29         DAD HL
 
-    db25  11 33 da   LXI DE, DISK_DESCRIPTION (da33); Return the entry in disk description table
+    db25  11 33 da   LXI DE, DISK_DESCRIPTOR (da33) ; Return the entry in disk description table
     db28  19         DAD DE
 
     db29  c9         RET
