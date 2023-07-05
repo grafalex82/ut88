@@ -23,7 +23,7 @@
 ; CP/M v2.2 supports the following functions:
 ; - Function 0x00 - Warm reboot
 ; - Function 0x01 - Console input (wait symbol from console, then echo it. Return symbol in A)
-; - Function 0x02 - Console output (print symbol in C register, process some special symbols)
+; - Function 0x02 - Console output (print symbol in E register, process some special symbols)
 ; - Function 0x03 - Input a byte from the tape (BIOS function)
 ; - Function 0x04 - Output a byte to the tape (BIOS function)
 ; - Function 0x05 - Print (List) a byte (BIOS function)
