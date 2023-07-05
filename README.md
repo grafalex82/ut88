@@ -28,7 +28,7 @@ It worth noting that UT-88 offers a more mature schematics, such as using i8224 
 
 Software part is also highly compatible with the previous generation computers. Thus Monitor F (the primary firmware for the Video Module) is very similar to the Radio-86RK Monitor, and shares same routine entry points. This makes possible loading Radio-86RK programs from the tape and run them with no or little modifications.
 
-Scans of the original magazine (unfortunately only basic CPU configuration, calculator add on, and video module) can be found [here](doc/scans).
+Scans of the original magazine can be found [here](doc/scans).
 
 ## UT-88 Basic Configuration
 
@@ -183,7 +183,7 @@ The Video Module adds a 64x28 chars monochrome display and a full 55-keys keyboa
 The hardware additions in more details:
 - Video adapter is based on a 2-port RAM at the address range `0xe800`-`0xefff`. One port of this memory is attached to the computer's data bus, and works like a regular memory. A special schematics based on counters and logic gates is reading the video memory through the second port, and converts it to a TV signal. A special 2k ROM (not connected to the data bus) is used as a font generator.
   Overall, the video adapter can display 64x28 monochrome
-chars 6x8 pixels each. Characters partially comply to 7-bit ASCII table (perhaps this is KOI-7 H2 encoding). Chars in `0x00`-`0x1f` range provide pseudo-graphics symbols. Chars in `0x20`-`0x5f` range match standard ASCII table. Chars in `0x60`-`0x7f` range allocated for Cyrilic symbols. Highest bit signals the video controller to invert the symbol.
+chars 6x8 pixels each. Characters partially comply to 7-bit ASCII table (perhaps this is KOI-7 N2 encoding). Chars in `0x00`-`0x1f` range provide pseudo-graphics symbols. Chars in `0x20`-`0x5f` range match standard ASCII table. Chars in `0x60`-`0x7f` range allocated for Cyrilic symbols. Highest bit signals the video controller to invert the symbol.
 - The keyboard is connected via i8255 chip to ports `0x04`-`0x07` (2 lowest bits of the address are inverted). The keyboard is a 7x8 buttons matrix connected to Port A (columns) and Port B (rows) of the i8255. 3 modification keys are used to enter special, control, and Cyrilic symbols. These keys connected to the Port C. Monitor F is responsible for scanning the keyboard matrix, and converting the scan code to the ASCII character value.
 - A 1k RAM at `0xf400`-`0xf7ff` address range
 - A 2k ROM at `0xf800`-`0xffff` range, containing Monitor F
@@ -290,13 +290,92 @@ From the software perspective the Video Module makes the UT-88 a classic compute
 Video module schematics can be found here: [part 1](doc/scans/UT22.djvu), [part 2](doc/scans/UT24.djvu).
 
 
-## 64k Dynamic RAM configuration
+## 64k Dynamic RAM
 
-The next proposed step in upgrading UT-88 computer was building a 64k dynamic RAM module ([schematics](TBD)). While the RAM module covers whole address space, special logic disables the dynamic RAM for `0xe000`-`0xefff`, and `0xf000`-`0xffff` address ranges (video RAM, and MonitorF RAM/ROM respectively). Thus actual dynamic RAM size is 56k.
+The next proposed step in upgrading UT-88 computer was building a 64k dynamic RAM module ([schematics](doc/scans/UT38.djvu)). While the RAM module covers whole address space, special logic disables the dynamic RAM for `0xe000`-`0xefff`, and `0xf000`-`0xffff` address ranges (video RAM, and MonitorF RAM/ROM respectively). Thus actual dynamic RAM size is 56k.
 
-Additional RAM allows running programs in other address ranges. It is claimed the UT-88 has partial compatibility with other computers in the same class (particularly Micro-80 and Radio-86RK), but this is true only partially. Programs that communicate with keyboard and display using the Monitor F functions will work as expected. Unfortunately most of the Radio-86RK programs write directly to the video memory (which is located at different address range), or even re-configure i8275 video controller used in 86RK (but not available for UT-88) for a different screen resolution. This makes almost all 86RK games pretty much incompatible. 
+Additional RAM allows running programs in other address ranges. It is claimed that UT-88 has partial compatibility with other computers in the same class (particularly Micro-80 and Radio-86RK), but this is true only partially. Programs that communicate with keyboard and display using the Monitor F functions will work as expected. Unfortunately most of the Radio-86RK programs write directly to the video memory (which is located at different address range), or even re-configure i8275 video controller used in 86RK (but not available for UT-88) for a different screen resolution. This makes almost all 86RK games pretty much incompatible. 
 
 Examples of Radio-86RK games that run on UT-88 are Treasure game ([Disassembly](doc/disassembly/klad.asm)), and 2048 game ([Disassembly](doc/disassembly/2048.asm)) which was (surprinsingly) developed recently.
+
+
+## CP/M Operating System and Quasi Disk
+
+The topmost UT-88 configuration adds 256k Quasi Disk, and allows running a well known CP/M v2.2 operating system, including plenty of software available for this OS. Typical CP/M program uses CP/M API for disk and console operations, and therefore provides high level of compatibility with other computers working on the same OS.
+
+Quasi Disk is a 64/128/192/256k RAM module (depending on how many RAM chips available), organized in 1-4 64k banks. Module schematics uses a nice trick: i8080 CPU generates different signals when accessing stack and regular memory. Thus quasi disk RAM is enabled for stack push/pop instructions, while the main memory is accessible with regular read/write operations. This makes possible main RAM and quasi disk operate simultaneously in the same address space. A special configuration port `0x40` allows selecting a RAM bank, or disconnect from the quasi disk, so that stack operations are routed back to the main RAM.
+
+The magazine mentions that Quasi Disk may be powered from an accumulator, and therefore data on the disk may 'persist' for a long time.
+
+CP/M system provides modular design, and consists of a few components:
+- [Console Commands Processor (CCP)](doc/disassembly/cpm64_ccp.asm) is a user facing application, that accepts and interprets user commands, and runs user programs.
+- [Basic Disk Operating System (BDOS)](doc/disassembly/cpm64_bdos.asm) provides a rich set of high level functions to work with console (print a string, input a line from console to a buffer), and rich set of file functions (create/open/read/write/close file, search for a file by pattern)
+- [Basic Input/Output System (BIOS)](doc/disassembly/cpm64_bios.asm) provide low level functions to work with console (input/output a char), and disk operations (select disk, read/write disk sector).
+
+While CCP and BDOS are hardware-independent components, and provide the same code for all systems, BIOS is specific for a hardware platform. Thus this particular CP/M version is provided with BIOS taylored specifically for UT-88:
+- Keyboard input are routed to MonitorF implementation
+- Character printing functions provide an [additional layer](doc/disassembly/cpm64_monitorf_addon.asm) on top of MonitorF function, that implements some sort of ANSI escape sequences to move the cursor. MonitorF already provides a similar functionality, but this module provides a different char sequences to control the cursor position.
+- Disk operations provide access to the quasi disk, implementing disk/track/sector selection functions, as well as sector read/write operations that actually transfer data to/from the disk. Depending on the selected track, BIOS enables corresponding Quasi Disk RAM bank.
+- BIOS also exposes a structure that describes physical and logical structure of the quasi disk. This structure is used by BDOS to properly allocate data on the disk.
+
+Since Quasi Disk is essentially a RAM module, it does not have a concept of sectors and tracks. BIOS is responsible for emulating the disk tracks and sectors to match CP/M concepts. Exposed disk structure:
+- 64/128/192/256 tracks (depending on the quasi disk size)
+- First 6 tracks are reserved for the system (see boot approach description below)
+- 8 sectors per track
+
+The following describes the main memory map, as well as CP/M components layout:
+- `0x0000`-`0x00ff` (256 bytes) - base memory page, contains warm reboot and BDOS entry points, default disk buffer area, which is also used to pass parameters between CCP and user programs.
+- `0x0100`-`0xc3ff` (almost 49k) - transient programs area. CCP loads and executes user programs in this memory range. User programs are free to use this memory for their data and variables.
+- `0xc400`-`0xcbff` - CCP and its data variables
+- `0xcc00`-`0xd9ff` - BDOS and its data variables
+- `0xda00`-`0xdeff` - BIOS and its data variables
+- `0xe800`-`0xefff` - Video RAM
+- `0xf400`-`0xf7ff` - MonitorF RAM, including
+  - `0xf500`-`0xf620` - Put Char function addon
+- `0xf800`-`0xffff` - MonitorF ROM
+
+The CP/M system comes as a single binary, that loads at `0x3100`. A [special bootstrap code](doc/disassembly/CPM64_boot.asm) performs loading of CP/M components at their addresses, as well as initializes the quasi disk. Eventualy the bootstrap component executes the CP/M starting `0xda00` address (BIOS cold boot handler).
+
+CP/M bootstrap file can be found [here](tapes/CPM64.RKU). Start address is `0x3100`. Alternatively, to simplify and speed up loading in the emulator, all CP/M components were extracted in separate tape files, that load to their correct CP/M locations - [CCP](tapes/cpm64_ccp.rku), [BDOS](tapes/cpm64_bdos.rku), [BIOS](tapes/cpm64_bios.rku), [Put char addon](tapes/cpm64_monitorf_addon.rku). In case of loading CP/M components separately, start address is `0xda00`.
+
+As per CP/M design, there are 2 startup scenarios for the system:
+- cold boot operation performs disk initialization, and uploads CP/M system components to first several tracks of the disk, specifically reserved to contain the system (in case of UT-88 first 6 tracks of the quasi disk are reserved for the system).
+- warm boot operation assumes that disk system and BIOS are already initialized. In this case CCP and BDOS components are loaded from the disk (in case if these ares were modified/erased by the user program). During cold boot CP/M startup code puts a JMP WARM_BOOT instruction at 0x0000 so that all subsequent boots, or a CPU reset will go through the warm boot scenario.
+
+While CP/M system and various CP/M programs are basically working on UT-88 hardware, there are 2 compatibility issues:
+- UT-88 video module uses KOI-7 N2 encoding, which means there are no lower case Latin letters, and upper case Cyrillic letters are used instead. Thus all lower case text messages are printed with Cyrillic letters. Although this is somewhat readable, it looks quite weird.
+- CP/M BIOS expects 2 functions to deal with the terminal input: Wait for a key, and check if a key is currently pressed. Although MonitorF provides basically the same functionality, these are incompatible in details. 
+  - MonitorF keyboard press function generates a signal on the first key press. If the key is still pressed, subsequent calls to Wait for key function will not be processed. This is done to avoid flooding console with keypress events. Thus subsequent wait for key function will wait until the key is released and pressed again (or keyboard auto-repeat triggers).
+  - CP/M BIOS expects immediate result - if a key is pressed, wait for key function shall return the code of the pressed function immediately. 
+  - CP/M BIOS _printing_ function checks for a keyboard activity, looking whether user pressed Ctrl-C break key combination. 
+  - So it causes strange scenarios: the user has entered a symbol, symbol is echoed on the console, printing function sees that the key is _still_ pressed, and starts waiting for a new key. This leads to swallowing every second entered key, which is very annoyhing (at least when running in emulator).
+  - As a quick work around the problem, reading the keyboard while printing a symbol was disabled in the emulator.
+
+### CP/M-35 (CP/M with no quasi disk)
+
+For those users who cannot afford quasi disk module, a special CP/M version is offerred with in-memory RAM drive. Following the CP/M design, CCP and BDOS components remain the same as in normal disk version of CP/M. At the same time system comes with a [special BIOS version](doc/disassembly/cpm35_bios.asm) that allocates a 35k RAM drive in the system memory. 
+
+CP/M-35 comes as a single binary, but there is no bootstrap process like in full CP/M version. Instead, CP/M components are immediately loaded to their working addresses.
+
+Memory map and CP/M components layout:
+- `0x0000`-`0x00ff` (256 bytes) - base memory page, contains warm reboot and BDOS entry points, default disk buffer area, which is also used to pass parameters between CCP and user programs.
+- `0x0100`-`0x33ff` (only 12.5k) - transient programs area. CCP loads and executes user programs in this memory range. User programs are free to use this memory for their data and variables.
+- `0x3400`-`0x3bff` - CCP and its data variables
+- `0x3c00`-`0x49ff` - BDOS and its data variables
+- `0x4a00`-`0x4c50` - BIOS and its data variables
+- `0x5000`-`0xdfff` (36k) - RAM drive
+- `0xe800`-`0xefff` - Video RAM
+- `0xf400`-`0xf7ff` - MonitorF RAM
+- `0xf800`-`0xffff` - MonitorF ROM
+
+Special notes about this CP/M version (and particularly BIOS implementation):
+- Surprisingly, the BIOS exposes 4 disk drives, all pointing to the same data memory.
+- Although 36k are allocated for the RAM disk, the disk descriptor exposes only 35k drive
+- There is no special addon that supports ANSI escape sequences
+- 0 tracks are reserved on the disk for the system. Cold boot process does not copy system to the disk
+- There is no warm boot supported. Instead, MonitorF will take operation during reboot.
+
+CP/M-35 binary is located [here](tapes/CPM35.RKU). Start address is `0x4a00`.
 
 
 # UT-88 Emulator
