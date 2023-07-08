@@ -362,6 +362,9 @@ def main():
         size = endaddr - startaddr + 1
         data = data[4: 4 + size]
 
+    if fname.upper().endswith(".COM") and not args.startaddr:
+        startaddr = 0x0100
+
     dis = Disassembler(data, startaddr)
     dis.disassemble()
 
