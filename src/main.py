@@ -376,12 +376,36 @@ class QuasiDiskConfiguration(VideoConfiguration):
         
 
 
+
+class UT88OSConfiguration(VideoConfiguration):
+    def __init__(self):
+        VideoConfiguration.__init__(self)
+
+
+    def create_memories(self):
+        # No ROMS, only memory for all 64k, except for video RAM added by Display component
+        self._machine.add_memory(RAM(0x0000, 0xe7ff))
+        self._machine.add_memory(RAM(0xf000, 0xffff))
+
+        # Load bootstrapped UT-88 OS images
+        self._emulator.load_memory(f"{tapes_dir}/ut88os_editor.rku")    # 0xc000-0xdfff
+        self._emulator.load_memory(f"{tapes_dir}/ut88os_monitor.rku")   # 0xf800-0xffff
+
+
+    def configure_logging(self):
+        pass        # Will have own log suppression soon
+
+
+    def setup_special_breakpoints(self):
+        pass        # Will have own special breakpoints soon
+
+
 def main():
     parser = argparse.ArgumentParser(
                     prog='UT-88 Emulator',
                     description='UT-88 DIY i8080-based computer emulator')
     
-    parser.add_argument('configuration', choices=["basic", "video", "cpm64"])
+    parser.add_argument('configuration', choices=["basic", "video", "ut88os", "cpm64"])
     parser.add_argument('-d', '--debug', help="enable CPU instructions logging", action='store_true')
     parser.add_argument('-b', '--emulate_bios', help="emulate BIOS and MonitorF I/O functions", action='store_true')
     args = parser.parse_args()
@@ -393,6 +417,8 @@ def main():
         configuration = BasicConfiguration()
     if args.configuration == "video":
         configuration = VideoConfiguration()
+    if args.configuration == "ut88os":
+        configuration = UT88OSConfiguration()
     if args.configuration == "cpm64":
         configuration = QuasiDiskConfiguration()
     
