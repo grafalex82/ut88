@@ -303,6 +303,8 @@ Examples of Radio-86RK games that run on UT-88 are Treasure game ([Disassembly](
 
 The topmost UT-88 configuration adds 256k Quasi Disk, and allows running a well known CP/M v2.2 operating system, including plenty of software available for this OS. Typical CP/M program uses CP/M API for disk and console operations, and therefore provides high level of compatibility with other computers working on the same OS.
 
+### CP/M-64 and Quasi Disk
+
 Quasi Disk is a 64/128/192/256k RAM module (depending on how many RAM chips available), organized in 1-4 64k banks. Module schematics uses a nice trick: i8080 CPU generates different signals when accessing stack and regular memory. Thus quasi disk RAM is enabled for stack push/pop instructions, while the main memory is accessible with regular read/write operations. This makes possible main RAM and quasi disk operate simultaneously in the same address space. A special configuration port `0x40` allows selecting a RAM bank, or disconnect from the quasi disk, so that stack operations are routed back to the main RAM.
 
 The magazine mentions that Quasi Disk may be powered from an accumulator, and therefore data on the disk may 'persist' for a long time.
@@ -376,6 +378,15 @@ Special notes about this CP/M version (and particularly BIOS implementation):
 - There is no warm boot supported. Instead, MonitorF will take operation during reboot.
 
 CP/M-35 binary is located [here](tapes/CPM35.RKU). Start address is `0x4a00`.
+
+
+### CP/M programs
+
+If the CP/M program does not use any hardware specific features, and uses only BDOS/BIOS routines to operate with the system, there is high chance this program will work normally on UT-88 version of the CP/M. 
+
+This section describes a few standard CP/M programs, interesting for learning and evaluation:
+- [SUBMIT.COM](doc/disassembly/submit.asm) - provides a way to create and run some sort of scripts, automatically executed by the CP/M CCP. The program allows parameterizing the script, so that the script is developed generic, and the program substitutes actual parameter values. Despite SUBMIT.COM is a stand alone application, it has some support from CCP and even BDOS function to make it working. The program was originally written in PL/M language, also [added to the repository](doc/disassembly/SUBMIT.PLM) for comparison (code found on Internet, probably this is original source).
+- [XSUB.COM](doc/disassembly/xsub.asm) - program that allows substituting console input to be passed to other programs. The program loads and stay resident in memory, hooks the BDOS handler and substitutes it with own one. If a program calls BDOS for a console input, XSUB provides pre-defined data instead (loaded from a file). This program is interesting with its 'terminate and stay resident' approach, as well as hooking the BDOS handler.
 
 
 # UT-88 Emulator
