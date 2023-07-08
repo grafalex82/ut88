@@ -2237,8 +2237,8 @@ DISK_INITIALIZE_NEXT_FILE:
     d2ed  d6 24      SUI A, 24
     d2ef  c2 f6 d2   JNZ DISK_INITIALIZE_1 (d2f6)
 
-    d2f2  3d         DCR A                      ; Files that start with '$' cause error condition
-    d2f3  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)
+    d2f2  3d         DCR A                      ; File that start with '$' is probably '$$$.SUB'. Raise
+    d2f3  32 45 cf   STA FUNCTION_RETURN_VALUE (cf45)   ; a flag, so that CCP process this file
 
 DISK_INITIALIZE_1:
     d2f6  0e 01      MVI C, 01                  ; Update the disk map, by setting bits in the allocation map
