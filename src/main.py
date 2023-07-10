@@ -393,11 +393,15 @@ class UT88OSConfiguration(VideoConfiguration):
 
 
     def configure_logging(self):
-        pass        # Will have own log suppression soon
+        self.suppress_logging(0xf98b, 0xf9b2, "Out byte")
+        self.suppress_logging(0xf9f4, 0xfa1d, "Put char")
+        self.suppress_logging(0xf86b, 0xf90c, "Kbd input")
 
 
     def setup_special_breakpoints(self):
-        pass        # Will have own special breakpoints soon
+        # Each key press generates a short beep. This procedure is quite slow, when running under emulator.
+        # So let's just skip it.
+        self._emulator.add_breakpoint(0xf8fb, lambda: self._emulator._cpu.set_pc(0xf905))
 
 
 def main():
