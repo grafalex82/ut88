@@ -466,7 +466,7 @@ def test_write_file_zero_fill(cpm, disk):
     check = CPMDisk(disk.filename, params=UT88DiskParams)
     rcontent = check.read_file('FOO.TXT')
     assert bin2str(rcontent[0 : 0x8000]) == wcontent    # Original content is unchanged
-    assert rcontent[0x8000:0x8100] == [0]*256           # Beginning of block is zeroed
+    assert rcontent[0x8000:0x8100] == bytearray(256)    # Beginning of block is zeroed
     assert len(rcontent) == 0x8200                      # No data after the written records
     assert bin2str(rcontent[0x8100 : 0x8200]) == insert # 2 sectors in the middle have content
 
