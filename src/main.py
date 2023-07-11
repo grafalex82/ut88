@@ -395,13 +395,33 @@ class UT88OSConfiguration(VideoConfiguration):
     def configure_logging(self):
         self.suppress_logging(0xf98b, 0xf9b2, "Out byte")
         self.suppress_logging(0xf9f4, 0xfa1d, "Put char")
-        self.suppress_logging(0xf86b, 0xf90c, "Kbd input")
+#        self.suppress_logging(0xf86b, 0xf90c, "Kbd input")
 
 
     def setup_special_breakpoints(self):
         # Each key press generates a short beep. This procedure is quite slow, when running under emulator.
         # So let's just skip it.
         self._emulator.add_breakpoint(0xf8fb, lambda: self._emulator._cpu.set_pc(0xf905))
+
+        # Cursor blinking function expects HL to point to the cursor position. Some keyboard scanning functions
+        # (see 0xf8f0) changes HL value, and restart keyboard scanning and cursor blinking with a wrong HL
+        # This hack fixes the problem by setting HL to the right cursor position.
+        self._emulator.add_breakpoint(0xf876, lambda: self._emulator._cpu.set_hl(self._machine.read_memory_word(0xf75a)))
+
+        # Monitor tries to write into 2 video RAM areas: 0xe800 to write symbols. and 0xe000 to write attribute
+        # (high bit inverts the symbol). It is also assumed that 0xe000 writes ONLY attribute bit, and does
+        # not change the symbol. At the same time published schematics does not distinguish between these two
+        # memory areas, and provide access to 2k video RAM at both memory ranges. This causes 2 problems:
+        # 1) code that suppose to change only attributes (e.g. 0xf876 and 0xf908) in fact changes the symbol
+        #    in video memory
+        # 2) emulator supports video RAM onlye at 0xe800 range, while RAM at 0xe000 is not considered as video
+        #    RAM. 
+        #
+        # The code as is work ok, but the cursor highlight is not visible. If change the binary so that it
+        # uses 0xe800 memory for both symbols and attributes will cause visual bug when the symbol is entered
+        # twice (once at real cursor position, another at a blinking bar, which is in fact located in the next
+        # symbol). This hack clears the symbol under the blinking bar.
+        #self._emulator.add_breakpoint(0xf909, lambda: self._machine.write_memory_byte(self._emulator._cpu.hl, 0x20))
 
 
 def main():

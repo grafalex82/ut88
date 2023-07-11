@@ -127,7 +127,8 @@ KBD_INPUT:
     f86e  2a 5a f7   LHLD CURSOR_POS (f75a)     ; Calculate cursor position in the video attributes area
     f871  11 01 f8   LXI DE, f801               ; (next char after cursor)
     f874  19         DAD DE
-    f875  e5         PUSH HL
+    
+    f875  e5         PUSH HL                    ; Save cursor position for later
 
 BLINK_CURSOR_LOOP:
     f876  7e         MOV A, M                   ; Invert the character
@@ -146,9 +147,9 @@ SCAN_KEYPRESS_LOOP:
     f886  1b         DCX DE                         ; Decrement cursor blinking counter
 
     f887  7a         MOV A, D                       ; Check if enough time passed, and we need to toggle
-    f888  e6 5f      ANI A, 5f                      ; cursor
-    f88a  b3         ORA E
-    f88b  c2 79 f8   JNZ SCAN_KEYPRESS_LOOP (f879)
+    f888  e6 5f      ANI A, 5f                      ; cursor. 0x5f constant provides non-uniform blinking
+    f88a  b3         ORA E                          ; (cursor visible just a little period of time). 0x07
+    f88b  c2 79 f8   JNZ SCAN_KEYPRESS_LOOP (f879)  ; constant works better under emulation
 
     f88e  c3 76 f8   JMP BLINK_CURSOR_LOOP (f876)
 
@@ -267,8 +268,11 @@ BEEP_LOOP:
     f905  23         INX HL                     ; Restore pressed key code
     f906  7e         MOV A, M
 
-    f907  e1         POP HL                     ; Restore cursor position, and echo entered character at
-    f908  77         MOV M, A                   ; cursor
+    f907  e1         POP HL                     ; Restore cursor position, echo entered character at cursor
+    f908  77         MOV M, A                   ; BUG!!! HL points to the next symbol after cursor. This
+                                                ; causes double symbols on the screen. Perhaps it is supposed
+                                                ; to write only to the attributes area to remove cursor
+                                                ; highlight.
 
     f909  c1         POP BC                     ; Exit
     f90a  d1         POP DE
@@ -279,6 +283,9 @@ BEEP_LOOP:
 TRIGGER_AUTO_REPEAT:
     f90d  cd 1f f9   CALL IS_BUTTON_PRESSED (f91f)  ; Check if the key is still pressed
     f910  ca 79 f8   JZ SCAN_KEYPRESS_LOOP (f879)   ; If not - start new keyboard scan loop
+                                                    ; BUG!!! HL points to auto-repeat counter at this point
+                                                    ; while SCAN_KEYPRESS_LOOP expects HL to point to the
+                                                    ; cursor location.
 
 KBD_INPUT_DELAY_LOOP:
     f913  3d         DCR A                          ; Delay loop
@@ -511,6 +518,7 @@ PUT_CHAR_A:
 ;
 ; Important variables:
 ; f75a - Current cursor position (memory address)
+; f77a - ????
 PUT_CHAR:
     f9f0  e5         PUSH HL                    ; Save all registers
     f9f1  d5         PUSH DE
