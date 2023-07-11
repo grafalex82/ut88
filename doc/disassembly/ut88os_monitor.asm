@@ -272,7 +272,10 @@ BEEP_LOOP:
     f908  77         MOV M, A                   ; BUG!!! HL points to the next symbol after cursor. This
                                                 ; causes double symbols on the screen. Perhaps it is supposed
                                                 ; to write only to the attributes area to remove cursor
-                                                ; highlight.
+                                                ; highlight, but this does not match published hardware
+                                                ; schematics (original design does not distinguish between
+                                                ; 0xe000 and 0xe800 memory areas, and generate CS signals for
+                                                ; both)
 
     f909  c1         POP BC                     ; Exit
     f90a  d1         POP DE

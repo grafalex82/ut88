@@ -9,6 +9,7 @@
 # Tests run an emulator, load UT-88 OS components, and run required functions with certain arguments.
 
 import pytest
+import pygame
 
 from ut88os_helper import UT88OS
 
@@ -26,8 +27,13 @@ def ut88():
 
 
 def put_char(ut88, c):
-    ut88.cpu._c = ord(c) if isinstance(c, str) else c
+    ut88.cpu.c = ord(c) if isinstance(c, str) else c
     ut88.run_function(0xf809)
+
+
+def wait_kbd(ut88):
+    ut88.run_function(0xf803)
+    return ut88.cpu.a
 
 
 def test_print_normal_char(ut88):    
@@ -220,7 +226,6 @@ def test_print_line_feed_1(ut88):
     assert ut88.get_word(CURSOR_POS_ADDR) == pos(0, 11)     # Cursor moved
 
 
-
 def test_print_line_feed_2(ut88):    
     # Move cursor at some position in the middle of the last line
     ut88.set_word(CURSOR_POS_ADDR, pos(20, 27))
@@ -231,3 +236,49 @@ def test_print_line_feed_2(ut88):
     # Validate the cursor is moved to the first position on the next line, but screen is scrolled
     assert ut88.get_word(CURSOR_POS_ADDR) == pos(0, 27)     # Cursor moved
 
+
+
+def test_wait_kbd_normal_char(ut88):
+    ut88._keyboard.emulate_key_press('A')   # Latin letter
+    assert wait_kbd(ut88) == ord('A')
+
+    ut88._keyboard.emulate_key_press('!')   # Symbol
+    assert wait_kbd(ut88) == ord('!')
+
+    ut88._keyboard.emulate_key_press('1')   # Digit
+    assert wait_kbd(ut88) == ord('1')
+
+    ut88._keyboard.emulate_key_press('Й')   # Russian letter
+    assert wait_kbd(ut88) == 0x6a
+
+
+def test_wait_kbd_ctrl_char(ut88):
+    ut88._keyboard.emulate_ctrl_key_press('D')   # Ctrl-D
+    assert wait_kbd(ut88) == 0x04
+
+
+def test_wait_kbd_auto_repeat(ut88):
+    ut88._keyboard.emulate_key_press('A')   # Latin letter
+    assert wait_kbd(ut88) == ord('A')
+    assert wait_kbd(ut88) == ord('A')
+    assert wait_kbd(ut88) == ord('A')
+
+
+def test_wait_kbd_special_char(ut88):
+    ut88._keyboard.emulate_special_key_press(pygame.K_LEFT)
+    assert wait_kbd(ut88) == 0x08
+
+    ut88._keyboard.emulate_special_key_press(pygame.K_RIGHT)
+    assert wait_kbd(ut88) == 0x18
+
+    ut88._keyboard.emulate_special_key_press(pygame.K_UP)
+    assert wait_kbd(ut88) == 0x19
+
+    ut88._keyboard.emulate_special_key_press(pygame.K_DOWN)
+    assert wait_kbd(ut88) == 0x1a
+
+    ut88._keyboard.emulate_special_key_press(pygame.K_DELETE)
+    assert wait_kbd(ut88) == 0x1f
+
+    ut88._keyboard.emulate_special_key_press(pygame.K_HOME)
+    assert wait_kbd(ut88) == 0x0c
