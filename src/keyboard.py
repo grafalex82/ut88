@@ -309,8 +309,19 @@ class Keyboard(IODevice):
             self._pressed_key = self._key_map[ch]
 
 
+    def emulate_special_key_press(self, key):
+        if key == None:
+            self._pressed_key = (0xff, 0xff, 0xff)
+
+        if key in self._key_codes_map:
+            self._pressed_key = self._key_codes_map[key]
+
+
     def emulate_ctrl_key_press(self, ch):
-        ch = ord(ch)
+        # expect either a letter ('C' meaning Ctrl-C) or digit code
+        if isinstance(ch, str):      
+            ch = ord(ch.upper()) - ord('A') + 1
+
         if ch > 0 and ch <= 0x1a:
             self._pressed_key = self._ctrl_codes_map[pygame.K_a + ch - 1]
         else:

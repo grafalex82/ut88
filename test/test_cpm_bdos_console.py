@@ -34,7 +34,7 @@ def test_bdos_console_input(cpm):
 
 
 def test_bdos_console_input_special_symbol(cpm):
-    cpm._keyboard.emulate_ctrl_key_press('\x03')    # Press Ctrl-C
+    cpm._keyboard.emulate_ctrl_key_press('C')    # Press Ctrl-C
     ch = call_bdos_function(cpm, 0x01)
 
     assert ch == 0x03                       # Ctrl-C is returned as a result value
@@ -113,7 +113,7 @@ def emulate_key_sequence(cpm, sequence):
         for ch in sequence:
             if ord(ch) < 0x20:
                 print(f"Emulating Ctrl-{chr(ord(ch)+0x40)}")
-                cpm._keyboard.emulate_ctrl_key_press(ch)
+                cpm._keyboard.emulate_ctrl_key_press(ord(ch))
             else:
                 print(f"Emulating {ch}")
                 cpm._keyboard.emulate_key_press(ch)
