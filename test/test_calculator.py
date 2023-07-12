@@ -25,19 +25,23 @@ from rom import ROM
 from ram import RAM
 from utils import *
 from mock import *
+from helper import EmulatedInstance
 
 # Calculator is a UT-88 in Basic CPU unit configuration + calculator firmware
 #
 # This is a helper class that sets up the machine, configures it for running a
 # calculator function, feeds function arguments, and retrieves the result
-class Calculator:
+class Calculator(EmulatedInstance):
     def __init__(self):
-        self._machine = Machine()
+        EmulatedInstance.__init__(self)
+        
         self._machine.add_memory(RAM(0xc000, 0xc3ff))     # Same as CPU module configuration
         self._machine.add_memory(ROM(f"{resources_dir}/Monitor0.bin", 0x0000))
         self._machine.add_memory(ROM(f"{resources_dir}/calculator.bin", 0x0800))
 
-        self._emulator = Emulator(self._machine)
+
+    def _get_sp(self):
+        return 0xc3ee
 
     def _convert_byte(self, value): # Convert the value from Sign-Magnitude to Two's Complement or back
         if value >= 0x80 or value < 0:
@@ -52,10 +56,10 @@ class Calculator:
 
         print(f"Setting value {value:02x} to {addr:04x}")
 
-        self._machine.write_memory_byte(addr, value)
+        self.set_byte(addr, value)
 
     def get_byte_result(self, addr):
-        value = self._machine.read_memory_byte(addr)
+        value = self.get_byte(addr)
         print(f"Getting value {value:02x} from {addr:04x}")
 
         if value >= 0x80:
@@ -72,12 +76,12 @@ class Calculator:
 
         print(f"Setting value {value:04x} to {addr:04x}")
 
-        self._machine.write_memory_byte(addr, (value >> 8) & 0xff) # High byte first
-        self._machine.write_memory_byte(addr + 1, value & 0xff)
+        self.set_byte(addr, (value >> 8) & 0xff) # High byte first
+        self.set_byte(addr + 1, value & 0xff)
 
     def get_word_result(self, addr):
-        value = self._machine.read_memory_byte(addr) << 8   # High byte first
-        value |= self._machine.read_memory_byte(addr + 1)
+        value = self.get_byte(addr) << 8   # High byte first
+        value |= self.get_byte(addr + 1)
         print(f"Getting value {value:04x} from {addr:04x}")
 
         if value >= 0x8000:
@@ -93,14 +97,14 @@ class Calculator:
 
         print(f"Setting value {fbytes:06x} to {addr:04x}")
 
-        self._machine.write_memory_byte(addr, (fbytes >> 16) & 0xff) # High byte first
-        self._machine.write_memory_byte(addr + 1, (fbytes >> 8) & 0xff)
-        self._machine.write_memory_byte(addr + 2, fbytes & 0xff)
+        self.set_byte(addr, (fbytes >> 16) & 0xff) # High byte first
+        self.set_byte(addr + 1, (fbytes >> 8) & 0xff)
+        self.set_byte(addr + 2, fbytes & 0xff)
 
     def get_float_result(self, addr):
-        fbytes = self._machine.read_memory_byte(addr) << 16   # High byte first
-        fbytes |= self._machine.read_memory_byte(addr + 1) << 8
-        fbytes |= self._machine.read_memory_byte(addr + 2)
+        fbytes = self.get_byte(addr) << 16   # High byte first
+        fbytes |= self.get_byte(addr + 1) << 8
+        fbytes |= self.get_byte(addr + 2)
 
         print(f"Getting value {fbytes:06x} from {addr:04x}")
 
@@ -111,23 +115,6 @@ class Calculator:
         print(f"Returning value {value}")
         return value
     
-    def run_function(self, addr):
-        # Put the breakpoint to the top of the stack
-        # When a calculator function will return, it will get to the 0xbeef address
-        self._emulator._cpu.sp = 0xc3ee
-        self._emulator._machine.write_memory_word(0xc3ee, 0xbeef) # breakpoint return address
-
-        # Will execute function starting from the given address
-        self._emulator._cpu.pc = addr
-
-        # Run the requested function, until it returns to 0xbeef
-        # Set the counter limit to avoid infinite loop
-        while self._emulator._cpu.pc != 0xbeef and self._emulator._cpu._cycles < 100000000:
-            self._emulator.step()
-
-        # Validate that the code really reached the end, and not stopped by a cycles limit
-        assert self._emulator._cpu.pc == 0xbeef
-
 
 @pytest.fixture
 def calculator():
@@ -283,7 +270,7 @@ fact_numbers = [
 ]
 @pytest.mark.parametrize("arg, res", fact_numbers)
 def test_fact(calculator, arg, res):
-    calculator._emulator._cpu.a = arg & 0xff
+    calculator.cpu.a = arg & 0xff
 
     calculator.run_function(0x0a98)
 
@@ -426,32 +413,6 @@ arcctg_numbers = [
 ]
 @pytest.mark.parametrize("arg, res", arcctg_numbers)
 def test_arcctg(calculator, arg, res):
-    logging.basicConfig(level=logging.DEBUG)
-    calculator._machine._cpu.enable_registers_logging(True)
-
-    nl = NestedLogger()
-
-    calculator._emulator.add_breakpoint(0x0a92, lambda: nl.enter("STORE A-B-C to [HL]"))
-    calculator._emulator.add_breakpoint(0x0a97, lambda: nl.exit())
-    calculator._emulator.add_breakpoint(0x0a8c, lambda: nl.enter("LOAD [HL] to A-B-C"))
-    calculator._emulator.add_breakpoint(0x0a91, lambda: nl.exit())
-    calculator._emulator.add_breakpoint(0x0b08, lambda: nl.enter("POWER"))
-    calculator._emulator.add_breakpoint(0x0b6a, lambda: nl.exit())
-    calculator._emulator.add_breakpoint(0x0987, lambda: nl.enter("ADD"))
-    calculator._emulator.add_breakpoint(0x0993, lambda: nl.exit())
-    calculator._emulator.add_breakpoint(0x0a6f, lambda: nl.enter("DIV"))
-    calculator._emulator.add_breakpoint(0x0a8b, lambda: nl.exit())
-    calculator._emulator.add_breakpoint(0x09ec, lambda: nl.enter("MULT"))
-    calculator._emulator.add_breakpoint(0x09f8, lambda: nl.exit())
-    calculator._emulator.add_breakpoint(0x0a98, lambda: nl.enter("FACTORIAL"))
-    calculator._emulator.add_breakpoint(0x0b07, lambda: nl.exit())
-    calculator._emulator.add_breakpoint(0x0d47, lambda: nl.enter("ARCSIN"))
-    calculator._emulator.add_breakpoint(0x0ded, lambda: nl.exit())
-    calculator._emulator.add_breakpoint(0x0c87, lambda: nl.enter("SINE"))
-    calculator._emulator.add_breakpoint(0x0d31, lambda: nl.exit())
-    calculator._emulator.add_breakpoint(0x0d32, lambda: nl.enter("COSINE"))
-    calculator._emulator.add_breakpoint(0x0d46, lambda: nl.exit())
-
     calculator.set_float_argument(0xc361, arg)
 
     calculator.run_function(0x0f8f)
