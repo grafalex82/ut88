@@ -87,9 +87,9 @@ class EmulatedInstanceWithKeyboard(EmulatedInstance):
 
         The following types of chars are supported in the sequence:
         - Normal chars in 0x20-0x7f range
-        - Chars in 0x81-0x9f range are emulated as Ctrl-<symbol> key combination, where symbol
-          corresponds to a char in 0x41-0x5f range. Resulting char code will be in 0x01-0x1f range, 
-          but keyboard scanning functions may detect that Ctrl char was pressed
+        - Char sequence ^-<symb> (where symb is in 0x41-0x5f range) will generate a control code in
+          0x01-0x1f range respectively. Subsequent keyboard scanning functions may detect that Ctrl 
+          char was pressed
         - Special chars in 0x00-0x1f range are emulated as follows:
             - \n (0x0a) and \r (0x0d) - both emulate return key (resulting scan code will be 0x0d)
             - 0x0c      - home hey
@@ -102,8 +102,15 @@ class EmulatedInstanceWithKeyboard(EmulatedInstance):
     def emulate_key_sequence(self, sequence):
         def generator(kbd, sequence):
             # Emulate next key in the sqeuence
+            ctrl_key = False
             for ch in sequence:
                 chd = ord(ch)
+
+                # Ctrl-<symbol> will generate just one output code in 0x01-0x1f range
+                if ch == '^':   # Perhaps it would be impossible to emulate '^', but that is ok for tests
+                    ctrl_key = True
+                    continue
+
                 if ch == '\r' or ch == '\n':
                     print(f"Emulating Return")
                     kbd.emulate_special_key_press(pygame.K_RETURN)
@@ -125,14 +132,14 @@ class EmulatedInstanceWithKeyboard(EmulatedInstance):
                 elif ch == '\x1a':
                     print(f"Emulating Down")
                     kbd.emulate_special_key_press(pygame.K_DOWN)
-                elif chd >= 0x81 and chd <= 0x9f:
-                    chd = chd & 0x7f
-                    print(f"Emulating Ctrl-{chr(chd + 0x40)}")
-                    kbd.emulate_ctrl_key_press(chd)
+                elif ctrl_key and chd >= 0x41 and chd <= 0x5f:
+                    print(f"Emulating Ctrl-{ch}")
+                    kbd.emulate_ctrl_key_press(ch)
                 else:
                     print(f"Emulating '{ch}'")
                     kbd.emulate_key_press(ch)
 
+                ctrl_key = False
                 yield
 
             # Further calls of this generator will produce keyboard release
