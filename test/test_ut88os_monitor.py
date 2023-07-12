@@ -36,6 +36,21 @@ def wait_kbd(ut88):
     return ut88.cpu.a
 
 
+def input_line(ut88):
+    ut88.run_function(0xfa8b)
+
+    res = ""
+    for addr in range(0xf77b, 0xf77b + 0x40):
+        ch = ut88.get_byte(addr)
+
+        if ch == 0x0d:
+            break
+        res += chr(ch)
+
+    return res
+    
+
+
 def test_print_normal_char(ut88):    
     put_char(ut88, 'A')
 
@@ -282,3 +297,35 @@ def test_wait_kbd_special_char(ut88):
 
     ut88._keyboard.emulate_special_key_press(pygame.K_HOME)
     assert wait_kbd(ut88) == 0x0c
+
+    ut88._keyboard.emulate_special_key_press(pygame.K_RETURN)
+    assert wait_kbd(ut88) == 0x0d
+
+
+def emulate_key_sequence(ut88, sequence):
+    def generator(ut88, sequence):
+        # Emulate next key in the sqeuence
+        for ch in sequence:
+            if ord(ch) < 0x20:
+                print(f"Emulating Ctrl-{chr(ord(ch)+0x40)}")
+                ut88._keyboard.emulate_ctrl_key_press(ord(ch))
+            else:
+                print(f"Emulating {ch}")
+                ut88._keyboard.emulate_key_press(ch)
+            yield
+
+        # Further calls of this generator will produce keyboard release
+        while True:
+            print(f"Emulating no press")
+            ut88._keyboard.emulate_key_press(None)
+            yield
+
+    g = generator(ut88, sequence)
+    ut88._emulator.add_breakpoint(0xfa9e, lambda: g.__next__())
+    #ut88._emulator.add_breakpoint(0xcdf4, lambda: g.__next__())
+
+
+def test_input_line_normal_text(ut88):
+    emulate_key_sequence(ut88, 'ABCD\r')
+    assert input_line(ut88) == 'ABCD'
+
