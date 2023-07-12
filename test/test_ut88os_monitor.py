@@ -302,30 +302,7 @@ def test_wait_kbd_special_char(ut88):
     assert wait_kbd(ut88) == 0x0d
 
 
-def emulate_key_sequence(ut88, sequence):
-    def generator(ut88, sequence):
-        # Emulate next key in the sqeuence
-        for ch in sequence:
-            if ord(ch) < 0x20:
-                print(f"Emulating Ctrl-{chr(ord(ch)+0x40)}")
-                ut88._keyboard.emulate_ctrl_key_press(ord(ch))
-            else:
-                print(f"Emulating {ch}")
-                ut88._keyboard.emulate_key_press(ch)
-            yield
-
-        # Further calls of this generator will produce keyboard release
-        while True:
-            print(f"Emulating no press")
-            ut88._keyboard.emulate_key_press(None)
-            yield
-
-    g = generator(ut88, sequence)
-    ut88._emulator.add_breakpoint(0xfa9e, lambda: g.__next__())
-    #ut88._emulator.add_breakpoint(0xcdf4, lambda: g.__next__())
-
-
 def test_input_line_normal_text(ut88):
-    emulate_key_sequence(ut88, 'ABCD\r')
+    ut88.emulate_key_sequence('ABCD\r')
     assert input_line(ut88) == 'ABCD'
 

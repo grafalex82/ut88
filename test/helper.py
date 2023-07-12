@@ -1,16 +1,18 @@
 import sys
 
-from machine import Machine
-from emulator import Emulator
-from cpu import CPU
-
 sys.path.append('../misc')
 sys.path.append('../src')
+
+from machine import Machine
+from emulator import Emulator
+from keyboard import Keyboard
 
 class EmulatedInstance:
     def __init__(self):
         self._machine = self._create_machine()
         self._emulator = self._create_emulator()
+
+        self._emulator._cpu.enable_registers_logging(True)
 
 
     def _create_machine(self):
@@ -61,3 +63,38 @@ class EmulatedInstance:
         # Validate that the code really reached the end, and not stopped by a cycles limit
         assert self._emulator._cpu.pc == 0xbeef
 
+
+
+class EmulatedInstanceWithKeyboard(EmulatedInstance):
+    def __init__(self):
+        EmulatedInstance.__init__(self)
+
+        self._keyboard = Keyboard()
+        self._machine.add_io(self._keyboard)
+
+
+    @property
+    def keyboard(self):
+        return self._keyboard
+
+
+    def emulate_key_sequence(self, sequence):
+        def generator(cpm, sequence):
+            # Emulate next key in the sqeuence
+            for ch in sequence:
+                if ord(ch) < 0x20:
+                    print(f"Emulating Ctrl-{chr(ord(ch)+0x40)}")
+                    cpm._keyboard.emulate_ctrl_key_press(ord(ch))
+                else:
+                    print(f"Emulating {ch}")
+                    cpm._keyboard.emulate_key_press(ch)
+                yield
+
+            # Further calls of this generator will produce keyboard release
+            while True:
+                print(f"Emulating no press")
+                cpm._keyboard.emulate_key_press(None)
+                yield
+
+        g = generator(self, sequence)
+        self._install_keybord_generator(g)
