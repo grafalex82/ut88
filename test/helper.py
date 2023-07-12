@@ -1,4 +1,5 @@
 import sys
+import pygame
 
 sys.path.append('../misc')
 sys.path.append('../src')
@@ -77,24 +78,68 @@ class EmulatedInstanceWithKeyboard(EmulatedInstance):
     def keyboard(self):
         return self._keyboard
 
+    """
+        Emulate key press sequence.
 
+        The function emulates a sequence of key presses. Special breakpoints are installed
+        via _install_keybord_generator() function call. The breakpoint when triggered pulls
+        next key from the generator.
+
+        The following types of chars are supported in the sequence:
+        - Normal chars in 0x20-0x7f range
+        - Chars in 0x81-0x9f range are emulated as Ctrl-<symbol> key combination, where symbol
+          corresponds to a char in 0x41-0x5f range. Resulting char code will be in 0x01-0x1f range, 
+          but keyboard scanning functions may detect that Ctrl char was pressed
+        - Special chars in 0x00-0x1f range are emulated as follows:
+            - \n (0x0a) and \r (0x0d) - both emulate return key (resulting scan code will be 0x0d)
+            - 0x0c      - home hey
+            - 0x1f      - clear screen key
+            - 0x08      - left arrow
+            - 0x18      - right arrow
+            - 0x19      - up arrow
+            - 0x1a      - down arrow
+    """
     def emulate_key_sequence(self, sequence):
-        def generator(cpm, sequence):
+        def generator(kbd, sequence):
             # Emulate next key in the sqeuence
             for ch in sequence:
-                if ord(ch) < 0x20:
-                    print(f"Emulating Ctrl-{chr(ord(ch)+0x40)}")
-                    cpm._keyboard.emulate_ctrl_key_press(ord(ch))
+                chd = ord(ch)
+                if ch == '\r' or ch == '\n':
+                    print(f"Emulating Return")
+                    kbd.emulate_special_key_press(pygame.K_RETURN)
+                elif ch == '\x0c':
+                    print(f"Emulating Home")
+                    kbd.emulate_special_key_press(pygame.K_HOME)
+                elif ch == '\x1f':
+                    print(f"Emulating Clear Screen")
+                    kbd.emulate_special_key_press(pygame.K_DELETE)
+                elif ch == '\x08':
+                    print(f"Emulating Left")
+                    kbd.emulate_special_key_press(pygame.K_LEFT)
+                elif ch == '\x18':
+                    print(f"Emulating Right")
+                    kbd.emulate_special_key_press(pygame.K_HOME)
+                elif ch == '\x19':
+                    print(f"Emulating Up")
+                    kbd.emulate_special_key_press(pygame.K_UP)
+                elif ch == '\x1a':
+                    print(f"Emulating Down")
+                    kbd.emulate_special_key_press(pygame.K_DOWN)
+                elif chd >= 0x81 and chd <= 0x9f:
+                    chd = chd & 0x7f
+                    print(f"Emulating Ctrl-{chr(chd + 0x40)}")
+                    kbd.emulate_ctrl_key_press(chd)
                 else:
-                    print(f"Emulating {ch}")
-                    cpm._keyboard.emulate_key_press(ch)
+                    print(f"Emulating '{ch}'")
+                    kbd.emulate_key_press(ch)
+
                 yield
 
             # Further calls of this generator will produce keyboard release
             while True:
                 print(f"Emulating no press")
-                cpm._keyboard.emulate_key_press(None)
+                kbd.emulate_key_press(None)
                 yield
 
-        g = generator(self, sequence)
+        g = generator(self.keyboard, sequence)
         self._install_keybord_generator(g)

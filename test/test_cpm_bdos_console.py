@@ -141,7 +141,7 @@ def test_bdos_read_console_buffer_buffer_too_small(cpm):
 def test_bdos_read_console_ctrl_symbol(cpm):
     cpm.set_byte(0x1000, 0x20)              # Reserve 0x20 bytes for the buffer
 
-    cpm.emulate_key_sequence("\x04\n")
+    cpm.emulate_key_sequence("\x84\n")
 
     call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
 
@@ -190,7 +190,7 @@ def test_bdos_read_console_backspace_2(cpm):
 def test_bdos_read_console_backspace_3(cpm):
     cpm.set_byte(0x1000, 0x20)              # Reserve 0x20 bytes for the buffer
 
-    cpm.emulate_key_sequence("TE\x04\x08ST\n")    # Backspace a 2-char control symbol
+    cpm.emulate_key_sequence("TE\x84\x08ST\n")    # Backspace a 2-char control symbol
 
     call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
 
@@ -212,7 +212,7 @@ def test_bdos_read_console_backspace_4(cpm):
     # Ctrl-X (0x18) - backspace till start of the line
     # The function does extra keyboard read after Ctrl-X, so just emulate an extra symbol after Ctrl-x, which
     # will be ignored. This is an emulation issue, rather than CP/M code buf
-    cpm.emulate_key_sequence("TEST\x18 ABCD\n")    
+    cpm.emulate_key_sequence("TEST\x98 ABCD\n")    
 
     call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
 
@@ -231,7 +231,7 @@ def test_bdos_read_console_backspace_4(cpm):
 def test_bdos_read_console_end_of_line(cpm):
     cpm.set_byte(0x1000, 0x20)              # Reserve 0x20 bytes for the buffer
 
-    cpm.emulate_key_sequence("TE\x05ST\n")    # End of line in the middle of the string
+    cpm.emulate_key_sequence("TE\x85ST\n")    # End of line in the middle of the string
 
     call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
 
@@ -255,7 +255,7 @@ def test_bdos_read_console_abandon_current_line(cpm):
     # Ctrl-X (0x18) - backspace till start of the line
     # The function does extra keyboard read after Ctrl-U and 'A', so just emulate an extra symbol after 'A', 
     # which will be ignored. This is an emulation issue, rather than CP/M code buf
-    cpm.emulate_key_sequence("TEST\x15A BCD\n")
+    cpm.emulate_key_sequence("TEST\x95A BCD\n")
 
     call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
 
@@ -280,7 +280,7 @@ def test_bdos_read_console_retype_current_line(cpm):
     cpm.set_byte(0x1000, 0x20)              # Reserve 0x20 bytes for the buffer
 
     # Ctrl-R (0x12) - retype currently entered characters from the new line
-    cpm.emulate_key_sequence("TE\x12ST\n")
+    cpm.emulate_key_sequence("TE\x92ST\n")
 
     call_bdos_function(cpm, 0x0a, 0x1000)   # Input string
 
