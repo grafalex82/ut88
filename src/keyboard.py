@@ -1,6 +1,10 @@
 import pygame
 from interfaces import *
 
+def _ctrl_pressed():
+    return (pygame.key.get_mods() & pygame.KMOD_CTRL) != 0
+
+
 class Keyboard(IODevice):
     """
     UT-88 Alpha-Numeric keyboard
@@ -68,7 +72,7 @@ class Keyboard(IODevice):
     presses using currently active keyboard layout on the host system (including English and Russian).
 
     In order to detect letters on both languages, as well as distinguish symbols that are collocated on 
-    the same button (e.g. colon and semicolon), the pygame.TEXTINPUT event is used. For arrow keys, as
+    the same button (e.g. colon and semicolon), the event.unicode field is used. For arrow keys, as
     well as Ctrl-key combinations, the pygame.KEYDOWN event is used.
 
     When a button is pressed, the emulator class sets the _pressed_key member to a tripple, representing
@@ -244,6 +248,9 @@ class Keyboard(IODevice):
         self._ctrl_codes_map[pygame.K_QUOTE]    = (0xbf, 0xef, 0xfd)    # Char code 0x1e
         self._ctrl_codes_map[pygame.K_SLASH]    = (0xbf, 0xdf, 0xfd)    # Char code 0x1f
 
+        # Additional char codes with Ctrl key
+        self._ctrl_codes_map[pygame.K_SPACE]    = (0xbf, 0xbf, 0xfd)    # Char code 0x20, but with Ctrl
+
 
     def configure(self, value):
         self._configuration = value
@@ -282,24 +289,26 @@ class Keyboard(IODevice):
         
         IOError(f"Writing IO {addr:x} is not supported")
 
-    
+
     def handle_key_event(self, event):
-        if event.type == pygame.TEXTINPUT:
-            ch = event.text.upper()
-            if ch in self._key_map:
-                self._pressed_key = self._key_map[ch]
-                return
-        
         if event.type == pygame.KEYDOWN:
             if event.key in self._key_codes_map:
                 self._pressed_key = self._key_codes_map[event.key]
                 return
             
-            if event.key in self._ctrl_codes_map and (pygame.key.get_mods() & pygame.KMOD_CTRL):
+            if event.key in self._ctrl_codes_map and _ctrl_pressed():
                 self._pressed_key = self._ctrl_codes_map[event.key]
                 return
             
-        self._pressed_key = (0xff, 0xff, 0xff)
+            ch = event.unicode.upper()
+            if ch in self._key_map:
+                self._pressed_key = self._key_map[ch]
+                return
+
+            
+        if event.type == pygame.KEYUP:
+            self._pressed_key = (0xff, 0xff, 0xff)
+
 
     def emulate_key_press(self, ch):
         if ch == None:
@@ -319,10 +328,13 @@ class Keyboard(IODevice):
 
     def emulate_ctrl_key_press(self, ch):
         # expect either a letter ('C' meaning Ctrl-C) or digit code
-        if isinstance(ch, str):      
-            ch = ord(ch.upper()) - ord('A') + 1
+        if isinstance(ch, str):
+            ch = ch.upper()
+            ch = ord(ch.upper())
 
-        if ch > 0 and ch <= 0x1a:
-            self._pressed_key = self._ctrl_codes_map[pygame.K_a + ch - 1]
+        if ch >= 0x41 and ch <= 0x5f:
+            self._pressed_key = self._ctrl_codes_map[pygame.K_a + ch - 0x41]
+        elif ch in self._ctrl_codes_map:
+            self._pressed_key = self._ctrl_codes_map[ch]
         else:
             self._pressed_key = (0xff, 0xff, 0xff)

@@ -132,7 +132,7 @@ class EmulatedInstanceWithKeyboard(EmulatedInstance):
                 elif ch == '\x1a':
                     print(f"Emulating Down")
                     kbd.emulate_special_key_press(pygame.K_DOWN)
-                elif ctrl_key and chd >= 0x41 and chd <= 0x5f:
+                elif ctrl_key and (chd >= 0x41 and chd <= 0x5f or chd == 0x20):
                     print(f"Emulating Ctrl-{ch}")
                     kbd.emulate_ctrl_key_press(ch)
                 else:
