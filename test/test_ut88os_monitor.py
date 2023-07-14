@@ -303,6 +303,137 @@ def test_wait_kbd_special_char(ut88):
 
 
 def test_input_line_normal_text(ut88):
-    ut88.emulate_key_sequence('ABCD\r')
+    ut88.emulate_key_sequence('ABCD\n')
+
     assert input_line(ut88) == 'ABCD'
+    assert ut88.get_byte(pos(0, 0)) == ord('A')
+    assert ut88.get_byte(pos(1, 0)) == ord('B')
+    assert ut88.get_byte(pos(2, 0)) == ord('C')
+    assert ut88.get_byte(pos(3, 0)) == ord('D')
+    assert ut88.get_byte(pos(4, 0)) == ord(' ')
+    assert ut88.get_word(CURSOR_POS_ADDR) == pos(5, 0) 
+
+
+def test_input_line_submit_line_with_ctrl_symb(ut88):
+    # Ctrl-M submits the line
+    ut88.emulate_key_sequence('ABCD^M')
+    assert input_line(ut88) == 'ABCD'
+
+    # Ctrl-Y submits the line
+    ut88.emulate_key_sequence('ABCD^Y')
+    assert input_line(ut88) == 'ABCD'
+
+    # Ctrl-Z submits the line
+    ut88.emulate_key_sequence('ABCD^Z')
+    assert input_line(ut88) == 'ABCD'
+
+
+def test_input_line_too_long(ut88):
+    # Last symbols will not be entered
+    ut88.emulate_key_sequence('1234567890123456789012345678901234567890123456789012345678901234567890\n')
+    assert input_line(ut88) == '123456789012345678901234567890123456789012345678901234567890123'
+
+
+def test_input_line_backspace_1(ut88):
+    ut88.emulate_key_sequence('ABCD\x08Q\n')
+    assert input_line(ut88) == 'ABCQ'       # There is no 'D', but there is 'Q'
+    assert ut88.get_byte(pos(0, 0)) == ord('A')
+    assert ut88.get_byte(pos(1, 0)) == ord('B')
+    assert ut88.get_byte(pos(2, 0)) == ord('C')
+    assert ut88.get_byte(pos(3, 0)) == ord('Q')
+    assert ut88.get_byte(pos(4, 0)) == ord(' ')
+
+
+def test_input_line_backspace_2(ut88):
+    # Backspace symbol in the beginning. Should not make any harm
+    ut88.emulate_key_sequence('\x08ABCD\n')
+
+    assert input_line(ut88) == 'ABCD'
+    assert ut88.get_byte(pos(0, 0)) == ord('A')
+    assert ut88.get_byte(pos(1, 0)) == ord('B')
+    assert ut88.get_byte(pos(2, 0)) == ord('C')
+    assert ut88.get_byte(pos(3, 0)) == ord('D')
+    assert ut88.get_byte(pos(4, 0)) == ord(' ')
+
+
+def test_input_line_tab(ut88):
+    # ^-<space> will trigger 8-chars tabulation
+    ut88.emulate_key_sequence('AB^ CD\n')
+
+    # Tab is stored in the line
+    assert input_line(ut88) == 'AB      CD'
+
+    # The gap between letters is also visible on the screen
+    assert ut88.get_byte(pos(0, 0)) == ord('A')
+    assert ut88.get_byte(pos(1, 0)) == ord('B')
+    assert ut88.get_byte(pos(2, 0)) == ord(' ')
+    assert ut88.get_byte(pos(3, 0)) == 0x00         # Bug? It is expected this ares shall be filled with spaces
+    assert ut88.get_byte(pos(4, 0)) == 0x00
+    assert ut88.get_byte(pos(5, 0)) == 0x00
+    assert ut88.get_byte(pos(6, 0)) == 0x00
+    assert ut88.get_byte(pos(7, 0)) == 0x00
+    assert ut88.get_byte(pos(8, 0)) == ord('C')
+    assert ut88.get_byte(pos(9, 0)) == ord('D')
+
+
+def test_input_line_home_1(ut88):
+    ut88.emulate_key_sequence('ABCD^L\n')
+
+    # ^L moves the cursor to the beginning of the line, and the following \n clears the input string
+    assert input_line(ut88) == ''   
+
+    assert ut88.get_byte(pos(0, 0)) == ord(' ') # \n prints extra space
+    assert ut88.get_byte(pos(1, 0)) == ord('B') # But other symbols still visible
+    assert ut88.get_byte(pos(2, 0)) == ord('C')
+    assert ut88.get_byte(pos(3, 0)) == ord('D')
+    assert ut88.get_word(CURSOR_POS_ADDR) == pos(1, 0)  # \n moves cursor to the position #1 (not #0)
+
+
+def test_input_line_home_2(ut88):
+    ut88.emulate_key_sequence('ABCD^LEF\n')
+
+    # ^L moves the cursor to the beginning of the line, then E and F symbols are entered. Finally,
+    # following \n stops the line input
+    assert input_line(ut88) == 'EF'   
+
+    assert ut88.get_byte(pos(0, 0)) == ord('E') # Symbols entered after ^L is pressed
+    assert ut88.get_byte(pos(1, 0)) == ord('F')
+    assert ut88.get_byte(pos(2, 0)) == ord(' ') # \n prints extra space
+    assert ut88.get_byte(pos(3, 0)) == ord('D') # D is still visible
+    assert ut88.get_word(CURSOR_POS_ADDR) == pos(3, 0)  # \n moves cursor to the position #1 (not #0)
+
+
+def test_input_line_home_3(ut88):
+    # The sequence includes 'Home' key press in the middle of the line
+    ut88.emulate_key_sequence('AB\x0cCD\n')
+
+    # Surprisingly Home key (if not accompanied with Ctrl key) is not processed in any special way.
+    # It appears in the resulting string as a space char.
+    assert input_line(ut88) == 'AB\x0cCD'
+
+    assert ut88.get_byte(pos(0, 0)) == ord('A') 
+    assert ut88.get_byte(pos(1, 0)) == ord('B')
+    assert ut88.get_byte(pos(2, 0)) == ord(' ') # Home key does not have a visual representation, just a space
+    assert ut88.get_byte(pos(3, 0)) == ord('C')
+    assert ut88.get_byte(pos(4, 0)) == ord('D')
+    assert ut88.get_byte(pos(5, 0)) == ord(' ') # \n produces a space on the screen
+    assert ut88.get_word(CURSOR_POS_ADDR) == pos(6, 0)
+
+
+def test_input_line_right(ut88):
+    # Print the line of 5 chars, then go back to the 3rd char, replace it, and move right till 
+    # the end of the line
+    ut88.emulate_key_sequence('ABCDE\x08\x08\x08F\x18\x18\n')
+
+    # Verify that C is replaced with F
+    assert input_line(ut88) == 'ABFDE'  
+
+    # Unfortunately not all of the chars are visually restored
+    assert ut88.get_byte(pos(0, 0)) == ord('A') 
+    assert ut88.get_byte(pos(1, 0)) == ord('B')
+    assert ut88.get_byte(pos(2, 0)) == ord('F') # Replaced char
+    assert ut88.get_byte(pos(3, 0)) == 0x18     # D and E are visually corrupted, and replaced with 0x18
+    assert ut88.get_byte(pos(4, 0)) == 0x18
+    assert ut88.get_byte(pos(5, 0)) == ord(' ') # \n produces a space on the screen
+    assert ut88.get_word(CURSOR_POS_ADDR) == pos(6, 0)
 

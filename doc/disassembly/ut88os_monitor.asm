@@ -7,7 +7,7 @@
 ; f778 - time until next key auto-repeat
 ; f779 - currently pressed character (used for auto-repeat)
 ; f77a - ???? ff
-; f7bb - input line buffer (0x40 bytes)
+; f77c - input line buffer (0x40 bytes)
 ; f7ff - stack area ????
 VECTORS:    
     f800  c3 1b f8   JMP START (f81b)
@@ -682,22 +682,48 @@ INPUT_LINE:
     fa8b  e5         PUSH HL
     fa8c  d5         PUSH DE
 
-    fa8d  21 bb f7   LXI HL, f7bb               ; Set buffer address ????
-    fa90  0e 40      MVI C, 40                  ; Buffer size ????
+    fa8d  21 bb f7   LXI HL, f77b + 0x40        ; Set address of the buffer end
+    fa90  0e 40      MVI C, 40                  ; Set buffer size
 
-????:
+INPUT_LINE_CLEAR_BUFFER:
     fa92  36 20      MVI M, 20                  ; Fill the buffer with spaces
-    fa94  2b         DCX HL
-    fa95  0d         DCR C
-    fa96  c2 92 fa   JNZ fa92
+    fa94  2b         DCX HL                     ; BUG: it fills address 0xf7bb (1 byte after the buffer,
+    fa95  0d         DCR C                      ; but does not fill 0xf77b (beginning of the buffer. Perhaps
+    fa96  c2 92 fa   JNZ INPUT_LINE_CLEAR_BUFFER (fa92) ; MVI and DCX instructions shall be swapped)
 
-    fa99  c3 9e fa   JMP fa9e                   ; Continue a little below
+    fa99  c3 9e fa   JMP INPUT_LINE_LOOP (fa9e) ; Continue a little below
 
 ?????:
 fa9c  e5         PUSH HL
 fa9d  d5         PUSH DE
 
-????:
+; Input a line into the buffer
+;
+; The function prepares a 64-byte buffer, and waits the user to type the data into this buffer. The
+; function controls the data buffer from underrun and overrun, does not allow moving cursor outside of
+; the buffer area, and does not allow typing more than buffer capacity.
+;
+; The following special keys and key combinations are handled:
+; - Return, up arrow, and down arrow act like submitting the line - 0x0d terminating symbol is added to
+;   the buffer, and the function returns. Function does not distinguish between dedicated keys and
+;   corresponding Ctrl-M, Ctrl-Y, and Ctrl-Z combinations, which also submit the line. Note that only
+;   symbols left to the cursor are submitted.
+; - Left and Right arrows are supposed to move cursor left and right respectively. Buffer bounds are
+;   respected. Unfortunately the implementation is quite buggy, and symbols are visually corrupted (while
+;   are ok in the buffer)
+; - Home key adds 0x0c symbol to the buffer, and a space on the screen
+; - Ctrl-M (and possibly Ctrl-Home on the hardware) is moving cursor to the first position
+; - Ctrl-H (and possibly Ctrl-Left on the hardware) deletes the symbol at cursor position. Other symbols
+;   to the right from the cursor are shifted left, and added with a space at the end.
+; - Ctrl-X (and possibly Ctrl-Right on the hardware) inserts a space at cursor position. Other symbols
+;   to the right from the cursor are shifted right.
+; - Ctrl-Space acts as a tab key, and adds spaces until the next tab stop (each 8 chars)
+;
+; Unfortunately the implementation is quite buggy. While it offers reach editing possibilities, left and
+; right movements corrupt the symbols on the screen, and user does not actually sees what they are editing.
+; Also when user submits the line, only symbols left to the cursor are submitted. If the user types a string,
+; then decides to edit a few symbols in the middle, and hit return, only a part of the string is submitted.
+INPUT_LINE_LOOP:
     fa9e  cd 6b f8   CALL KBD_INPUT (f86b)      ; Input a character
 
     faa1  fe 19      CPI A, 19                  ; Special characters like cursor up/down, and carriage return
@@ -707,11 +733,11 @@ fa9d  d5         PUSH DE
     faab  fe 0d      CPI A, 0d
     faad  ca 3e fb   JZ INPUT_LINE_EOL (fb3e)
 
-    fab0  11 9e fa   LXI DE, fa9e               ; Push next cycle address
+    fab0  11 9e fa   LXI DE, INPUT_LINE_LOOP (fa9e) ; Push next cycle address
     fab3  d5         PUSH DE
 
-    fab4  fe 08      CPI A, 08                  ; Handle backspace
-    fab6  ca 62 fb   JZ INPUT_LINE_BACKSPACE (fb62)
+    fab4  fe 08      CPI A, 08                  ; Handle cursor left
+    fab6  ca 62 fb   JZ INPUT_LINE_LEFT (fb62)
 
     fab9  fe 18      CPI A, 18                  ; Handle cursor right
     fabb  ca e3 fa   JZ INPUT_LINE_RIGHT (fae3)
@@ -742,7 +768,7 @@ INPUT_LINE_ECHO_CHAR_1:
     fad9  fe 40      CPI A, 40
     fadb  c0         RNZ
 
-PRINT_BACKSPACE:
+INPUT_LINE_MOVE_LEFT:
     fadc  2b         DCX HL                     ; Clear the last entered character
     fadd  0b         DCX BC
     fade  3e 08      MVI A, 08
@@ -750,7 +776,7 @@ PRINT_BACKSPACE:
 
 INPUT_LINE_RIGHT:
     fae3  cd 4b fb   CALL CHECK_CTRL_KEY (fb4b) ; Process if Ctrl key is pressed
-    fae6  da 08 fb   JC fb08
+    fae6  da 08 fb   JC INPUT_LINE_INSERT (fb08)
 
     fae9  c3 ce fa   JMP INPUT_LINE_ECHO_CHAR (face); Print the 'move right' symbol, skipping writing to buf
 
@@ -758,68 +784,85 @@ INPUT_LINE_SPACE:
     faec  cd 4b fb   CALL CHECK_CTRL_KEY (fb4b) ; If this is not a control char - process it normally
     faef  d2 c3 fa   JNC INPUT_LINE_SAVE_CHAR (fac3)
 
-faf2  3e 08      MVI A, 08
-faf4  81         ADD C
-faf5  fe 40      CPI A, 40
-faf7  d0         RNC
-faf8  e6 f8      ANI A, f8
+    faf2  3e 08      MVI A, 08                  ; We are here if Ctrl-Space is pressed. Calculate the next
+    faf4  81         ADD C                      ; tab stop
+    faf5  fe 40      CPI A, 40
+    faf7  d0         RNC
+    faf8  e6 f8      ANI A, f8
 
-????:
-fafa  f5         PUSH PSW
-fafb  3e 18      MVI A, 18
-fafd  cd e9 f9   CALL PUT_CHAR_A (f9e9)
-fb00  23         INX HL
-fb01  03         INX BC
-fb02  f1         POP PSW
-fb03  b9         CMP C
-fb04  c2 fa fa   JNZ fafa
-fb07  c9         RET
+INPUT_LINE_TAB_LOOP:
+    fafa  f5         PUSH PSW                   ; Move cursor right. The function does not fill chars in
+    fafb  3e 18      MVI A, 18                  ; the tab gap, if there is garbage it will be intact.
+    fafd  cd e9 f9   CALL PUT_CHAR_A (f9e9)
 
-????:
-fb08  c5         PUSH BC
-fb09  eb         XCHG
-fb0a  21 ba f7   LXI HL, f7ba
-????:
-fb0d  44         MOV B, H
-fb0e  4d         MOV C, L
-fb0f  0b         DCX BC
-fb10  0a         LDAX BC
-fb11  77         MOV M, A
-fb12  e3         XTHL
-fb13  4d         MOV C, L
-fb14  e3         XTHL
-fb15  e5         PUSH HL
-fb16  2a 5a f7   LHLD CURSOR_POS (f75a)
-fb19  7d         MOV A, L
-fb1a  c6 40      ADI A, 40
-fb1c  91         SUB C
-fb1d  6f         MOV L, A
-fb1e  e3         XTHL
-fb1f  3e bb      MVI A, bb
-fb21  95         SUB L
-fb22  4f         MOV C, A
-fb23  e3         XTHL
-fb24  7d         MOV A, L
-fb25  91         SUB C
-fb26  6f         MOV L, A
-fb27  44         MOV B, H
-fb28  4d         MOV C, L
-fb29  0b         DCX BC
-fb2a  0a         LDAX BC
-fb2b  77         MOV M, A
-fb2c  e1         POP HL
-fb2d  2b         DCX HL
-fb2e  cd d3 fb   CALL fbd3
-fb31  c2 0d fb   JNZ fb0d
-fb34  c1         POP BC
-fb35  36 20      MVI M, 20
-fb37  2a 5a f7   LHLD CURSOR_POS (f75a)
-fb3a  36 20      MVI M, 20
-fb3c  eb         XCHG
-fb3d  c9         RET
+    fb00  23         INX HL                     ; Advance in the pointer in the buffer as well
+    fb01  03         INX BC
+
+    fb02  f1         POP PSW                    ; Repeat until tab stop is reached
+    fb03  b9         CMP C
+    fb04  c2 fa fa   JNZ INPUT_LINE_TAB_LOOP (fafa)
+
+    fb07  c9         RET
+
+INPUT_LINE_INSERT:
+    fb08  c5         PUSH BC                    ; The following function will copy symbols 1 position further,
+    fb09  eb         XCHG                       ; moving right to left till the current cursor position
+
+    fb0a  21 ba f7   LXI HL, f77c + 0x3e (f7ba) ; Get address of one-before-last symbol
+
+INPUT_LINE_INSERT_LOOP:
+    fb0d  44         MOV B, H                   ; Move to previous symbol
+    fb0e  4d         MOV C, L
+    fb0f  0b         DCX BC
+
+    fb10  0a         LDAX BC                    ; Copy symbol 1 position further
+    fb11  77         MOV M, A
+
+    fb12  e3         XTHL                       ; Restore number of symbols to the left from cursor
+    fb13  4d         MOV C, L                   ; (number of valid symbols in the buffer)
+    fb14  e3         XTHL
+
+    fb15  e5         PUSH HL                    ; Load the cursor position
+    fb16  2a 5a f7   LHLD CURSOR_POS (f75a)
+
+    fb19  7d         MOV A, L                   ; Do some strange calculations to get address of the
+    fb1a  c6 40      ADI A, 40                  ; corresponding symbol on the screen
+    fb1c  91         SUB C                      ; BUG: address calculations are performed for low byte only.
+    fb1d  6f         MOV L, A                   ; Due to byte overflow the resulting address appears 4 line
+    fb1e  e3         XTHL                       ; above.
+
+    fb1f  3e bb      MVI A, bb
+    fb21  95         SUB L
+    fb22  4f         MOV C, A
+    fb23  e3         XTHL
+
+    fb24  7d         MOV A, L
+    fb25  91         SUB C
+    fb26  6f         MOV L, A
+
+    fb27  44         MOV B, H                   ; Copy symbol 1 position further
+    fb28  4d         MOV C, L
+    fb29  0b         DCX BC
+    fb2a  0a         LDAX BC
+    fb2b  77         MOV M, A
+
+    fb2c  e1         POP HL                     ; Advance to the previous char
+    fb2d  2b         DCX HL
+
+    fb2e  cd d3 fb   CALL CMP_HL_DE (fbd3)      ; Check if we reached the current cursor position
+    fb31  c2 0d fb   JNZ INPUT_LINE_INSERT_LOOP (fb0d)
+
+    fb34  c1         POP BC                     ; Current position in the buffer is filled with space
+    fb35  36 20      MVI M, 20
+
+    fb37  2a 5a f7   LHLD CURSOR_POS (f75a)     ; Current position on the screen is filled with space also
+    fb3a  36 20      MVI M, 20
+
+    fb3c  eb         XCHG                       ; Return
+    fb3d  c9         RET
 
 INPUT_LINE_EOL:
-    fb3e  cd 4b fb   CALL CHECK_CTRL_KEY (fb4b) ; ?????
+    fb3e  cd 4b fb   CALL CHECK_CTRL_KEY (fb4b) ; ????? Perhaps is a leftover from some other code
 
     fb41  36 0d      MVI M, 0d                  ; Put EOL mark to the buffer
     fb43  23         INX HL
@@ -830,7 +873,7 @@ INPUT_LINE_EOL:
     fb49  e1         POP HL
     fb4a  c9         RET
 
-
+; A helper function to check whether Ctrl key is currently pressed
 CHECK_CTRL_KEY:
     fb4b  47         MOV B, A                   ; Read Port C modificator keys
     fb4c  db 05      IN 05
@@ -844,53 +887,62 @@ CHECK_CTRL_KEY:
 
 
 INPUT_LINE_HOME_CURSOR:
-    fb53  cd 4b fb   CALL CHECK_CTRL_KEY (fb4b) ; home screen is not a Ctrl-l combination - print it normally
+    fb53  cd 4b fb   CALL CHECK_CTRL_KEY (fb4b) ; Home key alone is processed like a space character
     fb56  d2 d0 fa   JNC INPUT_LINE_ECHO_CHAR_1 (fad0)
 
-INPUT_LINE_CLEAR_LINE_LOOP:
+INPUT_LINE_HOME_LOOP:
     fb59  79         MOV A, C                   ; We are here if Ctrl-L pressed. Check if we are already
     fb5a  b7         ORA A                      ; at the beginning of the line
     fb5b  c8         RZ
 
-    fb5c  cd dc fa   CALL PRINT_BACKSPACE (fadc); If not - print backspaces until we are at the beginning of
-    fb5f  c3 59 fb   JMP INPUT_LINE_CLEAR_LINE_LOOP (fb59)  ; the line
+    fb5c  cd dc fa   CALL INPUT_LINE_MOVE_LEFT (fadc); If not - move cursor left until the beginning of
+    fb5f  c3 59 fb   JMP INPUT_LINE_HOME_LOOP (fb59) ; the line
 
-INPUT_LINE_BACKSPACE:
-    fb62  cd 4b fb   CALL CHECK_CTRL_KEY (fb4b) ; Check if this really a backspace, and not Ctrl-H
-    fb65  da 6e fb   JC fb6e
+INPUT_LINE_LEFT:
+    fb62  cd 4b fb   CALL CHECK_CTRL_KEY (fb4b) ; Check if this is Ctrl-H key combination (delete)
+    fb65  da 6e fb   JC INPUT_LINE_DELETE
 
     fb68  79         MOV A, C                   ; Do not allow moving beyond the left buffer end
     fb69  b7         ORA A
-    fb6a  c2 dc fa   JNZ PRINT_BACKSPACE (fadc) ; If there is room to go - print the backspace symbol 
-    fb6d  c9         RET                        ; (actually just move cursor left)
+    fb6a  c2 dc fa   JNZ INPUT_LINE_MOVE_LEFT (fadc); If there is room to go - print the move left symbol 
+    fb6d  c9         RET
 
-????:
-fb6e  e5         PUSH HL
-fb6f  2b         DCX HL
-????:
-fb70  23         INX HL
-fb71  23         INX HL
-fb72  7e         MOV A, M
-fb73  2b         DCX HL
-fb74  77         MOV M, A
-fb75  7d         MOV A, L
-fb76  d6 7b      SUI A, 7b
-fb78  e5         PUSH HL
-fb79  2a 5a f7   LHLD CURSOR_POS (f75a)
-fb7c  85         ADD L
-fb7d  91         SUB C
-fb7e  6f         MOV L, A
-fb7f  54         MOV D, H
-fb80  5d         MOV E, L
-fb81  13         INX DE
-fb82  1a         LDAX DE
-fb83  77         MOV M, A
-fb84  e1         POP HL
-fb85  7d         MOV A, L
-fb86  fe b9      CPI A, b9
-fb88  c2 70 fb   JNZ fb70
-fb8b  e1         POP HL
-fb8c  c9         RET
+INPUT_LINE_DELETE:
+    fb6e  e5         PUSH HL                    ; Save the current buffer pointer
+    fb6f  2b         DCX HL
+
+INPUT_LINE_DELETE_LOOP:
+    fb70  23         INX HL                     ; Advance to the next char
+
+    fb71  23         INX HL                     ; Copy next char to the previous char in the buffer
+    fb72  7e         MOV A, M
+    fb73  2b         DCX HL
+    fb74  77         MOV M, A
+
+    fb75  7d         MOV A, L                   ; Calculate chars count up to current cursor position
+    fb76  d6 7b      SUI A, 7b
+
+    fb78  e5         PUSH HL
+    fb79  2a 5a f7   LHLD CURSOR_POS (f75a)     ; Calculate the position of the last freed character
+    fb7c  85         ADD L
+    fb7d  91         SUB C
+    fb7e  6f         MOV L, A
+
+    fb7f  54         MOV D, H                   ; Copy the next char to the previous char on the screen
+    fb80  5d         MOV E, L
+    fb81  13         INX DE
+    fb82  1a         LDAX DE
+    fb83  77         MOV M, A
+
+    fb84  e1         POP HL                     ; Repeat until all characters up to the end of the line are
+    fb85  7d         MOV A, L                   ; processed
+    fb86  fe b9      CPI A, b9
+    fb88  c2 70 fb   JNZ INPUT_LINE_DELETE_LOOP (fb70)
+
+    fb8b  e1         POP HL                     ; Return
+    fb8c  c9         RET
+
+
 fb8d  33         INX SP
 fb8e  33         INX SP
 
@@ -942,13 +994,17 @@ fbc9  cd d9 fb   CALL fbd9
 fbcc  2a 51 f7   LHLD f751
 fbcf  eb         XCHG
 fbd0  2a 53 f7   LHLD f753
-????:
-fbd3  7c         MOV A, H
-fbd4  ba         CMP D
-fbd5  c0         RNZ
-fbd6  7d         MOV A, L
-fbd7  bb         CMP E
-fbd8  c9         RET
+
+; Compare HL and DE register pairs
+CMP_HL_DE:
+    fbd3  7c         MOV A, H
+    fbd4  ba         CMP D
+    fbd5  c0         RNZ
+
+    fbd6  7d         MOV A, L
+    fbd7  bb         CMP E
+    fbd8  c9         RET
+
 ????:
 fbd9  cd 04 fc   CALL fc04
 fbdc  cd f4 fb   CALL fbf4
@@ -1080,7 +1136,7 @@ fca5  cd 8b f9   CALL OUT_BYTE (f98b)
 fca8  7e         MOV A, M
 fca9  cd 8b f9   CALL OUT_BYTE (f98b)
 fcac  23         INX HL
-fcad  cd d3 fb   CALL fbd3
+fcad  cd d3 fb   CALL CMP_HL_DE (fbd3)
 fcb0  c2 a8 fc   JNZ fca8
 fcb3  79         MOV A, C
 fcb4  cd 8b f9   CALL OUT_BYTE (f98b)
@@ -1134,7 +1190,7 @@ fd0d  c2 9a fd   JNZ fd9a
 fd10  cd 34 f9   CALL f934
 fd13  77         MOV M, A
 fd14  23         INX HL
-fd15  cd d3 fb   CALL fbd3
+fd15  cd d3 fb   CALL CMP_HL_DE (fbd3)
 fd18  c2 10 fd   JNZ fd10
 ????:
 fd1b  cd 34 f9   CALL f934
@@ -1153,7 +1209,7 @@ fd30  cd 3b fe   CALL fe3b
 fd33  eb         XCHG
 fd34  c1         POP BC
 fd35  cd 3b fe   CALL fe3b
-fd38  cd d3 fb   CALL fbd3
+fd38  cd d3 fb   CALL CMP_HL_DE (fbd3)
 fd3b  c4 b9 fb   CNZ fbb9
 fd3e  c9         RET
 ????:
@@ -1216,7 +1272,7 @@ fd9a  cd 34 f9   CALL f934
 fd9d  be         CMP M
 fd9e  c2 ba fd   JNZ fdba
 fda1  23         INX HL
-fda2  cd d3 fb   CALL fbd3
+fda2  cd d3 fb   CALL CMP_HL_DE (fbd3)
 fda5  c2 9a fd   JNZ fd9a
 fda8  c3 1b fd   JMP fd1b
 ????:
@@ -1324,7 +1380,7 @@ fe4a  3e 00      MVI A, 00
 fe4c  88         ADC B
 fe4d  47         MOV B, A
 fe4e  13         INX DE
-fe4f  cd d3 fb   CALL fbd3
+fe4f  cd d3 fb   CALL CMP_HL_DE (fbd3)
 fe52  c2 47 fe   JNZ fe47
 fe55  c9         RET
 fe56  21 3a f8   LXI HL, ENTER_NEXT_COMMAND (f83a)
@@ -1445,7 +1501,7 @@ ff29  cd 5a fe   CALL fe5a
 ff2c  2a 6f f7   LHLD f76f
 ff2f  eb         XCHG
 ff30  2a 75 f7   LHLD f775
-ff33  cd d3 fb   CALL fbd3
+ff33  cd d3 fb   CALL CMP_HL_DE (fbd3)
 ff36  c2 55 ff   JNZ ff55
 ????:
 ff39  3a 72 f7   LDA f772
