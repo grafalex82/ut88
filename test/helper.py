@@ -125,7 +125,7 @@ class EmulatedInstanceWithKeyboard(EmulatedInstance):
                     kbd.emulate_special_key_press(pygame.K_LEFT)
                 elif ch == '\x18':
                     print(f"Emulating Right")
-                    kbd.emulate_special_key_press(pygame.K_HOME)
+                    kbd.emulate_special_key_press(pygame.K_RIGHT)
                 elif ch == '\x19':
                     print(f"Emulating Up")
                     kbd.emulate_special_key_press(pygame.K_UP)
