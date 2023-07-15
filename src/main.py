@@ -395,7 +395,7 @@ class UT88OSConfiguration(VideoConfiguration):
     def configure_logging(self):
         self.suppress_logging(0xf98b, 0xf9b2, "Out byte")
         self.suppress_logging(0xf9f4, 0xfa1d, "Put char")
-#        self.suppress_logging(0xf86b, 0xf90c, "Kbd input")
+        self.suppress_logging(0xf86b, 0xf90c, "Kbd input")
 
 
     def setup_special_breakpoints(self):
@@ -422,6 +422,12 @@ class UT88OSConfiguration(VideoConfiguration):
         # twice (once at real cursor position, another at a blinking bar, which is in fact located in the next
         # symbol). This hack clears the symbol under the blinking bar.
         #self._emulator.add_breakpoint(0xf909, lambda: self._machine.write_memory_byte(self._emulator._cpu.hl, 0x20))
+
+        # The UT-88 OS Monitor tape function outputs data bytes negated, compared to original Monitor0 and
+        # MonitorF implementations. This is not a problem for the real hardware, as tape input function has
+        # a polarity detection mechanism, but this code causes problems when running on an emulator - all data
+        # bytes must be negated to save data in positive polarity.
+        self._emulator.add_breakpoint(0xf98b, lambda: self._emulator._cpu.set_a(self._emulator._cpu.a ^ 0xff))
 
 
 def main():
