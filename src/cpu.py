@@ -84,6 +84,11 @@ class CPU:
         self._a = value
 
 
+    def set_a(self, value):    # Sometimes need a function, not a property
+        assert value >= 0x00 and value <= 0xff
+        self._a = value
+
+
     @property
     def b(self):
         return self._b
@@ -91,6 +96,11 @@ class CPU:
     
     @b.setter
     def b(self, value):
+        assert value >= 0x00 and value <= 0xff
+        self._b = value
+
+
+    def set_b(self, value):    # Sometimes need a function, not a property
         assert value >= 0x00 and value <= 0xff
         self._b = value
 
@@ -106,6 +116,11 @@ class CPU:
         self._c = value
 
 
+    def set_c(self, value):    # Sometimes need a function, not a property
+        assert value >= 0x00 and value <= 0xff
+        self._c = value
+
+
     @property
     def d(self):
         return self._d
@@ -113,6 +128,11 @@ class CPU:
 
     @d.setter
     def d(self, value):
+        assert value >= 0x00 and value <= 0xff
+        self._d = value
+
+
+    def set_d(self, value):    # Sometimes need a function, not a property
         assert value >= 0x00 and value <= 0xff
         self._d = value
 
@@ -128,6 +148,11 @@ class CPU:
         self._e = value
 
 
+    def set_e(self, value):    # Sometimes need a function, not a property
+        assert value >= 0x00 and value <= 0xff
+        self._e = value
+
+
     @property
     def h(self):
         return self._h
@@ -139,6 +164,11 @@ class CPU:
         self._h = value
 
 
+    def set_h(self, value):    # Sometimes need a function, not a property
+        assert value >= 0x00 and value <= 0xff
+        self._h = value
+
+
     @property
     def l(self):
         return self._l
@@ -146,6 +176,11 @@ class CPU:
 
     @l.setter
     def l(self, value):
+        assert value >= 0x00 and value <= 0xff
+        self._l = value
+
+
+    def set_l(self, value):    # Sometimes need a function, not a property
         assert value >= 0x00 and value <= 0xff
         self._l = value
 
