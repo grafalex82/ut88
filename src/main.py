@@ -429,6 +429,12 @@ class UT88OSConfiguration(VideoConfiguration):
         # bytes must be negated to save data in positive polarity.
         self._emulator.add_breakpoint(0xf98b, lambda: self._emulator._cpu.set_a(self._emulator._cpu.a ^ 0xff))
 
+        # When the monitor command is entered, and user presses Return key, it remains pressed for some time,
+        # until the emulator starts key events processing. Some of the printing functions check the keyboard
+        # for a keypress, and abandon the command execution. Emulate keyboard release after the command is
+        # entered, but not yet processed. This is an emulation issue, rather than Monitor code bug.
+        self._emulator.add_breakpoint(0xf84b, lambda: self._keyboard.emulate_key_press(None))
+
 
 def main():
     parser = argparse.ArgumentParser(
