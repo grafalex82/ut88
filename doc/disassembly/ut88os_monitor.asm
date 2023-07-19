@@ -1,18 +1,36 @@
 ;
 ; Variables:
+; f750 - 0xc3 JMP instruction (user in Command G in conjunction with argument 1)
+; f751 - 1st argument of the command
+; f753 - 2nd argument of the command
+; f755 - 3rd argument of the command
+; f757 - 4th argument of the command
+; f759 - Tape input polarity
 ; f75a - Cursor position (pointer within 0xe800-0xef00 range)
 ; f75c - Delay between bits during input (default value 0x2d)
 ; f75d - Delay between bits during output (default value 0x20)
-; f762 - ???? f83a exit address for ENTER_NEXT_COMMAND
+; f762 - Quick jump address (ENTER_NEXT_COMMAND by default). See Command J
+; f765 - User program A/F register value (when stopping at breakpoint)
+; f767 - User program BC register value (when stopping at breakpoint)
+; f769 - User program DE register value (when stopping at breakpoint)
+; f76b - User program HL register value (when stopping at breakpoint)
+; f76d - User program SP register value (when stopping at breakpoint)
+; f76f - User program PC register value (when stopping at breakpoint)
+; f771 - Instruction byte at breakpoint 1 address 
+; f772 - Instruction byte at breakpoint 2 address
+; f773 - Breakpoint 1 address (Command G)
+; f775 - Breakpoint 2 address (Command G)
+; f777 - Command G breakpoint counter (Command G)
 ; f778 - time until next key auto-repeat
 ; f779 - currently pressed character (used for auto-repeat)
-; f77a - ???? ff
-; f77c - input line buffer (0x40 bytes)
-; f7ff - stack area ????
+; f77a - 0x00 if scroll is disabled and screen is cleared when page is full. Non-zero enables the scroll
+; f77b - input line buffer (0x40 bytes)
+; up to f7ff - stack area
+; f7ff - command mode (0x00 if 'Y' command alteration is provided, 0xff otherwise)
 VECTORS:    
     f800  c3 1b f8   JMP START (f81b)
     f803  c3 6b f8   JMP KBD_INPUT (f86b)
-    f806  c3 36 f9   JMP f936
+    f806  c3 36 f9   JMP IN_BYTE (f936)
     f809  c3 f0 f9   JMP PUT_CHAR (f9f0)
     f80c  c3 8b f9   JMP OUT_BYTE (f98b)
     f80f  c3 f0 f9   JMP PUT_CHAR (f9f0)
@@ -20,17 +38,29 @@ VECTORS:
     f815  c3 b3 f9   JMP PRINT_BYTE_HEX (f9b3)
     f818  c3 dd f9   JMP PRINT_STRING (f9dd)
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Main loop
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; The main monitor function performs the following actions
+; - Performs initial set up of the software and hardware
+; - Initialize monitor's variables
+; - Runs the main loop:
+;   - Inputs user command
+;   - Finds and executes command handler
+;
 START:
     f81b  31 ff f7   LXI SP, f7ff               ; Set up stack
 
-    f81e  3e ff      MVI A, ff                  ; ????
-    f820  32 7a f7   STA f77a
+    f81e  3e ff      MVI A, ff                  ; Enable scroll
+    f820  32 7a f7   STA ENABLE_SCROLL (f77a)
 
     f823  21 2d 20   LXI HL, 202d               ; Set default in/out bit delays
     f826  22 5c f7   SHLD IN_BIT_DELAY (f75c)
 
-    f829  21 3a f8   LXI HL, ENTER_NEXT_COMMAND (f83a)  ; ????
-    f82c  22 62 f7   SHLD f762
+    f829  21 3a f8   LXI HL, ENTER_NEXT_COMMAND (f83a)  ; Set default quick jump address
+    f82c  22 62 f7   SHLD QUICK_JUMP_ADDR (f762)
 
     f82f  3e 1f      MVI A, 1f                  ; Clear screen
     f831  cd e9 f9   CALL PUT_CHAR_A (f9e9)
@@ -50,42 +80,67 @@ ENTER_NEXT_COMMAND:
     f847  e5         PUSH HL                    ; HL shall point to COMMANDS_TABLE
     f848  cd 8b fa   CALL INPUT_LINE (fa8b)
 
-f84b  21 63 f8   LXI HL, f863
-f84e  e3         XTHL
+    f84b  21 63 f8   LXI HL, COMMAND_EXIT (f863); Save command exit handler (commands will return there)
 
-f84f  3a 7b f7   LDA f77b
-f852  47         MOV B, A
+    f84e  e3         XTHL                       ; Restore pointer to the COMMANDS_TABLE
 
-????:
-f853  7e         MOV A, M
-f854  b7         ORA A
-f855  cc b9 fb   CZ fbb9
-f858  b8         CMP B
+    f84f  3a 7b f7   LDA f77b                   ; Load the entered command symbol in B
+    f852  47         MOV B, A
 
-f859  23         INX HL
-f85a  5e         MOV E, M
-f85b  23         INX HL
-f85c  56         MOV D, M
+SEARCH_COMMAND_LOOP:
+    f853  7e         MOV A, M                   ; Load the table command symbol in A
 
-f85d  23         INX HL
-f85e  c2 53 f8   JNZ f853
+    f854  b7         ORA A                      ; If we reached and of the table and still did not handle
+    f855  cc b9 fb   CZ REPORT_INPUT_ERROR (fbb9)   ; the command - probably user typed an incorrect string
 
-f861  eb         XCHG
-f862  e9         PCHL
+    f858  b8         CMP B                      ; Compare command symbols
 
-????:
-f863  3b 3b         dw 3b3b
-????:
-f865  cd 02 ff   CALL ff02
-f868  c3 3a f8   JMP ENTER_NEXT_COMMAND (f83a)
+    f859  23         INX HL                     ; Load the command handler address
+    f85a  5e         MOV E, M
+    f85b  23         INX HL
+    f85c  56         MOV D, M
+
+    f85d  23         INX HL                     ; Advance to the next record
+
+    f85e  c2 53 f8   JNZ SEARCH_COMMAND_LOOP (f853) ; Repeat if command does not match
+
+    f861  eb         XCHG                       ; Execute the handler
+    f862  e9         PCHL
+
+
+; All commands will exit at this address. Restart the main loop.
+COMMAND_EXIT:
+    f863  3b         DCX SP                     ; Restore correct stack pointer value
+    f864  3b         DCX SP
+
+RESTART_MAIN_LOOP:
+    f865  cd 02 ff   CALL SAVE_REGISTERS (ff02) ; Bugture: On one hand this call saves registers, which
+                                                ; allows having a clue where the executed command has failed.
+                                                ; (Registers can be evaluated with X command).
+                                                ;
+                                                ; Another possible feature of this call is to capture 
+                                                ; when exiting the user program, to be evalated with X command.
+                                                ;
+                                                ; At the same time this definitely breaks Command GY break-
+                                                ; point workflow - when the program is stopped on a break
+                                                ; point, program's registers are saved. Any executed command
+                                                ; will corrupt program's registers with this save registers
+                                                ; call.
+
+    f868  c3 3a f8   JMP ENTER_NEXT_COMMAND (f83a)  ; Restart main command loop
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Keyboard functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 ; Wait for the keyboard input
 ;
 ; This function waits for the keyboard input. The function also handles when the key
-; is pressed for some time. In this case repeat mechanism is working, and the key is
-; triggered again, until it is released. Each symbol trigger is supported with a short
-; beep in a tape port.
+; is pressed for some time. In this case auto-repeat mechanism is working, and the key is
+; triggered again, until the key is released. Each symbol trigger is supported with a short
+; beep in the tape port.
 ;
 ; For scanning the keyboard, the function sequentally selects one column in the keyboard matrix, by
 ; setting the corresponding bit in the keyboard 8255 port A. The column scanning is performed by reading
@@ -130,6 +185,7 @@ KBD_INPUT:
     
     f875  e5         PUSH HL                    ; Save cursor position for later
 
+; Blink cursor while waiting for a key press
 BLINK_CURSOR_LOOP:
     f876  7e         MOV A, M                   ; Invert the character
     f877  2f         CMA
@@ -153,6 +209,7 @@ SCAN_KEYPRESS_LOOP:
 
     f88e  c3 76 f8   JMP BLINK_CURSOR_LOOP (f876)
 
+; Scan keyboard matrix
 SCAN_KBD_COLUMN_LOOP:
     f891  11 7f 07   LXI DE, 077f                   ; D - number of keys in a column, E - keypress mask
 
@@ -196,6 +253,7 @@ SCAN_KBD_ROWS_LOOP:
 
     f8c3  e6 2f      ANI A, 2f                  ; Scan codes between 0x3c and 0x3f corrected to 0x2c-0x2f
 
+; Convert scan code to the symbol, apply modifiers
 KBD_INPUT_1:
     f8c5  5f         MOV E, A                   ; Save code in E
 
@@ -220,6 +278,7 @@ KBD_INPUT_1:
     f8d7  f6 20      ORI A, 20                  ; We are here if RUS key is pressed. Just correct the key code,
     f8d9  c9         RET                        ; and exit (Works for key codes >= 0x40, which are letters)
 
+; Process special keys (arrows, home, return, etc)
 SCAN_KBD_SPECIAL:
     f8da  21 f7 ff   LXI HL, SPECIAL_SYMBOLS_KBD_LUT (fff7) ; Convert scan code to char code by looking at
     f8dd  90         SUB B                          ; the special chars table (note that scan code for space
@@ -229,10 +288,12 @@ SCAN_KBD_SPECIAL:
     f8e0  7e         MOV A, M                       ; Read the char code and exit
     f8e1  c9         RET
 
+; Process keys pressed with Ctrl modifier
 SCAN_KBD_CTRL_KEY:
     f8e2  e6 1f      ANI A, 1f                      ; Just convert the key code to 0x00-0x1f range
     f8e4  c9         RET
 
+; Process keys presseed with shift modifier
 SCAN_SHIFT_KEYS:
     f8e5  b9         CMP C                          ; Letters (scan code >= 0x40) remain unchanged
     f8e6  d0         RNC
@@ -245,6 +306,7 @@ SCAN_SHIFT_KEYS:
     f8ed  d6 10      SUI A, 10                          
     f8ef  c9         RET
 
+; Submit the entered character
 KBD_INPUT_SUBMIT_CHAR:
     f8f0  21 79 f7   LXI HL, CUR_KBD_CHAR (f779); Compare key code with the previous key code, probably
     f8f3  be         CMP M                      ; the key is still pressed
@@ -256,6 +318,8 @@ KBD_INPUT_SUBMIT_CHAR:
 
     f8f9  36 80      MVI M, 80                  ; Start wait timer until the first auto-repeat trigger
 
+
+; Do a short beep, indicating that key is pressed (applies for auto-repeat also)
 BEEP:
     f8fb  06 10      MVI B, 10                  ; Output 0x10 zero bytes as a beep tone
     f8fd  af         XRA A
@@ -283,6 +347,7 @@ BEEP_LOOP:
     f90c  c9         RET
 
 
+; Handle auto-repeat
 TRIGGER_AUTO_REPEAT:
     f90d  cd 1f f9   CALL IS_BUTTON_PRESSED (f91f)  ; Check if the key is still pressed
     f910  ca 79 f8   JZ SCAN_KEYPRESS_LOOP (f879)   ; If not - start new keyboard scan loop
@@ -327,68 +392,131 @@ IS_BUTTON_PRESSED_SAVE_REGS:
     f932  c1         POP BC
     f933  c9         RET
 
-????:
-f934  3e 08      MVI A, 08
-????:
-f936  c5         PUSH BC
-f937  d5         PUSH DE
-f938  01 00 01   LXI BC, 0100
-f93b  5f         MOV E, A
-f93c  db a1      IN a1
-f93e  a0         ANA B
-f93f  57         MOV D, A
-????:
-f940  79         MOV A, C
-f941  e6 7f      ANI A, 7f
-f943  07         RLC
-f944  4f         MOV C, A
-????:
-f945  db 05      IN 05
-f947  e6 02      ANI A, 02
-f949  cc b9 fb   CZ fbb9
-f94c  db a1      IN a1
-f94e  a0         ANA B
-f94f  ba         CMP D
-f950  ca 45 f9   JZ f945
-f953  b1         ORA C
-f954  4f         MOV C, A
-f955  3a 5c f7   LDA IN_BIT_DELAY (f75c)
-f958  c6 03      ADI A, 03
-f95a  1d         DCR E
-f95b  13         INX DE
-f95c  c2 61 f9   JNZ f961
-f95f  d6 0e      SUI A, 0e
-????:
-f961  3d         DCR A
-f962  c2 61 f9   JNZ f961
-f965  db a1      IN a1
-f967  a0         ANA B
-f968  57         MOV D, A
-f969  7b         MOV A, E
-f96a  b7         ORA A
-f96b  f2 80 f9   JP f980
-f96e  3e e6      MVI A, e6
-f970  b9         CMP C
-f971  ca 7a f9   JZ f97a
-f974  2f         CMA
-f975  b9         CMP C
-f976  c2 40 f9   JNZ f940
-f979  37         STC
-????:
-f97a  99         SBB C
-f97b  32 59 f7   STA f759
-f97e  1e 09      MVI E, 09
-????:
-f980  1d         DCR E
-f981  c2 40 f9   JNZ f940
-f984  3a 59 f7   LDA f759
-f987  a9         XRA C
-f988  d1         POP DE
-f989  c1         POP BC
-f98a  c9         RET
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Tape functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 
+; Receive a byte (8 bits) from the tape, assuming tape input is already synchronized
+; Returns received byte in A
+IN_BYTE_NO_SYNC:
+    f934  3e 08      MVI A, 08                  ; Set number of bits to input
+
+
+; Receive a byte from tape (synchronize if necessary)
+;
+; Parameters:
+; A - number of bits to receive (typically 8), or 0xff if synchronization is required first.
+;
+; If the synchronization procedure is required (A=0xff as a parameter), the function will wait for
+; a pilot tone, then a synchronization byte (0xe6 or 0x19) to determine polarity. Then the requested
+; byte is received. Polarity is stored at 0xf759. Delay between bits is determined with constant at 0xf75c
+;
+; Returns received byte in A
+IN_BYTE:
+    f936  c5         PUSH BC
+    f937  d5         PUSH DE
+    f938  01 00 01   LXI BC, 0100
+
+    f93b  5f         MOV E, A
+
+    f93c  db a1      IN a1                      ; Input a bit into D
+    f93e  a0         ANA B
+    f93f  57         MOV D, A
+
+IN_BYTE_LOOP:
+    f940  79         MOV A, C                   ; Shift output for 1 bit left, freeing LSB for the new bit
+    f941  e6 7f      ANI A, 7f
+    f943  07         RLC
+    f944  4f         MOV C, A
+
+IN_BYTE_WAIT_PHASE_CHANGE_LOOP:
+    f945  db 05      IN 05                      ; Check for modification keys activity
+
+    f947  e6 02      ANI A, 02
+    f949  cc b9 fb   CZ REPORT_INPUT_ERROR (fbb9)   ; Report an error and stop if Ctrl-key is pressed
+
+    f94c  db a1      IN a1                      ; Wait for the next bit phase
+    f94e  a0         ANA B
+    f94f  ba         CMP D
+    f950  ca 45 f9   JZ IN_BYTE_WAIT_PHASE_CHANGE_LOOP (f945)
+
+    f953  b1         ORA C                      ; Save the bit
+    f954  4f         MOV C, A
+
+    f955  3a 5c f7   LDA IN_BIT_DELAY (f75c)    ; Load the bit delay value
+    f958  c6 03      ADI A, 03
+
+    f95a  1d         DCR E                      ; Correct delay between bytes
+    f95b  13         INX DE
+    f95c  c2 61 f9   JNZ IN_BYTE_DELAY_LOOP (f961)
+    f95f  d6 0e      SUI A, 0e
+
+IN_BYTE_DELAY_LOOP:
+    f961  3d         DCR A                      ; Perform the delay
+    f962  c2 61 f9   JNZ IN_BYTE_DELAY_LOOP (f961)
+
+    f965  db a1      IN a1                      ; Receive the next bit, 1st phase
+    f967  a0         ANA B
+    f968  57         MOV D, A
+
+    f969  7b         MOV A, E                   ; Check if all requested bites have been received
+    f96a  b7         ORA A
+    f96b  f2 80 f9   JP IN_BYTE_NEXT_BIT (f980)
+
+    f96e  3e e6      MVI A, e6                  ; Check if we received a sync byte during the pilot tone
+    f970  b9         CMP C
+    f971  ca 7a f9   JZ IN_BYTE_SYNC_POSITIVE (f97a); If yes - use positive polarity
+
+    f974  2f         CMA                        ; Check if we received negated sync byte
+    f975  b9         CMP C
+    f976  c2 40 f9   JNZ IN_BYTE_LOOP (f940)
+
+    f979  37         STC                        ; Will be using negative polarity
+
+IN_BYTE_SYNC_POSITIVE:
+    f97a  99         SBB C                      ; Save the polarity
+    f97b  32 59 f7   STA INPUT_POLARITY (f759)
+    f97e  1e 09      MVI E, 09
+
+IN_BYTE_NEXT_BIT:
+    f980  1d         DCR E                      ; Repeat until all requested bits are received
+    f981  c2 40 f9   JNZ IN_BYTE_LOOP (f940)
+
+    f984  3a 59 f7   LDA INPUT_POLARITY (f759)  ; Apply input polarity
+    f987  a9         XRA C
+
+    f988  d1         POP DE                     ; Exit
+    f989  c1         POP BC
+    f98a  c9         RET
+
+
+
+; Output a byte to the tape (byte in A)
+;
+; This function outputs a byte to the tape, according to 2-phase coding algorithm.
+; 
+; Data storage format is based on the 2-phase coding algorithm. Each bit is 
+; coded as 2 periods with opposite values. The actual bit value is determined
+; at the transition between the periods:
+; - transition from 1 to 0 represents value 0
+; - transition from 0 to 1 represents value 1
+;    
+; Bytes are written MSB first. Typical recording speed is 1500 bits per second, but
+; adjusted with a constant in 0xf75d
+;
+;                       Example of 0xA5 byte transfer
+;      D7=1 |  D6=0 |  D5=1 |  D4=0 |  D3=0 |  D2=1 |  D1=0 |  D0=1 |
+;       +---|---+   |   +---|---+   |---+   |   +---|---+   |   +---|
+;       |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
+;    ---+   |   +---|---+   |   +---|   +---|---+   |   +---|---+   |
+;           |<--T-->|       |       |       |       |       |       |
+;
+; Note: The data is output negated, compared to original Monitor0 and MonitorF implementations. This is
+; not a problem for the real hardware, as tape input function has a polarity detection mechanism, but this
+; code causes problems when running on an emulator - all data bytes must be negated to get original data.
 OUT_BYTE:
     f98b  c5         PUSH BC
     f98c  f5         PUSH PSW
@@ -430,6 +558,11 @@ BIT_DELAY_LOOP:
     f9b0  f1         POP PSW
     f9b1  c1         POP BC
     f9b2  c9         RET
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Console printing functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 ; Print a byte in A register as a hexadecimal 2-digit value
@@ -509,6 +642,13 @@ PUT_CHAR_A:
 ; The function is not responsible to show/hide the cursor, just prints a char in the cursor position, and
 ; moves cursor position 1 position to the right.
 ;
+; Function has two scrolling modes, depending on f77a flag:
+; - If the flag is non-zero, normal scrolling mode is used. When cursor reaches the end of the screen,
+;   all the data is moved one screen up, freeing the bottom line for new data
+; - If the flag is zero page scroll is used. When cursor reaches the end of the screen, monitor waits a key
+;   press to confirm the data is read. Then the screen is wiped out, and data printing starts from the top-
+;   left corner.
+;
 ; The function handles the following special chars:
 ; 0x08  - Move cursor 1 position left
 ; 0x0c  - Move cursor to the top left position
@@ -521,7 +661,10 @@ PUT_CHAR_A:
 ;
 ; Important variables:
 ; f75a - Current cursor position (memory address)
-; f77a - ????
+; f77a - 0x00 if scroll is disabled and screen is cleared when page is full. Non-zero enables the scroll
+;
+; Note: unlike MonitorF implementation, this put char function does not provide direct cursor positioning
+; sequence (Esc-Y). Most of UI applications are not compatible with this Monitor because of this.
 PUT_CHAR:
     f9f0  e5         PUSH HL                    ; Save all registers
     f9f1  d5         PUSH DE
@@ -640,9 +783,9 @@ LINE_FEED:
 SCROLL_SCREEN:
     fa5a  f5         PUSH PSW
 
-    fa5b  3a 7a f7   LDA f77a                   ; ????
+    fa5b  3a 7a f7   LDA ENABLE_SCROLL (f77a)   ; Check if scroll is enabled
     fa5e  b7         ORA A
-    fa5f  ca 83 fa   JZ fa83
+    fa5f  ca 83 fa   JZ CLEAR_PAGE (fa83)
 
     fa62  11 40 e8   LXI DE, e840               ; Will copy symbols from the second line to the first line
     fa65  21 00 e8   LXI HL, e800               ; This is source and target addresses
@@ -672,30 +815,18 @@ SCROLL_PAUSE:
     fa82  c9         RET
 
 
-????:
-fa83  cd 6b f8   CALL KBD_INPUT (f86b)
-fa86  cd 1e fa   CALL CLEAR_SCREEN (fa1e)
-fa89  f1         POP PSW
-fa8a  c9         RET
+CLEAR_PAGE:
+    fa83  cd 6b f8   CALL KBD_INPUT (f86b)      ; Full screen is filled, wait for a key press before clearing
+    fa86  cd 1e fa   CALL CLEAR_SCREEN (fa1e)   ; the screen
 
-INPUT_LINE:
-    fa8b  e5         PUSH HL
-    fa8c  d5         PUSH DE
+    fa89  f1         POP PSW                    ; Return
+    fa8a  c9         RET
 
-    fa8d  21 bb f7   LXI HL, f77b + 0x40        ; Set address of the buffer end
-    fa90  0e 40      MVI C, 40                  ; Set buffer size
 
-INPUT_LINE_CLEAR_BUFFER:
-    fa92  36 20      MVI M, 20                  ; Fill the buffer with spaces
-    fa94  2b         DCX HL                     ; BUG: it fills address 0xf7bb (1 byte after the buffer,
-    fa95  0d         DCR C                      ; but does not fill 0xf77b (beginning of the buffer. Perhaps
-    fa96  c2 92 fa   JNZ INPUT_LINE_CLEAR_BUFFER (fa92) ; MVI and DCX instructions shall be swapped)
 
-    fa99  c3 9e fa   JMP INPUT_LINE_LOOP (fa9e) ; Continue a little below
-
-?????:
-fa9c  e5         PUSH HL
-fa9d  d5         PUSH DE
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Console input functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Input a line into the buffer
 ;
@@ -719,10 +850,29 @@ fa9d  d5         PUSH DE
 ;   to the right from the cursor are shifted right.
 ; - Ctrl-Space acts as a tab key, and adds spaces until the next tab stop (each 8 chars)
 ;
-; Unfortunately the implementation is quite buggy. While it offers reach editing possibilities, left and
-; right movements corrupt the symbols on the screen, and user does not actually sees what they are editing.
-; Also when user submits the line, only symbols left to the cursor are submitted. If the user types a string,
-; then decides to edit a few symbols in the middle, and hit return, only a part of the string is submitted.
+; Unfortunately the implementation is quite raw. While it offers reach editing possibilities, left and
+; right movements corrupt the symbols on the screen. The user does not actually sees what they are editing.
+; Also when user submits the line, only symbols left to the cursor are submitted. If the user types a string
+; and decides to edit a few symbols in the middle, return key will submit only a part of the string.
+INPUT_LINE:
+    fa8b  e5         PUSH HL
+    fa8c  d5         PUSH DE
+
+    fa8d  21 bb f7   LXI HL, f77b + 0x40        ; Set address of the buffer end
+    fa90  0e 40      MVI C, 40                  ; Set buffer size
+
+INPUT_LINE_CLEAR_BUFFER:
+    fa92  36 20      MVI M, 20                  ; Fill the buffer with spaces
+    fa94  2b         DCX HL                     ; BUG: it fills address 0xf7bb (1 byte after the buffer,
+    fa95  0d         DCR C                      ; but does not fill 0xf77b (beginning of the buffer. Perhaps
+    fa96  c2 92 fa   JNZ INPUT_LINE_CLEAR_BUFFER (fa92) ; MVI and DCX instructions shall be swapped)
+
+    fa99  c3 9e fa   JMP INPUT_LINE_LOOP (fa9e) ; Continue a little below
+
+?????:
+fa9c  e5         PUSH HL
+fa9d  d5         PUSH DE
+
 INPUT_LINE_LOOP:
     fa9e  cd 6b f8   CALL KBD_INPUT (f86b)      ; Input a character
 
@@ -808,7 +958,7 @@ INPUT_LINE_INSERT:
     fb08  c5         PUSH BC                    ; The following function will copy symbols 1 position further,
     fb09  eb         XCHG                       ; moving right to left till the current cursor position
 
-    fb0a  21 ba f7   LXI HL, f77c + 0x3e (f7ba) ; Get address of one-before-last symbol
+    fb0a  21 ba f7   LXI HL, f77b + 0x3f (f7ba) ; Get address of last symbol
 
 INPUT_LINE_INSERT_LOOP:
     fb0d  44         MOV B, H                   ; Move to previous symbol
@@ -943,6 +1093,7 @@ INPUT_LINE_DELETE_LOOP:
     fb8c  c9         RET
 
 
+????:
 fb8d  33         INX SP
 fb8e  33         INX SP
 
@@ -965,35 +1116,66 @@ INPUT_ERROR_LOOP:
     fb9e  c3 f4 f9   JMP PUT_CHAR_1 (f9f4)
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Command line parsing and processing functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-fba1  cd 6b fc   CALL fc6b
-fba4  e5         PUSH HL
-fba5  60         MOV H, B
-fba6  69         MOV L, C
-fba7  cd ab fb   CALL fbab
-fbaa  e1         POP HL
-????:
-fbab  cd 4d fc   CALL fc4d
-fbae  7e         MOV A, M
-????:
-fbaf  cd b3 f9   CALL PRINT_BYTE_HEX (f9b3)
-fbb2  cd 67 fc   CALL PRINT_SPACE (fc67)
-fbb5  cd 2b f9   CALL IS_BUTTON_PRESSED_SAVE_REGS (f92b)
-fbb8  c8         RZ
-????:
-fbb9  cd 8f fb   CALL INPUT_ERROR (fb8f)
-fbbc  c3 65 f8   JMP f865
-????:
-fbbf  cd c6 fb   CALL fbc6
-fbc2  dc b9 fb   CC fbb9
-fbc5  c9         RET
-????:
-fbc6  11 7c f7   LXI DE, f77c
-????:
-fbc9  cd d9 fb   CALL fbd9
-fbcc  2a 51 f7   LHLD f751
-fbcf  eb         XCHG
-fbd0  2a 53 f7   LHLD f753
+; Print BC, [BC], then HL, and [HL] registers
+PRINT_BC_HL:
+    fba1  cd 6b fc   CALL PRINT_NEW_LINE (fc6b) ; New line
+
+    fba4  e5         PUSH HL                    ; Print BC, and a byte pointed by BC
+    fba5  60         MOV H, B
+    fba6  69         MOV L, C
+    fba7  cd ab fb   CALL PRINT_HL_AND_M (fbab)
+    fbaa  e1         POP HL
+
+; Print HL, and a byte pointed by HL
+PRINT_HL_AND_M:
+    fbab  cd 4d fc   CALL PRINT_HL (fc4d)       
+
+; Print a byte pointed by HL
+PRINT_MEM_VALUE:
+    fbae  7e         MOV A, M
+
+; Print byte in A in hexadecimal form
+; Return if no button is pressed, otherwise report an error and restart main command loop
+PRINT_BYTE_CHECK_KBD:
+    fbaf  cd b3 f9   CALL PRINT_BYTE_HEX (f9b3) ; Print byte hex representation, followed by space
+    fbb2  cd 67 fc   CALL PRINT_SPACE (fc67)
+
+    fbb5  cd 2b f9   CALL IS_BUTTON_PRESSED_SAVE_REGS (f92b)    ; Return if no button pressed
+    fbb8  c8         RZ
+
+; Report an error, and restart main command loop
+REPORT_INPUT_ERROR:
+    fbb9  cd 8f fb   CALL INPUT_ERROR (fb8f)
+    fbbc  c3 65 f8   JMP RESTART_MAIN_LOOP (f865)
+
+
+
+; Parse arguments at the standard command buffer, load arguments into variables and DE/HL registers
+; Typically 1st and 2nd arguments are start/end addresses, so the function checks that start address
+; is no more than end address, and reports an error if necessary
+PARSE_AND_LOAD_ARGUMENTS:
+    fbbf  cd c6 fb   CALL DO_PARSE_AND_LOAD_ARGUMENTS (fbc6)
+    fbc2  dc b9 fb   CC REPORT_INPUT_ERROR (fbb9)
+    fbc5  c9         RET
+
+
+; Parse arguments at the standard command buffer, load arguments into variables
+; Load 1st and 2nd arguments into DE and HL respectively, Set Z flag if they are equal
+DO_PARSE_AND_LOAD_ARGUMENTS:
+    fbc6  11 7c f7   LXI DE, f77b + 1 (f77c)
+
+; Parse arguments starting from DE
+DO_PARSE_AND_LOAD_ARGUMENTS_ALT:
+    fbc9  cd d9 fb   CALL PARSE_ARGUMENTS (fbd9)
+
+    fbcc  2a 51 f7   LHLD ARG_1 (f751)          ; Load 1st argument into DE
+    fbcf  eb         XCHG
+    fbd0  2a 53 f7   LHLD ARG_2 (f753)          ; Load 2nd argument into HL
+
 
 ; Compare HL and DE register pairs
 CMP_HL_DE:
@@ -1005,538 +1187,935 @@ CMP_HL_DE:
     fbd7  bb         CMP E
     fbd8  c9         RET
 
-????:
-fbd9  cd 04 fc   CALL fc04
-fbdc  cd f4 fb   CALL fbf4
-fbdf  c8         RZ
-fbe0  cd 04 fc   CALL fc04
-fbe3  cd f7 fb   CALL fbf7
-fbe6  c8         RZ
-fbe7  cd 04 fc   CALL fc04
-fbea  cd fa fb   CALL fbfa
-fbed  c8         RZ
-fbee  cd 04 fc   CALL fc04
-fbf1  c3 00 fc   JMP fc00
-????:
-fbf4  22 51 f7   SHLD f751
-????:
-fbf7  22 53 f7   SHLD f753
-????:
-fbfa  22 55 f7   SHLD f755
-fbfd  21 00 00   LXI HL, 0000
-????:
-fc00  22 57 f7   SHLD f757
-fc03  c9         RET
-????:
-fc04  cd 0b fc   CALL fc0b
-fc07  dc b9 fb   CC fbb9
-fc0a  c9         RET
-????:
-fc0b  21 00 00   LXI HL, 0000
-????:
-fc0e  1a         LDAX DE
-fc0f  13         INX DE
-fc10  fe 20      CPI A, 20
-fc12  ca 0e fc   JZ fc0e
-fc15  fe 0d      CPI A, 0d
-fc17  c8         RZ
-fc18  fe 30      CPI A, 30
-fc1a  3f         CMC
-fc1b  d0         RNC
-fc1c  fe 3a      CPI A, 3a
-fc1e  da 25 fc   JC fc25
-fc21  fe 40      CPI A, 40
-fc23  3f         CMC
-fc24  d0         RNC
-????:
-fc25  cd 36 fc   CALL fc36
-fc28  d8         RC
-fc29  29         DAD HL
-fc2a  d8         RC
-fc2b  29         DAD HL
-fc2c  d8         RC
-fc2d  29         DAD HL
-fc2e  d8         RC
-fc2f  29         DAD HL
-fc30  d8         RC
-fc31  85         ADD L
-fc32  6f         MOV L, A
-fc33  c3 0e fc   JMP fc0e
-????:
-fc36  d6 30      SUI A, 30
-fc38  f8         RM
-fc39  fe 0a      CPI A, 0a
-fc3b  3f         CMC
-fc3c  f8         RM
-fc3d  fe 11      CPI A, 11
-fc3f  f8         RM
-fc40  fe 17      CPI A, 17
-fc42  3f         CMC
-fc43  f0         RP
-fc44  d6 07      SUI A, 07
-fc46  c9         RET
-fc47  cd 6b fc   CALL fc6b
-fc4a  2a 51 f7   LHLD f751
-????:
-fc4d  f5         PUSH PSW
-fc4e  7c         MOV A, H
-fc4f  cd b3 f9   CALL PRINT_BYTE_HEX (f9b3)
-fc52  7d         MOV A, L
-fc53  cd b3 f9   CALL PRINT_BYTE_HEX (f9b3)
 
+; Parse up to 4 arguments, and put values into corresponding variables
+PARSE_ARGUMENTS:
+    fbd9  cd 04 fc   CALL PARSE_HEX (fc04)      ; Parse 1st argument
+    fbdc  cd f4 fb   CALL STORE_ARG_1 (fbf4)
+    fbdf  c8         RZ
+
+    fbe0  cd 04 fc   CALL PARSE_HEX (fc04)      ; Parse 2nd argument
+    fbe3  cd f7 fb   CALL STORE_ARG_2 (fbf7)
+    fbe6  c8         RZ
+
+    fbe7  cd 04 fc   CALL PARSE_HEX (fc04)      ; Parse 3rd argument
+    fbea  cd fa fb   CALL STORE_ARG_3 (fbfa)
+    fbed  c8         RZ
+
+    fbee  cd 04 fc   CALL PARSE_HEX (fc04)      ; Parse 4th argument
+    fbf1  c3 00 fc   JMP STORE_ARG_4 (fc00)
+
+
+; Store HL as 1st argument. The value is also stored to the next arguments as well
+STORE_ARG_1:
+    fbf4  22 51 f7   SHLD ARG_1 (f751)
+
+; Store HL as 2nd argument. The value is also stored to the next argument as well
+STORE_ARG_2:
+    fbf7  22 53 f7   SHLD ARG_2 (f753)
+
+; Store HL as 3rd argument. 4th argument is set to zero
+STORE_ARG_3:
+    fbfa  22 55 f7   SHLD ARG_3 (f755)
+    
+    fbfd  21 00 00   LXI HL, 0000
+
+; Store HL as 4th argument
+STORE_ARG_4:
+    fc00  22 57 f7   SHLD ARG_4 (f757)
+    fc03  c9         RET
+
+
+; Parse hex number (up to 4 digits) at DE into HL
+; Report error in case of incorrect data, and restart command input
+; Raise Z flag if EOL reached
+PARSE_HEX:
+    fc04  cd 0b fc   CALL DO_PARSE_HEX (fc0b)
+    fc07  dc b9 fb   CC REPORT_INPUT_ERROR (fbb9)
+    fc0a  c9         RET
+
+
+; Parse hex number (up to 4 digits) at DE into HL
+; Set C flag in case of error, or overflow
+; Raise Z flag if EOL reached
+DO_PARSE_HEX:
+    fc0b  21 00 00   LXI HL, 0000               ; Prepare result accumulator (HL)
+
+DO_PARSE_HEX_LOOP:
+    fc0e  1a         LDAX DE                    ; Load next char
+    fc0f  13         INX DE
+
+    fc10  fe 20      CPI A, 20                  ; Skip spaces
+    fc12  ca 0e fc   JZ DO_PARSE_HEX_LOOP (fc0e)
+
+    fc15  fe 0d      CPI A, 0d                  ; Stop on EOL
+    fc17  c8         RZ
+
+    fc18  fe 30      CPI A, 30                  ; Stop for chars < 0x30
+    fc1a  3f         CMC
+    fc1b  d0         RNC
+
+    fc1c  fe 3a      CPI A, 3a                  ; Symbols in 0x30-0x39 range will be processed little below
+    fc1e  da 25 fc   JC DO_PARSE_HEX_1 (fc25)
+
+    fc21  fe 40      CPI A, 40                  ; Skip chars in 0x3a-0x3f range
+    fc23  3f         CMC
+    fc24  d0         RNC
+
+DO_PARSE_HEX_1:
+    fc25  cd 36 fc   CALL PARSE_HEX_DIGIT (fc36); Parse single digit
+    fc28  d8         RC
+
+    fc29  29         DAD HL                     ; Shift result right for 4 bits
+    fc2a  d8         RC
+    fc2b  29         DAD HL
+    fc2c  d8         RC
+    fc2d  29         DAD HL
+    fc2e  d8         RC
+    fc2f  29         DAD HL
+    fc30  d8         RC
+
+    fc31  85         ADD L                      ; Add parsed digit to lowest 4 bits of result
+    fc32  6f         MOV L, A
+
+    fc33  c3 0e fc   JMP DO_PARSE_HEX_LOOP (fc0e)   ; Advance to the next char
+
+
+
+; Parse a singe digit in A, and convert it to hex digit in A (lower 4 bits)
+; Set C if digit not parsed
+; C flag not set - digit parsed successfully
+PARSE_HEX_DIGIT:
+    fc36  d6 30      SUI A, 30                  ; Subtract '0'
+    fc38  f8         RM
+
+    fc39  fe 0a      CPI A, 0a                  ; Digit '0' - '9' are returned as result
+    fc3b  3f         CMC
+    fc3c  f8         RM
+
+    fc3d  fe 11      CPI A, 11                  ; Ignore 0x3a-0x3f range
+    fc3f  f8         RM
+
+    fc40  fe 17      CPI A, 17                  ; Check if the result is 'A' or greater
+    fc42  3f         CMC
+    fc43  f0         RP
+
+    fc44  d6 07      SUI A, 07                  ; Finally convert to the 'A' - 'F' range
+    fc46  c9         RET
+
+
+; Print command argument #1 in a hex form
+PRINT_ARG_1:
+    fc47  cd 6b fc   CALL PRINT_NEW_LINE (fc6b)
+    fc4a  2a 51 f7   LHLD ARG_1 (f751)
+
+
+; Print HL (4 digits) and then a space. Suitable for printing addresses, or 16-bit values
+PRINT_HL:
+    fc4d  f5         PUSH PSW
+    fc4e  7c         MOV A, H
+    fc4f  cd b3 f9   CALL PRINT_BYTE_HEX (f9b3)
+    fc52  7d         MOV A, L
+    fc53  cd b3 f9   CALL PRINT_BYTE_HEX (f9b3)
+
+; Print a single space
 PRINT_SPACE_POP_PSW:
     fc56  3e 20      MVI A, 20
 
+; Print a char in A, then POP PSW
 PRINT_CHAR_POP_PSW:
     fc58  cd e9 f9   CALL PUT_CHAR_A (f9e9)
     fc5b  f1         POP PSW
     fc5c  c9         RET
 
-fc5d  2a 51 f7   LHLD f751
-????:
-fc60  cd 4d fc   CALL fc4d
-fc63  7e         MOV A, M
-fc64  cd b3 f9   CALL PRINT_BYTE_HEX (f9b3)
+
+; Print argument 1 in hex form, and also byte pointed by the argument
+PRINT_ARG_1_AND_VALUE:
+    fc5d  2a 51 f7   LHLD ARG_1 (f751)
+
+; Print address in HL, and value in [HL]
+; Return value in A
+PRINT_ADDR_AND_VALUE:
+    fc60  cd 4d fc   CALL PRINT_HL (fc4d)
+    fc63  7e         MOV A, M
+    fc64  cd b3 f9   CALL PRINT_BYTE_HEX (f9b3)
 
 PRINT_SPACE:
     fc67  f5         PUSH PSW
     fc68  c3 56 fc   JMP PRINT_SPACE_POP_PSW (fc56)
 
-????:
-fc6b  f5         PUSH PSW
-fc6c  3e 0a      MVI A, 0a
-fc6e  c3 58 fc   JMP PRINT_CHAR_POP_PSW (fc58)
-fc71  cd 38 fe   CALL COMMAND_K_CRC (fe38)
-fc74  3a 57 f7   LDA f757
-fc77  b7         ORA A
-fc78  ca 7e fc   JZ fc7e
-fc7b  32 5d f7   STA OUT_BIT_DELAY (f75d)
-????:
-fc7e  af         XRA A
-fc7f  6f         MOV L, A
-????:
-fc80  cd 8b f9   CALL OUT_BYTE (f98b)
-fc83  2d         DCR L
-fc84  c2 80 fc   JNZ fc80
-fc87  3e e6      MVI A, e6
-fc89  cd 8b f9   CALL OUT_BYTE (f98b)
-fc8c  3a 52 f7   LDA f752
-fc8f  67         MOV H, A
-fc90  cd 8b f9   CALL OUT_BYTE (f98b)
-fc93  3a 51 f7   LDA f751
-fc96  6f         MOV L, A
-fc97  cd 8b f9   CALL OUT_BYTE (f98b)
-fc9a  3a 54 f7   LDA f754
-fc9d  52         MOV D, D
-fc9e  cd 8b f9   CALL OUT_BYTE (f98b)
-fca1  3a 53 f7   LDA f753
-fca4  5b         MOV E, E
-fca5  cd 8b f9   CALL OUT_BYTE (f98b)
-????:
-fca8  7e         MOV A, M
-fca9  cd 8b f9   CALL OUT_BYTE (f98b)
-fcac  23         INX HL
-fcad  cd d3 fb   CALL CMP_HL_DE (fbd3)
-fcb0  c2 a8 fc   JNZ fca8
-fcb3  79         MOV A, C
-fcb4  cd 8b f9   CALL OUT_BYTE (f98b)
-fcb7  78         MOV A, B
-fcb8  cd 8b f9   CALL OUT_BYTE (f98b)
-fcbb  3e 20      MVI A, 20
-fcbd  32 5d f7   STA OUT_BIT_DELAY (f75d)
-fcc0  c9         RET
-????:
-fcc1  cd b5 fd   CALL fdb5
-fcc4  11 7c f7   LXI DE, f77c
-fcc7  1a         LDAX DE
-fcc8  fe 59      CPI A, 59
-fcca  c0         RNZ
-fccb  13         INX DE
-fccc  c3 b0 fd   JMP fdb0
-fccf  cd c1 fc   CALL fcc1
-fcd2  d5         PUSH DE
-fcd3  cd c9 fb   CALL fbc9
-fcd6  d1         POP DE
-fcd7  1a         LDAX DE
-fcd8  eb         XCHG
-fcd9  01 08 fd   LXI BC, fd08
-fcdc  c5         PUSH BC
-fcdd  06 ff      MVI B, ff
-fcdf  ca 4b fd   JZ fd4b
-fce2  fe 20      CPI A, 20
-fce4  2a 51 f7   LHLD f751
-????:
-fce7  78         MOV A, B
-fce8  ca 3f fd   JZ fd3f
-fceb  cd 36 f9   CALL f936
-fcee  bc         CMP H
-fcef  c2 e7 fc   JNZ fce7
-fcf2  cd 34 f9   CALL f934
-fcf5  bd         CMP L
-fcf6  c2 e7 fc   JNZ fce7
-fcf9  cd 34 f9   CALL f934
-fcfc  ba         CMP D
-fcfd  c2 e7 fc   JNZ fce7
-fd00  cd 34 f9   CALL f934
-fd03  bb         CMP E
-fd04  c2 e7 fc   JNZ fce7
-fd07  c9         RET
-????:
-fd08  13         INX DE
-fd09  e5         PUSH HL
-fd0a  cd ab fd   CALL fdab
-fd0d  c2 9a fd   JNZ fd9a
-????:
-fd10  cd 34 f9   CALL f934
-fd13  77         MOV M, A
-fd14  23         INX HL
-fd15  cd d3 fb   CALL CMP_HL_DE (fbd3)
-fd18  c2 10 fd   JNZ fd10
-????:
-fd1b  cd 34 f9   CALL f934
-fd1e  4f         MOV C, A
-fd1f  cd 34 f9   CALL f934
-fd22  47         MOV B, A
-????:
-fd23  e1         POP HL
-fd24  c5         PUSH BC
-fd25  cd 4d fc   CALL fc4d
-fd28  1b         DCX DE
-fd29  eb         XCHG
-fd2a  cd 4d fc   CALL fc4d
-fd2d  cd 43 fe   CALL fe43
-fd30  cd 3b fe   CALL fe3b
-fd33  eb         XCHG
-fd34  c1         POP BC
-fd35  cd 3b fe   CALL fe3b
-fd38  cd d3 fb   CALL CMP_HL_DE (fbd3)
-fd3b  c4 b9 fb   CNZ fbb9
-fd3e  c9         RET
-????:
-fd3f  cd 36 f9   CALL f936
-fd42  cd 34 f9   CALL f934
-fd45  cd 34 f9   CALL f934
-fd48  c3 34 f9   JMP f934
-????:
-fd4b  fe 20      CPI A, 20
-fd4d  c2 57 fd   JNZ fd57
-fd50  23         INX HL
-fd51  7e         MOV A, M
-fd52  fe 0d      CPI A, 0d
-fd54  c2 82 fd   JNZ fd82
-????:
-fd57  7e         MOV A, M
-fd58  fe 0d      CPI A, 0d
-fd5a  ca 70 fd   JZ fd70
-????:
-fd5d  78         MOV A, B
-fd5e  cd 36 f9   CALL f936
-fd61  ba         CMP D
-fd62  c2 5d fd   JNZ fd5d
-fd65  cd 34 f9   CALL f934
-fd68  bb         CMP E
-fd69  c2 5d fd   JNZ fd5d
-fd6c  eb         XCHG
-fd6d  c3 79 fd   JMP fd79
-????:
-fd70  78         MOV A, B
-fd71  cd 36 f9   CALL f936
-fd74  67         MOV H, A
-fd75  cd 34 f9   CALL f934
-fd78  6f         MOV L, A
-????:
-fd79  cd 34 f9   CALL f934
-fd7c  57         MOV D, A
-fd7d  cd 34 f9   CALL f934
-fd80  5f         MOV E, A
-fd81  c9         RET
-????:
-fd82  78         MOV A, B
-fd83  cd 36 f9   CALL f936
-fd86  2f         CMA
-fd87  67         MOV H, A
-fd88  cd 34 f9   CALL f934
-fd8b  2f         CMA
-fd8c  6f         MOV L, A
-fd8d  23         INX HL
-fd8e  cd 34 f9   CALL f934
-fd91  19         DAD DE
-fd92  47         MOV B, A
-fd93  cd 34 f9   CALL f934
-fd96  4f         MOV C, A
-fd97  09         DAD BC
-fd98  eb         XCHG
-fd99  c9         RET
-????:
-fd9a  cd 34 f9   CALL f934
-fd9d  be         CMP M
-fd9e  c2 ba fd   JNZ fdba
-fda1  23         INX HL
-fda2  cd d3 fb   CALL CMP_HL_DE (fbd3)
-fda5  c2 9a fd   JNZ fd9a
-fda8  c3 1b fd   JMP fd1b
-????:
-fdab  3a ff f7   LDA f7ff
-fdae  b7         ORA A
-fdaf  c9         RET
-????:
-fdb0  af         XRA A
-????:
-fdb1  32 ff f7   STA f7ff
-fdb4  c9         RET
-????:
-fdb5  af         XRA A
-fdb6  3d         DCR A
-fdb7  c3 b1 fd   JMP fdb1
-????:
-fdba  cd af fb   CALL fbaf
-fdbd  cd ab fb   CALL fbab
-fdc0  cd 8f fb   CALL INPUT_ERROR (fb8f)
-fdc3  c3 23 fd   JMP fd23
-fdc6  7d         MOV A, L
-fdc7  93         SUB E
-fdc8  6f         MOV L, A
-fdc9  7c         MOV A, H
-fdca  9a         SBB D
-fdcb  67         MOV H, A
-fdcc  c9         RET
-fdcd  cd bf fb   CALL fbbf
-fdd0  c4 b9 fb   CNZ fbb9
-????:
-fdd3  cd 6b fc   CALL fc6b
-fdd6  cd 60 fc   CALL fc60
-fdd9  cd 1d fe   CALL fe1d
-fddc  cd 8b fa   CALL INPUT_LINE (fa8b)
-fddf  fe 1a      CPI A, 1a
-fde1  ca 0d fe   JZ fe0d
-fde4  fe 19      CPI A, 19
-fde6  c2 ed fd   JNZ fded
-fde9  2b         DCX HL
-fdea  c3 d3 fd   JMP fdd3
-????:
-fded  11 7b f7   LXI DE, f77b
-fdf0  1a         LDAX DE
-fdf1  fe 0d      CPI A, 0d
-fdf3  ca 0d fe   JZ fe0d
-fdf6  fe 20      CPI A, 20
-fdf8  ca 0d fe   JZ fe0d
-fdfb  fe 27      CPI A, 27
-fdfd  ca 11 fe   JZ fe11
-fe00  e6 d0      ANI A, d0
-fe02  c8         RZ
-fe03  e5         PUSH HL
-fe04  cd 04 fc   CALL fc04
-fe07  c4 b9 fb   CNZ fbb9
-fe0a  7d         MOV A, L
-fe0b  e1         POP HL
-fe0c  77         MOV M, A
-????:
-fe0d  23         INX HL
-fe0e  c3 d3 fd   JMP fdd3
-????:
-fe11  13         INX DE
-fe12  1a         LDAX DE
-fe13  fe 0d      CPI A, 0d
-fe15  ca d3 fd   JZ fdd3
-fe18  77         MOV M, A
-fe19  23         INX HL
-fe1a  c3 11 fe   JMP fe11
-????:
-fe1d  e5         PUSH HL
-fe1e  cd 28 fe   CALL fe28
-fe21  e1         POP HL
-fe22  cd f0 f9   CALL PUT_CHAR (f9f0)
-fe25  c3 67 fc   JMP PRINT_SPACE (fc67)
-????:
-fe28  0e 5f      MVI C, 5f
-fe2a  b7         ORA A
-fe2b  c8         RZ
-fe2c  f8         RM
-fe2d  21 f8 ff   LXI HL, SPECIAL_SYMBOLS (fff8)
-????:
-fe30  be         CMP M
-fe31  c8         RZ
-fe32  2c         INR L
-fe33  c2 30 fe   JNZ fe30
-fe36  4f         MOV C, A
-fe37  c9         RET
+PRINT_NEW_LINE:
+    fc6b  f5         PUSH PSW
+    fc6c  3e 0a      MVI A, 0a
+    fc6e  c3 58 fc   JMP PRINT_CHAR_POP_PSW (fc58)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Command handlers
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Command O Handler: output a memory range to the tape
+;
+; Command arguments:
+; - Start address
+; - End address
+; - Offset [Optional] - Despite stated in documentation, this argument is not really processed
+; - Speed constant (output bit delay) [Optional]
+;
+; The function outputs the memory range to the tape in the following format:
+; - 256 x 0x00  - pilot tone
+; - 0xe6        - Synchronization byte
+; - 2 byte      - start address (high byte first)
+; - 2 byte      - end address (high byte first)
+; - data bytes
+; - 2 byte      - Calculated CRC (low byte first)
+;
+; Note the format is a little bit different, compared to original MonitorF format.
+;
+COMMAND_O_TAPE_OUTPUT:
+    fc71  cd 38 fe   CALL COMMAND_K_CRC (fe38)  ; Parse arguments, and calculate output data CRC
+
+    fc74  3a 57 f7   LDA ARG_4 (f757)           ; Check if output delay is specified
+    fc77  b7         ORA A
+    fc78  ca 7e fc   JZ TAPE_OUTPUT (fc7e)
+
+    fc7b  32 5d f7   STA OUT_BIT_DELAY (f75d)   ; Save the delay constant
+
+TAPE_OUTPUT:
+    fc7e  af         XRA A                      ; Output pilot tone (256 bytes of 0x00)
+    fc7f  6f         MOV L, A
+
+TAPE_OUTPUT_PILOT_LOOP:
+    fc80  cd 8b f9   CALL OUT_BYTE (f98b)       ; Output next byte of the pilot tone
+    fc83  2d         DCR L
+    fc84  c2 80 fc   JNZ TAPE_OUTPUT_PILOT_LOOP (fc80)
+
+    fc87  3e e6      MVI A, e6                  ; Output the sync byte
+    fc89  cd 8b f9   CALL OUT_BYTE (f98b)
+
+    fc8c  3a 52 f7   LDA ARG_1 + 1 (f752)       ; Output start address (high byte)
+    fc8f  67         MOV H, A
+    fc90  cd 8b f9   CALL OUT_BYTE (f98b)
+
+    fc93  3a 51 f7   LDA ARG_1 (f751)           ; Output start address (low byte)
+    fc96  6f         MOV L, A
+    fc97  cd 8b f9   CALL OUT_BYTE (f98b)
+
+    fc9a  3a 54 f7   LDA ARG_2 + 1 (f754)       ; Output end address (high byte)
+    fc9d  52         MOV D, D
+    fc9e  cd 8b f9   CALL OUT_BYTE (f98b)
+
+    fca1  3a 53 f7   LDA ARG_2 (f753)           ; Output end address (low byte)
+    fca4  5b         MOV E, E
+    fca5  cd 8b f9   CALL OUT_BYTE (f98b)
+
+TAPE_OUTPUT_LOOP:
+    fca8  7e         MOV A, M                   ; Output next byte of the memory range
+    fca9  cd 8b f9   CALL OUT_BYTE (f98b)
+
+    fcac  23         INX HL                     ; Repeat until end address is reached
+    fcad  cd d3 fb   CALL CMP_HL_DE (fbd3)
+    fcb0  c2 a8 fc   JNZ TAPE_OUTPUT_LOOP (fca8)
+
+    fcb3  79         MOV A, C                   ; Save CRC (low byte)
+    fcb4  cd 8b f9   CALL OUT_BYTE (f98b)
+
+    fcb7  78         MOV A, B                   ; Save CRC (high byte)
+    fcb8  cd 8b f9   CALL OUT_BYTE (f98b)
+
+    fcbb  3e 20      MVI A, 20                  ; Restore the default bit delay
+    fcbd  32 5d f7   STA OUT_BIT_DELAY (f75d)
+    fcc0  c9         RET
+
+
+
+; Set the command mode flag if 'Y' subcommand is NOT specified
+PARSE_COMMAND_MODE:
+    fcc1  cd b5 fd   CALL SET_COMMAND_MODE_FLAG (fdb5)  ; Set the command mode flag
+
+    fcc4  11 7c f7   LXI DE, f77b + 1 (f77c)    ; Check if 'Y' subcommand is specified
+    fcc7  1a         LDAX DE
+    fcc8  fe 59      CPI A, 59
+    fcca  c0         RNZ
+
+    fccb  13         INX DE                     ; Skip 'Y' in the buffer
+
+    fccc  c3 b0 fd   JMP RESET_COMMAND_MODE_FLAG (fdb0) ; Reset the command mode flag
+
+
+; Command I: input data from the tape
+;
+; The function has several variations:
+; - I/IY                       - Data start and end addresses are stored on the tape
+; - I/IY<addr1>                - Search for addr1 signature on tape, then read addr2 from the tape
+; - I/IY<addr1>,<addr2>        - Search addr1/addr2 sequence on the tape
+; - I/IY<space><addr1>         - Tape data is loaded to address provided as a parameter
+; - I/IY<space><addr1>,<addr2> - Data start and end addresses are specified as parameters. Addr2 can be
+;                                used to limit amount of data to be loaded.
+;
+; The difference between I and IY commands is:
+; - 'IY' does normal data input
+; - 'I' does not perform data input, only verification against memory range
+;
+; The function is implemented as 2 distinct phases:
+; - Arguments processing. Depending on number arguments provided, and also space modifier presence, the
+;   function calculates, or loads start/end addresses from the tape.
+; - On the second phase the function performs data import or verification, depending on I vs IY commands.
+COMMAND_I_TAPE_INPUT:
+    fccf  cd c1 fc   CALL PARSE_COMMAND_MODE (fcc1) ; Parse command mode to distinguish I and IY commands
+
+    fcd2  d5         PUSH DE                    ; Parse command arguments
+    fcd3  cd c9 fb   CALL DO_PARSE_AND_LOAD_ARGUMENTS_ALT (fbc9)
+    fcd6  d1         POP DE
+
+    fcd7  1a         LDAX DE                    ; Load second byte of the command
+    fcd8  eb         XCHG
+
+    fcd9  01 08 fd   LXI BC, TAPE_INPUT_PROCESS_DATA (fd08) ; Store next phase handler address
+    fcdc  c5         PUSH BC
+
+    fcdd  06 ff      MVI B, ff                  
+    fcdf  ca 4b fd   JZ TAPE_INPUT_ARG2_NOT_SET (fd4b)  ; Arg2 (end address) specified? Or Arg1 == Arg2?
+
+    fce2  fe 20      CPI A, 20                  ; Check if there is a space after 'I' command symbol
+    fce4  2a 51 f7   LHLD ARG_1 (f751)
+
+TAPE_INPUT_SEARCH_ADDR1_ADDR2:
+    fce7  78         MOV A, B                   ; Having space symbol after command will skip loading address
+    fce8  ca 3f fd   JZ TAPE_INPUT_SKIP_ADDRESS_FIELDS (fd3f)   ; fields from tape, and use arguments instead
+
+    fceb  cd 36 f9   CALL IN_BYTE (f936)        ; The following instructions search start/end address sequence
+    fcee  bc         CMP H                      ; on the tape that match arguments
+    fcef  c2 e7 fc   JNZ TAPE_INPUT_SEARCH_ADDR1_ADDR2 (fce7)
+
+    fcf2  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934)
+    fcf5  bd         CMP L
+    fcf6  c2 e7 fc   JNZ TAPE_INPUT_SEARCH_ADDR1_ADDR2 (fce7)
+
+    fcf9  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934)
+    fcfc  ba         CMP D
+    fcfd  c2 e7 fc   JNZ TAPE_INPUT_SEARCH_ADDR1_ADDR2 (fce7)
+
+    fd00  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934)
+    fd03  bb         CMP E
+    fd04  c2 e7 fc   JNZ TAPE_INPUT_SEARCH_ADDR1_ADDR2 (fce7)
+
+    fd07  c9         RET
+
+
+TAPE_INPUT_PROCESS_DATA:
+    fd08  13         INX DE                         ; Start second phase of the input algorithm
+    fd09  e5         PUSH HL
+
+    fd0a  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)  ; 'IY' command will actually input data from the tape
+    fd0d  c2 9a fd   JNZ TAPE_INPUT_VERIFY_DATA (fd9a)  ; 'I' command will just verify the data
+
+TAPE_INPUT_LOAD_DATA:
+    fd10  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934)    ; Input the next data byte
+    fd13  77         MOV M, A
+
+    fd14  23         INX HL                         ; Repeat until reached the end of the memory range
+    fd15  cd d3 fb   CALL CMP_HL_DE (fbd3)
+    fd18  c2 10 fd   JNZ TAPE_INPUT_LOAD_DATA (fd10)
+
+TAPE_INPUT_LOAD_CRC:
+    fd1b  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934); Input CRC bytes (low byte first)
+    fd1e  4f         MOV C, A
+    fd1f  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934)
+    fd22  47         MOV B, A
+
+TAPE_INPUT_PRINT_RESULTS:
+    fd23  e1         POP HL                     ; Print the start address
+    fd24  c5         PUSH BC
+    fd25  cd 4d fc   CALL PRINT_HL (fc4d)
+    
+    fd28  1b         DCX DE                     ; Print end address
+    fd29  eb         XCHG
+    fd2a  cd 4d fc   CALL PRINT_HL (fc4d)
+
+    fd2d  cd 43 fe   CALL CALC_CRC (fe43)       ; Calculate and print memory data CRC
+    fd30  cd 3b fe   CALL PRINT_CRC (fe3b)
+
+    fd33  eb         XCHG                       ; Print CRC stored on the tape
+    fd34  c1         POP BC
+    fd35  cd 3b fe   CALL PRINT_CRC (fe3b)
+
+    fd38  cd d3 fb   CALL CMP_HL_DE (fbd3)      ; Report an error if CRC do not match
+    fd3b  c4 b9 fb   CNZ REPORT_INPUT_ERROR (fbb9)
+
+    fd3e  c9         RET                        ; End of command processing
+
+
+TAPE_INPUT_SKIP_ADDRESS_FIELDS:
+    fd3f  cd 36 f9   CALL IN_BYTE (f936)        ; Skip stored start and end addresses
+    fd42  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934)
+    fd45  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934)
+    fd48  c3 34 f9   JMP IN_BYTE_NO_SYNC (f934)
+
+TAPE_INPUT_ARG2_NOT_SET:
+    fd4b  fe 20      CPI A, 20                  ; Check if space after the command is specified
+    fd4d  c2 57 fd   JNZ TAPE_INPUT_ARG2_NOT_SET_1 (fd57)
+
+    fd50  23         INX HL                     ; Check if there is EOL symbol right after space
+    fd51  7e         MOV A, M
+    fd52  fe 0d      CPI A, 0d
+    fd54  c2 82 fd   JNZ TAPE_INPUT_APPLY_OFFSET (fd82)
+
+TAPE_INPUT_ARG2_NOT_SET_1:
+    fd57  7e         MOV A, M                   ; Have we reached EOL?
+    fd58  fe 0d      CPI A, 0d
+    fd5a  ca 70 fd   JZ TAPE_INPUT_READ_START_ADDR (fd70)
+
+TAPE_INPUT_SEARCH_ADDR1:
+    fd5d  78         MOV A, B                   ; Input start address high byte
+    fd5e  cd 36 f9   CALL IN_BYTE (f936)
+    
+    fd61  ba         CMP D                      ; Compare it with the argument
+    fd62  c2 5d fd   JNZ TAPE_INPUT_SEARCH_ADDR1 (fd5d)
+
+    fd65  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934); Input and compare the start address low byte
+    fd68  bb         CMP E
+    fd69  c2 5d fd   JNZ TAPE_INPUT_SEARCH_ADDR1 (fd5d)
+
+    fd6c  eb         XCHG
+    fd6d  c3 79 fd   JMP TAPE_INPUT_READ_END_ADDR (fd79)
+
+TAPE_INPUT_READ_START_ADDR:
+    fd70  78         MOV A, B
+
+    fd71  cd 36 f9   CALL IN_BYTE (f936)        ; Read start address into HL
+    fd74  67         MOV H, A
+    fd75  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934)
+    fd78  6f         MOV L, A
+
+TAPE_INPUT_READ_END_ADDR:
+    fd79  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934); Read end address into DE
+    fd7c  57         MOV D, A
+    fd7d  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934)
+    fd80  5f         MOV E, A
+    fd81  c9         RET
+
+TAPE_INPUT_APPLY_OFFSET:
+    fd82  78         MOV A, B                   ; Will require sync for the first input byte
+
+    fd83  cd 36 f9   CALL IN_BYTE (f936)        ; Input inverted start addess in HL
+    fd86  2f         CMA
+    fd87  67         MOV H, A
+    fd88  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934)
+    fd8b  2f         CMA
+    fd8c  6f         MOV L, A
+
+    fd8d  23         INX HL                     ; HL += 1
+
+    fd8e  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934)    ; HL is a difference between argument start address, and
+    fd91  19         DAD DE                         ; start address stored on the tape
+
+    fd92  47         MOV B, A                   ; Input end address to BC
+    fd93  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934)
+    fd96  4f         MOV C, A
+
+    fd97  09         DAD BC                     ; HL = end address + difference
+    fd98  eb         XCHG
+
+    fd99  c9         RET
+
+
+TAPE_INPUT_VERIFY_DATA:
+    fd9a  cd 34 f9   CALL IN_BYTE_NO_SYNC (f934); Load the next byte and compare with the memory
+    fd9d  be         CMP M
+    fd9e  c2 ba fd   JNZ INPUT_DATA_VEFIFY_FAILED (fdba)
+
+    fda1  23         INX HL                     ; Advance to the next byte
+
+    fda2  cd d3 fb   CALL CMP_HL_DE (fbd3)      ; Continue until reached the end of data block
+    fda5  c2 9a fd   JNZ TAPE_INPUT_VERIFY_DATA (fd9a)
+
+    fda8  c3 1b fd   JMP TAPE_INPUT_LOAD_CRC (fd1b) ; Load CRC and print verification results
+
+
+; Set Z if command mode flag is not set ('Y' command alteration is provided)
+GET_COMMAND_MODE_FLAG:
+    fdab  3a ff f7   LDA f7ff                   ; Load the 'command mode' flag
+    fdae  b7         ORA A                      ; Set Z if it is not set
+    fdaf  c9         RET
+
+
+; Set command mode
+RESET_COMMAND_MODE_FLAG:
+    fdb0  af         XRA A                      ; Set 'command mode' flag to 0x00
+
+STORE_COMMAND_MODE_FLAG:
+    fdb1  32 ff f7   STA f7ff
+    fdb4  c9         RET
+
+
+; Set command mode
+SET_COMMAND_MODE_FLAG:
+    fdb5  af         XRA A                      ; Set 'command mode' flag to 0xff
+    fdb6  3d         DCR A
+    fdb7  c3 b1 fd   JMP STORE_COMMAND_MODE_FLAG (fdb1)
+
+
+INPUT_DATA_VEFIFY_FAILED:
+    fdba  cd af fb   CALL PRINT_BYTE_CHECK_KBD (fbaf)   ; Print byte loaded from the tape
+
+    fdbd  cd ab fb   CALL PRINT_HL_AND_M (fbab) ; Print address, and value in the memory
+
+    fdc0  cd 8f fb   CALL INPUT_ERROR (fb8f)    ; Report the error, and print the input function report
+    fdc3  c3 23 fd   JMP TAPE_INPUT_PRINT_RESULTS (fd23)
+
+
+; HL = HL-DE
+HL_SUB_DE:
+    fdc6  7d         MOV A, L                   ; Subtract DE from HL
+    fdc7  93         SUB E
+    fdc8  6f         MOV L, A
+    fdc9  7c         MOV A, H
+    fdca  9a         SBB D
+    fdcb  67         MOV H, A
+    fdcc  c9         RET
+
+
+; Command M: View and edit memory
+;
+; Usage:
+; M <address>
+;
+; The command lists memory byte at the requested address, its symbol representation, and waits
+; for the user input. The user may enter a new hexadecimal value, or even start a symbolic input
+; (starting ' single quote symbol). 
+;
+; Up arrow moves back to the previous address, Down arrow, and empty input move to the next address.
+; Non-hexadecimal input stops the command execution.
+COMMAND_M_MEM_EDIT:
+    fdcd  cd bf fb   CALL PARSE_AND_LOAD_ARGUMENTS (fbbf)   ; Parse arguments
+    fdd0  c4 b9 fb   CNZ REPORT_INPUT_ERROR (fbb9)
+
+MEM_EDIT_LOOP:
+    fdd3  cd 6b fc   CALL PRINT_NEW_LINE (fc6b) ; Print address and value starting the new line
+    fdd6  cd 60 fc   CALL PRINT_ADDR_AND_VALUE (fc60)
+
+    fdd9  cd 1d fe   CALL PRINT_SYMBOL (fe1d)   ; Display printable version of the byte
+
+    fddc  cd 8b fa   CALL INPUT_LINE (fa8b)     ; Get the new value for the memory cell
+
+    fddf  fe 1a      CPI A, 1a                  ; Down arrow pressed?
+    fde1  ca 0d fe   JZ MEM_EDIT_NEXT (fe0d)
+
+    fde4  fe 19      CPI A, 19                  ; Up arrow pressed?
+    fde6  c2 ed fd   JNZ MEM_EDIT_PROCESS_INPUT (fded)
+
+    fde9  2b         DCX HL                     ; Up arrow gets back to the previous address
+    fdea  c3 d3 fd   JMP MEM_EDIT_LOOP (fdd3)
+
+MEM_EDIT_PROCESS_INPUT:
+    fded  11 7b f7   LXI DE, f77b               ; Load entered char
+    fdf0  1a         LDAX DE
+
+    fdf1  fe 0d      CPI A, 0d                  ; Return key with no value entered just moves to the next addr
+    fdf3  ca 0d fe   JZ MEM_EDIT_NEXT (fe0d)
+
+    fdf6  fe 20      CPI A, 20                  ; Space symbol moves to the next addr
+    fdf8  ca 0d fe   JZ MEM_EDIT_NEXT (fe0d)
+
+    fdfb  fe 27      CPI A, 27                  ; Single quote starts symbolic input
+    fdfd  ca 11 fe   JZ MEM_EDIT_SYMBOLIC (fe11)
+
+    fe00  e6 d0      ANI A, d0                  ; Non-hex characters stop the input
+    fe02  c8         RZ
+
+    fe03  e5         PUSH HL                    ; Parse entered value
+    fe04  cd 04 fc   CALL PARSE_HEX (fc04)
+    fe07  c4 b9 fb   CNZ REPORT_INPUT_ERROR (fbb9)
+
+    fe0a  7d         MOV A, L
+    fe0b  e1         POP HL
+
+    fe0c  77         MOV M, A                   ; Save the value
+
+MEM_EDIT_NEXT:
+    fe0d  23         INX HL                     ; Advance to the next byte
+    fe0e  c3 d3 fd   JMP MEM_EDIT_LOOP (fdd3)
+
+
+MEM_EDIT_SYMBOLIC:
+    fe11  13         INX DE                     ; Advance to the next input symbol
+    fe12  1a         LDAX DE
+
+    fe13  fe 0d      CPI A, 0d                  ; Stop symbolic input on Return key
+    fe15  ca d3 fd   JZ MEM_EDIT_LOOP (fdd3)
+
+    fe18  77         MOV M, A                   ; Store symbol as is, without hex->char conversion
+    fe19  23         INX HL
+
+    fe1a  c3 11 fe   JMP MEM_EDIT_SYMBOLIC (fe11)
+
+
+
+; Print symbol if possible. Non printable and special symbols are printed as '_'
+; Argument: A - symbol to print
+PRINT_SYMBOL:
+    fe1d  e5         PUSH HL                    ; Ensure the symbol is printable, or replace it with '_'
+    fe1e  cd 28 fe   CALL GET_PRINTABLE_SYMBOL (fe28)
+    fe21  e1         POP HL
+
+    fe22  cd f0 f9   CALL PUT_CHAR (f9f0)       ; Print the symbol
+
+    fe25  c3 67 fc   JMP PRINT_SPACE (fc67)     ; Print a space, and exit
+
+
+; Get printable symbol for char in A. Special symbols are replaced with '_'. 
+; Return symbol in C
+GET_PRINTABLE_SYMBOL:
+    fe28  0e 5f      MVI C, 5f                  ; Special symbols are printed as '_'
+
+    fe2a  b7         ORA A                      ; Zero and symbols >= 0x80 are special
+    fe2b  c8         RZ
+    fe2c  f8         RM
+
+    fe2d  21 f8 ff   LXI HL, SPECIAL_SYMBOLS (fff8)
+GET_PRINTABLE_SYMBOL_LOOP:
+    fe30  be         CMP M                      ; Symbols in special symbols list are also printed with '_'
+    fe31  c8         RZ
+
+    fe32  2c         INR L                      ; Iterate till the end of special symbols list
+    fe33  c2 30 fe   JNZ GET_PRINTABLE_SYMBOL_LOOP (fe30)
+
+    fe36  4f         MOV C, A                   ; Normal symbols are printed as is
+    fe37  c9         RET
+
 
 COMMAND_K_CRC:
-fe38  cd 40 fe   CALL fe40
-????:
-fe3b  60         MOV H, B
-fe3c  69         MOV L, C
-fe3d  c3 4d fc   JMP fc4d
-????:
-fe40  cd bf fb   CALL fbbf
-????:
-fe43  23         INX HL
-fe44  01 00 00   LXI BC, 0000
-????:
-fe47  1a         LDAX DE
-fe48  81         ADD C
-fe49  4f         MOV C, A
-fe4a  3e 00      MVI A, 00
-fe4c  88         ADC B
-fe4d  47         MOV B, A
-fe4e  13         INX DE
-fe4f  cd d3 fb   CALL CMP_HL_DE (fbd3)
-fe52  c2 47 fe   JNZ fe47
-fe55  c9         RET
-fe56  21 3a f8   LXI HL, ENTER_NEXT_COMMAND (f83a)
-fe59  e5         PUSH HL
-????:
-fe5a  cd 6b fc   CALL fc6b
-fe5d  21 64 f7   LXI HL, f764
-fe60  11 e8 ff   LXI DE, ffe8
-????:
-fe63  1a         LDAX DE
-fe64  b7         ORA A
-fe65  ca 7e fe   JZ fe7e
-fe68  cd e9 f9   CALL PUT_CHAR_A (f9e9)
-fe6b  3e 3d      MVI A, 3d
-fe6d  cd e9 f9   CALL PUT_CHAR_A (f9e9)
-fe70  23         INX HL
-fe71  7e         MOV A, M
-fe72  23         INX HL
-fe73  e5         PUSH HL
-fe74  66         MOV H, M
-fe75  6f         MOV L, A
-fe76  cd 4d fc   CALL fc4d
-fe79  e1         POP HL
-fe7a  13         INX DE
-fe7b  c3 63 fe   JMP fe63
-????:
-fe7e  cd 8b fa   CALL INPUT_LINE (fa8b)
-fe81  3a 7b f7   LDA f77b
-fe84  fe 0d      CPI A, 0d
-fe86  c8         RZ
-fe87  cd c6 fb   CALL fbc6
-fe8a  21 e8 ff   LXI HL, ffe8
-fe8d  11 65 f7   LXI DE, f765
-????:
-fe90  3a 7b f7   LDA f77b
-fe93  be         CMP M
-fe94  ca a6 fe   JZ fea6
-fe97  23         INX HL
-fe98  13         INX DE
-fe99  13         INX DE
-fe9a  7b         MOV A, E
-fe9b  fe 6f      CPI A, 6f
-fe9d  c2 90 fe   JNZ fe90
-fea0  cd 8f fb   CALL INPUT_ERROR (fb8f)
-fea3  c3 7e fe   JMP fe7e
-????:
-fea6  2a 51 f7   LHLD f751
-fea9  7d         MOV A, L
-feaa  12         STAX DE
-feab  13         INX DE
-feac  7c         MOV A, H
-fead  12         STAX DE
-feae  c3 5a fe   JMP fe5a
-feb1  3e c3      MVI A, c3
-feb3  32 50 f7   STA f750
-feb6  cd c1 fc   CALL fcc1
-feb9  cd c9 fb   CALL fbc9
-febc  ca ed fe   JZ feed
-febf  2a 53 f7   LHLD f753
-fec2  22 73 f7   SHLD f773
-fec5  7e         MOV A, M
-fec6  32 71 f7   STA f771
-fec9  eb         XCHG
-feca  2a 55 f7   LHLD f755
-fecd  22 75 f7   SHLD f775
-fed0  7e         MOV A, M
-fed1  32 72 f7   STA f772
-fed4  3a 57 f7   LDA f757
-fed7  32 77 f7   STA f777
-feda  3e ff      MVI A, ff
-fedc  77         MOV M, A
-fedd  12         STAX DE
-fede  3e c3      MVI A, c3
-fee0  32 38 00   STA 0038
-fee3  21 23 ff   LXI HL, ff23
-fee6  22 39 00   SHLD 0039
-fee9  21 1c ff   LXI HL, ff1c
-feec  e5         PUSH HL
-????:
-feed  cd ab fd   CALL fdab
-fef0  c2 50 f7   JNZ f750
-????:
-fef3  31 65 f7   LXI SP, f765
-fef6  f1         POP PSW
-fef7  c1         POP BC
-????:
-fef8  d1         POP DE
-fef9  e1         POP HL
-fefa  e1         POP HL
-fefb  f9         SPHL
-fefc  2a 6b f7   LHLD f76b
-feff  c3 50 f7   JMP f750
-????:
-ff02  22 6b f7   SHLD f76b
-ff05  e1         POP HL
-ff06  e3         XTHL
-ff07  2b         DCX HL
-ff08  22 6f f7   SHLD f76f
-ff0b  f5         PUSH PSW
-ff0c  21 04 00   LXI HL, 0004
-ff0f  39         DAD SP
-ff10  22 6d f7   SHLD f76d
-ff13  f1         POP PSW
-ff14  e1         POP HL
-ff15  31 6b f7   LXI SP, f76b
-ff18  d5         PUSH DE
-ff19  c5         PUSH BC
-ff1a  f5         PUSH PSW
-ff1b  e9         PCHL
-????:
-ff1c  af         XRA A
-ff1d  32 77 f7   STA f777
-ff20  c3 39 ff   JMP ff39
-????:
-ff23  cd 02 ff   CALL ff02
-ff26  31 fd f7   LXI SP, f7fd
-ff29  cd 5a fe   CALL fe5a
-ff2c  2a 6f f7   LHLD f76f
-ff2f  eb         XCHG
-ff30  2a 75 f7   LHLD f775
-ff33  cd d3 fb   CALL CMP_HL_DE (fbd3)
-ff36  c2 55 ff   JNZ ff55
-????:
-ff39  3a 72 f7   LDA f772
-ff3c  77         MOV M, A
-ff3d  22 51 f7   SHLD f751
-ff40  2a 73 f7   LHLD f773
-ff43  36 ff      MVI M, ff
-ff45  3a 77 f7   LDA f777
-ff48  3d         DCR A
-ff49  32 77 f7   STA f777
-ff4c  3d         DCR A
-ff4d  f2 f3 fe   JP fef3
-????:
-ff50  3a 71 f7   LDA f771
-ff53  77         MOV M, A
-ff54  c9         RET
-????:
-ff55  36 ff      MVI M, ff
-ff57  2a 73 f7   LHLD f773
-ff5a  22 51 f7   SHLD f751
-ff5d  cd 50 ff   CALL ff50
-ff60  c3 f3 fe   JMP fef3
-ff63  0d         DCR C
-ff64  0d         DCR C
-ff65  79         MOV A, C
-ff66  32 7a f7   STA f77a
-ff69  c9         RET
-ff6a  21 7c f7   LXI HL, f77c
-????:
-ff6d  7e         MOV A, M
-ff6e  fe 0d      CPI A, 0d
-ff70  c8         RZ
-ff71  cd af fb   CALL fbaf
-ff74  23         INX HL
-ff75  c3 6d ff   JMP ff6d
+    fe38  cd 40 fe   CALL CALC_CRC_GET_ARGS (fe40)
+
+; Prints the CRC in BC
+PRINT_CRC:
+    fe3b  60         MOV H, B
+    fe3c  69         MOV L, C
+    fe3d  c3 4d fc   JMP PRINT_HL (fc4d)
+
+; Perform CRC calculation according to command line arguments
+CALC_CRC_GET_ARGS:
+    fe40  cd bf fb   CALL PARSE_AND_LOAD_ARGUMENTS (fbbf)
+
+; Perform CRC calculation for DE-HL memory range
+CALC_CRC:
+    fe43  23         INX HL                     ; Set the end address to after the desired range
+
+    fe44  01 00 00   LXI BC, 0000               ; Zero result accumulator
+
+CALC_CRC_LOOP:
+    fe47  1a         LDAX DE                    ; Add the byte at [DE] to BC
+    fe48  81         ADD C
+    fe49  4f         MOV C, A
+    fe4a  3e 00      MVI A, 00
+    fe4c  88         ADC B
+    fe4d  47         MOV B, A
+
+    fe4e  13         INX DE                     ; Advance to the next byte
+
+    fe4f  cd d3 fb   CALL CMP_HL_DE (fbd3)      ; Repeat until reached the end of the range
+    fe52  c2 47 fe   JNZ CALC_CRC_LOOP (fe47)
+
+    fe55  c9         RET
+
+
+; Command X: View and edit CPU registers
+;
+; This command is used in conjunction with Command G (run program) and breakpoint feature. When
+; the program stops at the breakpoint, Command X allows viewing and editing CPU registers at
+; breakpoint.
+;
+; As a first step, the function prints all the registers. After the registers are printed, the 
+; function waits for the user input in a form <register letter><16-bit hex value> (where register
+; letter is one of A, B, D, H, S, O, which correspond to AF, BC, DE, HL, SP, and PC registers)
+;
+; Note: regular commands are overwriting register values, so X command may be used only immediately
+; after breakpoint happened. Even subsequent running of X command will corrumpt register values. Bug?
+COMMAND_X_PRINT_REGISTERS:
+    fe56  21 3a f8   LXI HL, ENTER_NEXT_COMMAND (f83a)  ; Push return address
+    fe59  e5         PUSH HL
+
+PRINT_REGISTERS:
+    fe5a  cd 6b fc   CALL PRINT_NEW_LINE (fc6b)
+
+    fe5d  21 64 f7   LXI HL, BREAKPTR_AF_REG - 1 (f764)
+    fe60  11 e8 ff   LXI DE, REGISTER_LETTERS (ffe8)
+
+PRINT_REGISTERS_LOOP:
+    fe63  1a         LDAX DE                    ; Get the register letter
+    fe64  b7         ORA A                      
+    fe65  ca 7e fe   JZ PRINT_REGISTERS_EDIT (fe7e) ; Check if we reached end of the list
+
+    fe68  cd e9 f9   CALL PUT_CHAR_A (f9e9)     ; Print register letter
+
+    fe6b  3e 3d      MVI A, 3d                  ; Print '='
+    fe6d  cd e9 f9   CALL PUT_CHAR_A (f9e9)
+
+    fe70  23         INX HL                     ; Read register value in HL
+    fe71  7e         MOV A, M
+    fe72  23         INX HL
+    fe73  e5         PUSH HL
+    fe74  66         MOV H, M
+    fe75  6f         MOV L, A
+
+    fe76  cd 4d fc   CALL PRINT_HL (fc4d)       ; Print register value
+    fe79  e1         POP HL
+
+    fe7a  13         INX DE                     ; Repeat for the next register
+    fe7b  c3 63 fe   JMP PRINT_REGISTERS_LOOP (fe63)
+
+PRINT_REGISTERS_EDIT:
+    fe7e  cd 8b fa   CALL INPUT_LINE (fa8b)     ; Input register editing line
+
+    fe81  3a 7b f7   LDA f77b                   ; Return if nothing is entered
+    fe84  fe 0d      CPI A, 0d
+    fe86  c8         RZ
+
+    fe87  cd c6 fb   CALL PARSE_AND_LOAD_ARGUMENTS (fbc6)
+
+    fe8a  21 e8 ff   LXI HL, REGISTER_LETTERS (ffe8)
+    fe8d  11 65 f7   LXI DE, BREAKPTR_AF_REG (f765)
+
+PRINT_REGISTERS_EDIT_LOOP:
+    fe90  3a 7b f7   LDA f77b                   ; Check if the entered letter matches one in the list
+    fe93  be         CMP M
+    fe94  ca a6 fe   JZ PRINT_REGISTERS_EDIT_EXIT (fea6)
+
+    fe97  23         INX HL                     ; If not - advance to the next letter/register
+    fe98  13         INX DE
+    fe99  13         INX DE
+
+    fe9a  7b         MOV A, E                   ; Check if we reached the end of the list
+    fe9b  fe 6f      CPI A, 6f
+    fe9d  c2 90 fe   JNZ PRINT_REGISTERS_EDIT_LOOP (fe90)
+
+    fea0  cd 8f fb   CALL INPUT_ERROR (fb8f)    ; If not register is matched - report an error and exit
+    fea3  c3 7e fe   JMP PRINT_REGISTERS_EDIT (fe7e)
+
+PRINT_REGISTERS_EDIT_EXIT:
+    fea6  2a 51 f7   LHLD ARG_1 (f751)          ; Store the new register value
+    fea9  7d         MOV A, L
+    feaa  12         STAX DE
+    feab  13         INX DE
+    feac  7c         MOV A, H
+    fead  12         STAX DE
+
+    feae  c3 5a fe   JMP PRINT_REGISTERS (fe5a) ; Restart print/edit registers loop
+
+
+
+; Command G: Run user program
+;
+; Usage:
+; - G <addr>                                    - Run user program from <addr>
+; - GY <addr>[, <bp1>[, <bp2>[, <counter>]]]    - Run user program from <addr>, set up to two breakpoints.
+;                                                 This command also sets/restores registers previously set by
+;                                                 Command X (edit registers) or captured during breakpoint
+;                                                 handling. 
+;
+; To run user program, the function performs the following steps:
+; - If 1 or 2 breakpoints are specified, their addresses are stored at 0xf773 and 0xf775.
+; - The function places 0xff (RST7 opcode) at breakpoint addresses. Previous values of these memory
+;   cells are stored at 0xf771 and 0xf772
+; - RST7 handler at 0x0038 address is filled with JMP instruction to the BREAKPOINT_HANDLER function
+; - Program is executed via trampoline at 0xf750 (where JMP opcode is placed). The address 0xf751
+;   is the command line argument 1
+;
+; Note: i8080 does not provide any special debug/breakpoint registers. So in order to break the program
+; at a specific place the trick is used - instruction at the breakpoint address is replaced with RST7, and
+; when breakpoint is triggered the instruction is restored. There is no way to set the same breakpoint
+; again immediately, as the program execution must be continued from the restored instruction. This causes
+; a few consequences/limitations for the Command G:
+; 1) Breakpoints are one-time only. Once breakpoint is triggered the instruction under the breakpoint is
+;    restored. It is possible to use 2 separate breakpoints, but once a breakpoint is hit, control flow
+;    returns to the monitor, and the program shall be explicitly continued with GY instruction starting
+;    the breakpoint address.
+; 2) Using breakpoints in a loop is possible, in case if both breakpoints are set within the same loop, 
+;    and breakpoints are triggered alternately. In this case 1st breakpoint restores 2nd breakpoint and vice
+;    versa. 
+;
+; In a loop mode a special hit counter (argument 4) can be used to limit number of breakpoint 2 triggers. 
+; Typically when breakpoint is fired, the handler prints current registers, and wait for a key press. After
+; that user program execution continues. When the counter is over the control flow returns to the Monitor
+COMMAND_G_RUN_PROGRAM:
+    feb1  3e c3      MVI A, c3                  ; Prepare JMP to the user program trampoline
+    feb3  32 50 f7   STA USER_PRG_TRAMPOLINE (f750)
+
+    feb6  cd c1 fc   CALL PARSE_COMMAND_MODE (fcc1) ; Parse arguments
+    feb9  cd c9 fb   CALL DO_PARSE_AND_LOAD_ARGUMENTS_ALT (fbc9)
+
+    febc  ca ed fe   JZ RUN_PROGRAM_NO_BREAKPOINTS (feed)   ; Skip arg2 processing, if it is not set
+
+    febf  2a 53 f7   LHLD ARG_2 (f753)          ; Store first breakpoint address
+    fec2  22 73 f7   SHLD BREAKPOINT1_ADDR (f773)
+
+    fec5  7e         MOV A, M                   ; Store the instruction byte at the breakpoint address
+    fec6  32 71 f7   STA BREAKPOINT1_OPCODE (f771)
+
+    fec9  eb         XCHG                       ; Store second breakpoint address
+    feca  2a 55 f7   LHLD SHLD ARG_3 (f755)
+    fecd  22 75 f7   SHLD BREAKPOINT2_ADDR (f775)
+
+    fed0  7e         MOV A, M                   ; Store the instruction byte at the breakpoint address
+    fed1  32 72 f7   STA BREAKPOINT2_OPCODE (f772)
+
+    fed4  3a 57 f7   LDA ARG_4 (f757)           ; Store Arg4 as a breakpoint counter
+    fed7  32 77 f7   STA BREAKPOINT_COUNTER (f777)
+
+    feda  3e ff      MVI A, ff                  ; Set RST7 opcode at breakpoint 1 abd breakpoint 2 addresses
+    fedc  77         MOV M, A
+    fedd  12         STAX DE
+
+    fede  3e c3      MVI A, c3                  ; Set JMP instruction at RST7 handler address (0x0038)
+    fee0  32 38 00   STA 0038
+
+    fee3  21 23 ff   LXI HL, BREAKPOINT_HANDLER (ff23)  ; Set handler address for JMP instruction above
+    fee6  22 39 00   SHLD 0039
+
+    fee9  21 1c ff   LXI HL, RESET_BREAKPOINT_COUNTER (ff1c); Push special return address, so that function
+    feec  e5         PUSH HL                                ; when exiting resets the breakpoints counter
+
+RUN_PROGRAM_NO_BREAKPOINTS:
+    feed  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)  ; Command G will execute user program immediately
+    fef0  c2 50 f7   JNZ USER_PRG_TRAMPOLINE (f750)     ; with no breakpoints. Command GY processing below.
+
+JMP_TO_USER_PROGRAM:
+    fef3  31 65 f7   LXI SP, BREAKPTR_AF_REG (f765) ; Restore user program registers
+    fef6  f1         POP PSW
+    fef7  c1         POP BC
+    fef8  d1         POP DE
+    fef9  e1         POP HL
+    fefa  e1         POP HL
+    fefb  f9         SPHL
+
+    fefc  2a 6b f7   LHLD BREAKPOINT_HL_REG (f76b)  ; Additionally restore HL
+
+    feff  c3 50 f7   JMP USER_PRG_TRAMPOLINE (f750) ; Run the program
+
+
+; Save CPU registers into dedicated variables, to be viewed/edited by Command X
+SAVE_REGISTERS:
+    ff02  22 6b f7   SHLD BREAKPOINT_HL_REG (f76b)  ; Save HL
+
+    ff05  e1         POP HL                     ; Save user program PC-1 value (PC before RST7 is
+    ff06  e3         XTHL                       ; triggered)
+    ff07  2b         DCX HL
+    ff08  22 6f f7   SHLD BREAKPOINT_PC_REG (f76f)
+
+    ff0b  f5         PUSH PSW                   ; Save user program SP register value
+    ff0c  21 04 00   LXI HL, 0004
+    ff0f  39         DAD SP
+    ff10  22 6d f7   SHLD BREAKPOINT_SP_REG (f76d)
+
+    ff13  f1         POP PSW                    ; Save other registers into their variables
+    ff14  e1         POP HL
+    ff15  31 6b f7   LXI SP, BREAKPOINT_HL_REG (f76b)
+    ff18  d5         PUSH DE
+    ff19  c5         PUSH BC
+    ff1a  f5         PUSH PSW
+
+    ff1b  e9         PCHL                       ; Return to the caller
+
+
+; Set the breakpoint counter to zero, then ????
+RESET_BREAKPOINT_COUNTER:
+    ff1c  af         XRA A
+    ff1d  32 77 f7   STA BREAKPOINT_COUNTER (f777)
+
+    ff20  c3 39 ff   JMP BREAKPOINT_HANDLER_1 (ff39)
+
+; Breakpoint handler
+;
+; This function is executed on RST7 instruction, which is embedded into the user program by Command G 
+; instead of a normal instruction. The function prints current state of program's registers, and allows
+; to modify the registers. 
+;
+; There are several cases handled:
+; - In case of single breakpoint used, the function restores instruction at the breakpoint address, and exits
+; to the Monitor's loop. 
+; - If two breakpoints are set, the function allows to trigger them once, and restores the instructions
+; underneath. When breakpoint 2 is handled, the function exits to the Monitor
+; - If two breakpoints are set within the same loop, and breakpoint counter is set (argument 4 of the Command
+; GY), the function will continue execution after breakpoints, until the counter is over. The counter is
+; decreased on breakpoint 2 trigger. Breakpoint 1 and breakpoint 2 shall be executed alternately so that
+; breakpoint 1 restores breakpoint 2 and vice versa.
+BREAKPOINT_HANDLER:
+    ff23  cd 02 ff   CALL SAVE_REGISTERS (ff02) ; Save registers
+
+    ff26  31 fd f7   LXI SP, f7fd               ; Set Monitor's stack
+
+    ff29  cd 5a fe   CALL PRINT_REGISTERS (fe5a); Print and edit registers
+
+    ff2c  2a 6f f7   LHLD BREAKPOINT_PC_REG (f76f)  ; Load PC register in DE
+    ff2f  eb         XCHG
+
+    ff30  2a 75 f7   LHLD BREAKPOINT2_ADDR (f775)   ; Check if we hit breakpoint 2 (note that breakpoint 1,
+    ff33  cd d3 fb   CALL CMP_HL_DE (fbd3)          ; and breakpoint 2 addresses are equal, if breakpoint 2
+    ff36  c2 55 ff   JNZ BREAKPOINT_HANDLER_2 (ff55); is not set)
+
+BREAKPOINT_HANDLER_1:
+    ff39  3a 72 f7   LDA BREAKPOINT2_OPCODE (f772)  ; Restore instruction at breakpoint 2
+    ff3c  77         MOV M, A
+
+    ff3d  22 51 f7   SHLD ARG_1 (f751)              ; Set the continue address at point where we just stopped
+
+    ff40  2a 73 f7   LHLD BREAKPOINT1_ADDR (f773)   ; Set RST7 instruction at breakpoint 1 address
+    ff43  36 ff      MVI M, ff
+
+    ff45  3a 77 f7   LDA BREAKPOINT_COUNTER (f777)  ; Decrement the breakpoint counter
+    ff48  3d         DCR A
+    ff49  32 77 f7   STA BREAKPOINT_COUNTER (f777)
+
+    ff4c  3d         DCR A                          ; Do not stop if the counter has not reached zero
+    ff4d  f2 f3 fe   JP JMP_TO_USER_PROGRAM (fef3)
+
+RESTORE_BKP1_OPCODE:
+    ff50  3a 71 f7   LDA BREAKPOINT1_OPCODE (f771)  ; Restore breakpoint 1 instruction
+    ff53  77         MOV M, A
+
+    ff54  c9         RET                            ; Return to the monitor main loop (COMMAND_EXIT)
+
+BREAKPOINT_HANDLER_2:
+    ff55  36 ff      MVI M, ff                      ; Set RST7 opcode at breakpoint 2 address
+
+    ff57  2a 73 f7   LHLD BREAKPOINT1_ADDR (f773)   ; Store breakpoint 1 as a user program address
+    ff5a  22 51 f7   SHLD ARG_1 (f751)
+
+    ff5d  cd 50 ff   CALL RESTORE_BKP1_OPCODE (ff50); Restore instruction under breakpoint 1 and continue
+    ff60  c3 f3 fe   JMP JMP_TO_USER_PROGRAM (fef3) ; execution from this place.
+
+
+; Command R: enable or disable scroll
+; 
+; Usage:
+; R<any symbol>     - enable scroll
+; R                 - disable scroll (clear screen if full page is filled])
+COMMAND_R_ENABLE_SCROLL:
+    ff63  0d         DCR C                          ; Count symbols in the command
+    ff64  0d         DCR C                          ; 2 symbols (e.g. R<symb>) will enable scroll (A non zero)
+    ff65  79         MOV A, C                       ; 1 symbol ('R' only) will disable scroll (A=0x00)
+
+    ff66  32 7a f7   STA ENABLE_SCROLL (f77a)       ; Store the flag
+    ff69  c9         RET
+
+
+; Command T: trace the command line
+;
+; Usage:
+; T<arguments>  - print command arguments in a hexadecimal form
+COMMAND_T_TRACE_CMD_LINE:
+    ff6a  21 7c f7   LXI HL, f77b + 1 (f77c)    ; Load pointer to the command arguments
+
+TRACE_CMD_LINE_LOOP:
+    ff6d  7e         MOV A, M                   ; Repeat until EOL is reached
+    ff6e  fe 0d      CPI A, 0d
+    ff70  c8         RZ
+
+    ff71  cd af fb   CALL PRINT_BYTE_CHECK_KBD (fbaf)   ; Print the symbol
+
+    ff74  23         INX HL                     ; Advance to the next symbol and repeat
+    ff75  c3 6d ff   JMP TRACE_CMD_LINE_LOOP (ff6d)
+
 
 HELLO_STR:
     ff78  0a 2a 2a 2a 2a 20 6f 73       db 0x0a, "**** ОС"
@@ -1549,20 +2128,20 @@ PROMPT_STR:
     ff9b  00                            db 0x00
 
 COMMANDS_TABLE:
-    ff9c  49 cf fc      db 'I', fccf
-    ff9f  4f 71 fc      db 'O', fc71
-    ffa2  4d cd fd      db 'M', fdcd
-    ffa5  47 b1 fe      db 'G', feb1
-    ffa8  58 56 fe      db 'X', fe56
+    ff9c  49 cf fc      db 'I', COMMAND_I_TAPE_INPUT (fccf)
+    ff9f  4f 71 fc      db 'O', COMMAND_O_TAPE_OUTPUT (fc71)
+    ffa2  4d cd fd      db 'M', COMMAND_M_MEM_EDIT (fdcd)
+    ffa5  47 b1 fe      db 'G', COMMAND_G_RUN_PROGRAM (feb1)
+    ffa8  58 56 fe      db 'X', COMMAND_X_PRINT_REGISTERS (fe56)
     ffab  4b 38 fe      db 'K', COMMAND_K_CRC (fe38)
-    ffae  56 fa c0      db 'V', c0fa
-    ffb1  52 63 ff      db 'R', ff63
+    ffae  56 fa c0      db 'V', COMMAND_V_TAPE_SPEED_ADJUST (c0fa)
+    ffb1  52 63 ff      db 'R', COMMAND_R_ENABLE_SCROLL (ff63)
     ffb4  43 00 c0      db 'C', cc00
-    ffb7  44 b5 c0      db 'D', c0b5
-    ffba  46 63 c0      db 'F', c063
-    ffbd  4a a2 c0      db 'J', c0a2 
-    ffc0  48 92 c0      db 'H', c092
-    ffc3  54 6a ff      db 'T', ff6a
+    ffb7  44 b5 c0      db 'D', COMMAND_D_DUMP_MEMORY (c0b5)
+    ffba  46 63 c0      db 'F', COMMAND_F_FILL_MEMORY (c063)
+    ffbd  4a a2 c0      db 'J', COMMAND_J_QUICK_JUMP (c0a2)
+    ffc0  48 92 c0      db 'H', COMMAND_H_SUM_DIFF_ARG (c092)
+    ffc3  54 6a ff      db 'T', COMMAND_T_TRACE_CMD_LINE (ff6a)
     ffc6  53 34 c1      db 'S', c134
     ffc9  45 00 cb      db 'E', cb00
     ffcc  41 20 ca      db 'A', ca20
@@ -1576,21 +2155,15 @@ COMMANDS_TABLE:
     ffe4  42 00 d8      db 'B', d800
     ffe7  00            db 0x00
 
-????:
-ffe8  41         MOV B, C
-ffe9  42         MOV B, D
-ffea  44         MOV B, H
-ffeb  48         MOV C, B
-ffec  53         MOV D, E
-ffed  4f         MOV C, A
+REGISTER_LETTERS:
+    ffe8  41 42 44 48 53 4f 00     db "ABDHSO", 0x00    ; Register names when dumping regs with Command X
 
-ffee  00         NOP
 
 SYMBOL_HANDLERS:
-    ffef  38 33 40 48 38 1e 2f 4f
+    ffef  38 33 40 48 38 1e 2f 4f               ; Low byte address ofspecial symbols printing handler (0xfaXX)
 
 SPECIAL_SYMBOLS_KBD_LUT:
-    fff7  20                                    ; This and the following bytes provide codes for special keys
+    fff7  20                                    ; This and following bytes provide codes for special keys
 
 SPECIAL_SYMBOLS:
     fff8  18 08 19 1a 0d 1f 0c 0a               ; List of special symbols
