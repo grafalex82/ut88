@@ -19,7 +19,7 @@ c017  23         INX HL
 c018  eb         XCHG
 ????:
 c019  e5         PUSH HL
-c01a  cd 48 c0   CALL c048
+c01a  cd 48 c0   CALL PRINT_BC (c048)
 c01d  e1         POP HL
 ????:
 c01e  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)
@@ -63,6 +63,7 @@ c050  c2 13 c0   JNZ c013
 c053  af         XRA A
 c054  2f         CMA
 c055  32 59 f7   STA INPUT_POLARITY (f759)
+
 c058  e5         PUSH HL
 c059  cd c6 fd   CALL HL_SUB_DE (fdc6)
 c05c  09         DAD BC
@@ -234,154 +235,234 @@ GET_BREAKPOINT_HL:
     c0f8  eb         XCHG
     c0f9  c9         RET
 
+
+; Command V: Measure tape delay constant
+;
+; The function measures tape delay constant to be used with Command I later. The function stores measured
+; constant in 0xf75c and prints the value to the screen, so that user can type it for Command I later.
 COMMAND_V_TAPE_SPEED_ADJUST:
-c0fa  21 00 00   LXI HL, 0000
-c0fd  01 c4 01   LXI BC, 01c4
-c100  db a1      IN a1
-c102  a0         ANA B
-c103  5f         MOV E, A
-????:
-c104  db a1      IN a1
-c106  a0         ANA B
-c107  bb         CMP E
-c108  ca 04 c1   JZ c104
-c10b  5f         MOV E, A
-????:
-c10c  db a1      IN a1
-c10e  a0         ANA B
-c10f  23         INX HL
-c110  bb         CMP E
-c111  ca 0c c1   JZ c10c
-c114  5f         MOV E, A
-c115  0d         DCR C
-c116  c2 0c c1   JNZ c10c
-c119  29         DAD HL
-c11a  29         DAD HL
-c11b  7c         MOV A, H
-c11c  b7         ORA A
-c11d  fa 2e c1   JM c12e
-c120  2f         CMA
-c121  e6 70      ANI A, 70
-c123  0f         RRC
-c124  0f         RRC
-c125  0f         RRC
-c126  47         MOV B, A
-c127  0f         RRC
-c128  1f         RAR
-c129  80         ADD B
-c12a  3c         INR A
-c12b  47         MOV B, A
-c12c  7c         MOV A, H
-c12d  90         SUB B
-????:
-c12e  32 5c f7   STA f75c
-c131  c3 b3 f9   JMP f9b3
+    c0fa  21 00 00   LXI HL, 0000               ; The counter
+
+    c0fd  01 c4 01   LXI BC, 01c4               ; B=01 - input bitmask, C=0xc4 - number of pulses to measure
+
+    c100  db a1      IN a1                      ; Input the bit
+    c102  a0         ANA B
+    c103  5f         MOV E, A
+
+SPEED_ADJUST_LOOP_1:
+    c104  db a1      IN a1                      ; Wait until the bit changes
+    c106  a0         ANA B
+    c107  bb         CMP E
+    c108  ca 04 c1   JZ SPEED_ADJUST_LOOP_1 (c104)
+
+    c10b  5f         MOV E, A                   ; Temporary store the value at E register
+
+SPEED_ADJUST_LOOP_2:
+    c10c  db a1      IN a1                      ; Wait until the pulse ends
+    c10e  a0         ANA B
+
+    c10f  23         INX HL                     ; Measure pulse duration in HL
+    c110  bb         CMP E
+    c111  ca 0c c1   JZ SPEED_ADJUST_LOOP_2 (c10c)
+
+    c114  5f         MOV E, A
+    c115  0d         DCR C                      ; Count pulses in C
+    c116  c2 0c c1   JNZ c10c
+
+    c119  29         DAD HL                     ; Some constant calculations
+    c11a  29         DAD HL
+    c11b  7c         MOV A, H
+    c11c  b7         ORA A                      ; If the measured value is too big - just save it
+    c11d  fa 2e c1   JM ADJUST_SPEED_EXIT (c12e)
+
+    c120  2f         CMA                        ; Another portion of calculations
+    c121  e6 70      ANI A, 70
+    c123  0f         RRC
+    c124  0f         RRC
+    c125  0f         RRC
+    c126  47         MOV B, A
+
+    c127  0f         RRC
+    c128  1f         RAR
+    c129  80         ADD B
+    c12a  3c         INR A
+    c12b  47         MOV B, A
+    c12c  7c         MOV A, H
+    c12d  90         SUB B
+
+ADJUST_SPEED_EXIT:
+    c12e  32 5c f7   STA IN_BIT_DELAY (f75c)    ; Store measured value
+
+    c131  c3 b3 f9   JMP PRINT_BYTE_HEX (f9b3)  ; Print the value
+
+
+; Command S: Search string in a memory range
+;
+; Usage:
+; S maddr1, maddr2, saddr1, saddr2      - Search string located saddr1-saddr2 in a memory range maddr1-maddr2
+; S maddr1, maddr2, '<string>'          - Search string specified in single quotes in maddr1-maddr2 memory
+; S maddr1, maddr2, &<hex>, <hex>,...   - Search string specified in a form of hex sequence in specified
+;                                         maddr1-maddr2 memory range
+COMMAND_S_SEARCH_STRING:
+    c134  cd 6b fc   CALL PRINT_NEW_LINE (fc6b)
+
+    c137  11 7c f7   LXI DE, f77b + 1 (f77c)    ; Parse argument 1
+    c13a  cd 04 fc   CALL PARSE_HEX (fc04)
+    c13d  22 51 f7   SHLD ARG_1 (f751)
+
+    c140  cd 04 fc   CALL PARSE_HEX (fc04)      ; Parse argument 2
+    c143  22 53 f7   SHLD ARG_2 (f753)
+
+    c146  d5         PUSH DE                    ; Compare arg1 and arg2, while preserving DE pointer 
+    c147  cd cc fb   CALL LOAD_ARGUMENTS (fbcc) ; looking at argument 3
+    c14a  d1         POP DE
+
+    c14b  dc b9 fb   CC REPORT_INPUT_ERROR (fbb9)   ; Report an error if arg 2 > arg 1
+
+    c14e  1a         LDAX DE                    ; Check if the next symbol is &
+    c14f  d6 26      SUI A, 26
+    c151  ca d5 c1   JZ SEARCH_STRING_HEX (c1d5); & means hex search
+
+    c154  3d         DCR A                      ; Check if the next symbol is ' (single quote)
+    c155  ca ba c1   JZ SEARCH_STRING_SYMBOLIC (c1ba)   ; Single quote starts symbolic search
+
+    c158  cd bf fb   CALL PARSE_AND_LOAD_ARGUMENTS (fbbf)   ; re-parse all 4 arguments, assuming they all hex
+
+SEARCH_STRING_START_SEARCH:
+    c15b  cd cc fb   CALL LOAD_ARGUMENTS (fbcc) ; Check start/end address, return if start address becomes
+    c15e  d8         RC                         ; greater than end address (on some iteration)
+
+    c15f  eb         XCHG                       ; Push arg1/arg2 (start/end address) to stack for now
+    c160  e5         PUSH HL
+    c161  d5         PUSH DE
+
+    c162  2a 55 f7   LHLD ARG_3 (f755)          ; Load arg3 (etalon string start) to DE
+    c165  e5         PUSH HL
+    c166  eb         XCHG
+
+    c167  2a 57 f7   LHLD ARG_4 (f757)          ; Load arg4 (etalon string end) to HL
+
+    c16a  cd d3 fb   CALL CMP_HL_DE (fbd3)      ; Check arg3 vs arg4 correctness, report an error if needed
+    c16d  dc b9 fb   CC REPORT_INPUT_ERROR (fbb9)
+
+    c170  cd c6 fd   CALL HL_SUB_DE (fdc6)      ; Calculate etalon string length
+    c173  23         INX HL
+
+    c174  c1         POP BC                     ; BC = string start addr
+    c175  d1         POP DE                     ; HL = mem range start addr
+    c176  e3         XTHL                       ; value on stack is string length
+
+    c177  cd b0 fd   CALL RESET_COMMAND_MODE_FLAG (fdb0); Clear 'first byte of string matched' flag
+
+SEARCH_STRING_COMPARE_NEXT_BYTE:
+    c17a  0a         LDAX BC                    ; Compare next byte in the memory with the string byte
+    c17b  be         CMP M
+    c17c  c2 9d c1   JNZ SEARCH_STRING_NEXT_BYTE_2 (c19d)
+
+    c17f  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)  ; Check if we are already matching the string
+    c182  c2 8b c1   JNZ SEARCH_STRING_COMPARE_NEXT_BYTE_1 (c18b)
+
+    c185  22 5e f7   SHLD f75e                  ; First symbol is matched, store the address of the string
+
+    c188  cd b5 fd   CALL SET_COMMAND_MODE_FLAG (fdb5)  ; Raise the flag we are in string matching mode
+
+SEARCH_STRING_COMPARE_NEXT_BYTE_1:
+    c18b  e3         XTHL                       ; Decrement remaining string length
+    c18c  2b         DCX HL
+
+    c18d  7c         MOV A, H                   ; Check if no more characters to match left
+    c18e  b5         ORA L
+
+    c18f  e3         XTHL                       ; Store remaining length back to stack
+
+    c190  ca a3 c1   JZ SEARCH_STRING_REPORT (c1a3) ; If no more characters left - report the finding
+
+    c193  03         INX BC                     ; Advance to the next character in the string
+
+SEARCH_STRING_NEXT_BYTE:
+    c194  cd d3 fb   CALL CMP_HL_DE (fbd3)      ; Repeat for the next symbol, until reached end of the
+    c197  23         INX HL                     ; memory range
+    c198  c2 7a c1   JNZ c17a
+
+    c19b  e1         POP HL                     ; Exit
+    c19c  c9         RET
+
+SEARCH_STRING_NEXT_BYTE_2:
+    c19d  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)  ; Continue searching if string was not yet matched
+    c1a0  ca 94 c1   JZ SEARCH_STRING_NEXT_BYTE (c194)  ; even for a symbol
+
+
+SEARCH_STRING_REPORT:
+    ; We arrive here in 2 cases: full match happened, or partial match happened, but last few chars do
+    ; not match. In case of full match Z flag will be set. In this case the function will print the 
+    ; matching address.
+    ;
+    ; In any case we need to reset the search
+
+    c1a3  e1         POP HL                     ; Restore string length
+
+    c1a4  2a 5e f7   LHLD f75e                  ; Load found string start address
+
+    c1a7  cc 4d fc   CZ PRINT_HL (fc4d)         ; Print address and spacer in case if string has been matched
+    c1aa  cc 67 fc   CZ PRINT_SPACE (fc67)
+    c1ad  cc 67 fc   CZ PRINT_SPACE (fc67)
+    c1b0  cc 67 fc   CZ PRINT_SPACE (fc67)
+
+    c1b3  23         INX HL                     ; Advance to the next symbol, which will be starting address
+    c1b4  22 51 f7   SHLD ARG_1 (f751)          ; of the next search
+
+    c1b7  c3 5b c1   JMP SEARCH_STRING_START_SEARCH (c15b)  ; Restart the search
+
+
+SEARCH_STRING_SYMBOLIC:
+    c1ba  eb         XCHG                       ; Store string start in arg3 variable
+    c1bb  23         INX HL
+    c1bc  22 55 f7   SHLD ARG_3 (f755)
+
+SEARCH_STRING_SYMBOLIC_LOOP:
+    c1bf  23         INX HL                     ; Search for closing quote
+    c1c0  7e         MOV A, M
+
+    c1c1  fe 27      CPI A, 27                  ; Continue when closing quote
+    c1c3  ca ce c1   JZ SEARCH_STRING_SYMBOLIC_1 (c1ce)
+
+    c1c6  fe 0d      CPI A, 0d                  ; If no closing quote found - report an error
+    c1c8  cc b9 fb   CZ REPORT_INPUT_ERROR (fbb9)
+
+    c1cb  c3 bf c1   JMP SEARCH_STRING_SYMBOLIC_LOOP (c1bf)
+
+SEARCH_STRING_SYMBOLIC_1:
+    c1ce  2b         DCX HL                     ; Store string end address in arg4
+    c1cf  22 57 f7   SHLD ARG_4 (f757)
+
+    c1d2  c3 5b c1   JMP SEARCH_STRING_START_SEARCH (c15b)
+
+
+SEARCH_STRING_HEX:
+    c1d5  eb         XCHG                       ; Store string start address as arg3
+    c1d6  23         INX HL
+    c1d7  22 55 f7   SHLD ARG_3 (f755)
+
+    c1da  44         MOV B, H                   ; BC will contain next char address in the cmd line buffer
+    c1db  4d         MOV C, L
+    c1dc  eb         XCHG
+
+SEARCH_STRING_HEX_LOOP:
+    c1dd  cd 04 fc   CALL PARSE_HEX (fc04)      ; Parse 2-digit hex, and store it at [BC]
+    c1e0  7d         MOV A, L
+    c1e1  02         STAX BC
+    c1e2  03         INX BC
+
+    c1e3  c2 dd c1   JNZ SEARCH_STRING_HEX_LOOP (c1dd)  ; Repeat until 0x00 is found, or end of string
+
+    c1e6  60         MOV H, B                   ; Cmd line buffer now contains string (converted from hex)
+    c1e7  69         MOV L, C                   ; Do a regular symbolic search
+    c1e8  c3 ce c1   JMP SEARCH_STRING_SYMBOLIC_1 (c1ce)
 
 
 
-
-c134  cd 6b fc   CALL PRINT_NEW_LINE (fc6b)
-c137  11 7c f7   LXI DE, f77c
-c13a  cd 04 fc   CALL fc04
-c13d  22 51 f7   SHLD ARG_1 (f751)
-c140  cd 04 fc   CALL fc04
-c143  22 53 f7   SHLD ARG_2 (f753)
-c146  d5         PUSH DE
-c147  cd cc fb   CALL fbcc
-c14a  d1         POP DE
-c14b  dc b9 fb   CC REPORT_INPUT_ERROR (fbb9)
-c14e  1a         LDAX DE
-c14f  d6 26      SUI A, 26
-c151  ca d5 c1   JZ c1d5
-c154  3d         DCR A
-c155  ca ba c1   JZ c1ba
-c158  cd bf fb   CALL PARSE_AND_LOAD_ARGUMENTS (fbbf)
-????:
-c15b  cd cc fb   CALL fbcc
-c15e  d8         RC
-c15f  eb         XCHG
-c160  e5         PUSH HL
-c161  d5         PUSH DE
-c162  2a 55 f7   LHLD ARG_3 (f755)
-c165  e5         PUSH HL
-c166  eb         XCHG
-c167  2a 57 f7   LHLD f757
-c16a  cd d3 fb   CALL CMP_HL_DE (fbd3)
-c16d  dc b9 fb   CC REPORT_INPUT_ERROR (fbb9)
-c170  cd c6 fd   CALL HL_SUB_DE (fdc6)
-c173  23         INX HL
-c174  c1         POP BC
-c175  d1         POP DE
-c176  e3         XTHL
-c177  cd b0 fd   CALL fdb0
-????:
-c17a  0a         LDAX BC
-c17b  be         CMP M
-c17c  c2 9d c1   JNZ c19d
-c17f  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)
-c182  c2 8b c1   JNZ c18b
-c185  22 5e f7   SHLD f75e
-c188  cd b5 fd   CALL fdb5
-????:
-c18b  e3         XTHL
-c18c  2b         DCX HL
-c18d  7c         MOV A, H
-c18e  b5         ORA L
-c18f  e3         XTHL
-c190  ca a3 c1   JZ c1a3
-c193  03         INX BC
-????:
-c194  cd d3 fb   CALL CMP_HL_DE (fbd3)
-c197  23         INX HL
-c198  c2 7a c1   JNZ c17a
-c19b  e1         POP HL
-c19c  c9         RET
-????:
-c19d  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)
-c1a0  ca 94 c1   JZ c194
-????:
-c1a3  e1         POP HL
-c1a4  2a 5e f7   LHLD f75e
-c1a7  cc 4d fc   CZ PRINT_HL (fc4d)
-c1aa  cc 67 fc   CZ fc67
-c1ad  cc 67 fc   CZ fc67
-c1b0  cc 67 fc   CZ fc67
-c1b3  23         INX HL
-c1b4  22 51 f7   SHLD ARG_1 (f751)
-c1b7  c3 5b c1   JMP c15b
-????:
-c1ba  eb         XCHG
-c1bb  23         INX HL
-c1bc  22 55 f7   SHLD ARG_3 (f755)
-????:
-c1bf  23         INX HL
-c1c0  7e         MOV A, M
-c1c1  fe 27      CPI A, 27
-c1c3  ca ce c1   JZ c1ce
-c1c6  fe 0d      CPI A, 0d
-c1c8  cc b9 fb   CZ REPORT_INPUT_ERROR (fbb9)
-c1cb  c3 bf c1   JMP c1bf
-????:
-c1ce  2b         DCX HL
-c1cf  22 57 f7   SHLD f757
-c1d2  c3 5b c1   JMP c15b
-????:
-c1d5  eb         XCHG
-c1d6  23         INX HL
-c1d7  22 55 f7   SHLD ARG_3 (f755)
-c1da  44         MOV B, H
-c1db  4d         MOV C, L
-c1dc  eb         XCHG
-????:
-c1dd  cd 04 fc   CALL fc04
-c1e0  7d         MOV A, L
-c1e1  02         STAX BC
-c1e2  03         INX BC
-c1e3  c2 dd c1   JNZ c1dd
-c1e6  60         MOV H, B
-c1e7  69         MOV L, C
-c1e8  c3 ce c1   JMP c1ce
-c1eb  3a 7c f7   LDA f77c
+COMMAND_Z_????:
+c1eb  3a 7c f7   LDA f77b + 1 (f77c)
 c1ee  fe 30      CPI A, 30
 c1f0  c2 00 c2   JNZ c200
 c1f3  21 ff f3   LXI HL, f3ff
@@ -417,6 +498,9 @@ c21f  c2 11 c2   JNZ c211
 c222  f1         POP PSW
 c223  32 7a f7   STA f77a
 c226  c9         RET
+
+
+COMMAND_P_????:
 c227  cd 70 c2   CALL c270
 c22a  c2 79 c2   JNZ c279
 c22d  cd c9 fb   CALL DO_PARSE_AND_LOAD_ARGUMENTS_ALT (fbc9)
@@ -463,7 +547,7 @@ c26b  d1         POP DE
 c26c  13         INX DE
 c26d  c3 3e c2   JMP c23e
 ????:
-c270  11 7c f7   LXI DE, f77c
+c270  11 7c f7   LXI DE, f77b + 1 (f77c)
 ????:
 c273  1a         LDAX DE
 c274  fe 40      CPI A, 40
@@ -471,7 +555,7 @@ c276  c0         RNZ
 c277  13         INX DE
 c278  c9         RET
 ????:
-c279  11 7c f7   LXI DE, f77c
+c279  11 7c f7   LXI DE, f77b + 1 (f77c)
 c27c  1a         LDAX DE
 c27d  fe 4e      CPI A, 4e
 c27f  c2 83 c2   JNZ c283
@@ -480,17 +564,17 @@ c282  13         INX DE
 c283  cd d9 fb   CALL fbd9
 c286  cc b9 fb   CZ REPORT_INPUT_ERROR (fbb9)
 c289  d5         PUSH DE
-c28a  cd cc fb   CALL fbcc
+c28a  cd cc fb   CALL LOAD_ARGUMENTS (fbcc)
 c28d  2b         DCX HL
 c28e  22 53 f7   SHLD ARG_2 (f753)
 c291  dc b9 fb   CC REPORT_INPUT_ERROR (fbb9)
 c294  2a 55 f7   LHLD ARG_3 (f755)
 c297  eb         XCHG
-c298  2a 57 f7   LHLD f757
+c298  2a 57 f7   LHLD ARG_4 (f757)
 c29b  cd d3 fb   CALL CMP_HL_DE (fbd3)
 c29e  dc b9 fb   CC REPORT_INPUT_ERROR (fbb9)
 c2a1  d1         POP DE
-c2a2  cd 04 fc   CALL fc04
+c2a2  cd 04 fc   CALL PARSE_HEX (fc04)
 c2a5  eb         XCHG
 c2a6  2a 55 f7   LHLD ARG_3 (f755)
 c2a9  eb         XCHG
@@ -511,13 +595,13 @@ c2c0  2a 55 f7   LHLD ARG_3 (f755)
 c2c3  2b         DCX HL
 c2c4  cd d3 fb   CALL CMP_HL_DE (fbd3)
 c2c7  d2 0b c3   JNC c30b
-c2ca  2a 57 f7   LHLD f757
+c2ca  2a 57 f7   LHLD ARG_4 (f757)
 c2cd  cd d3 fb   CALL CMP_HL_DE (fbd3)
 c2d0  da 0b c3   JC c30b
 c2d3  78         MOV A, B
 c2d4  fe 07      CPI A, 07
 c2d6  c2 e1 c2   JNZ c2e1
-c2d9  3a 7c f7   LDA f77c
+c2d9  3a 7c f7   LDA f77b + 1 (f77c)
 c2dc  fe 4e      CPI A, 4e
 c2de  ca 03 c3   JZ c303
 ????:
@@ -550,7 +634,7 @@ c30b  2a 51 f7   LHLD ARG_1 (f751)
 c30e  06 00      MVI B, 00
 c310  09         DAD BC
 c311  22 51 f7   SHLD ARG_1 (f751)
-c314  cd cc fb   CALL fbcc
+c314  cd cc fb   CALL LOAD_ARGUMENTS (fbcc)
 c317  c8         RZ
 c318  d8         RC
 c319  c3 b0 c2   JMP c2b0
@@ -669,7 +753,7 @@ c3c5  c2 ce c3   JNZ c3ce
 c3c8  21 ff ff   LXI HL, ffff
 c3cb  22 53 f7   SHLD ARG_2 (f753)
 ????:
-c3ce  cd b0 fd   CALL fdb0
+c3ce  cd b0 fd   CALL RESET_COMMAND_MODE_FLAG (fdb0)
 ????:
 c3d1  0e 57      MVI C, 57
 c3d3  cd f0 f9   CALL f9f0
@@ -757,7 +841,7 @@ c466  7b         MOV A, E
 c467  fe 95      CPI A, 95
 c469  c2 5e c4   JNZ c45e
 c46c  c1         POP BC
-c46d  cd cc fb   CALL fbcc
+c46d  cd cc fb   CALL LOAD_ARGUMENTS (fbcc)
 c470  d8         RC
 c471  05         DCR B
 c472  c2 fa c3   JNZ c3fa
@@ -923,7 +1007,7 @@ c57d  c9         RET
 ????:
 c57e  11 cd c5   LXI DE, c5cd
 ????:
-c581  cd b0 fd   CALL fdb0
+c581  cd b0 fd   CALL RESET_COMMAND_MODE_FLAG (fdb0)
 c584  eb         XCHG
 c585  cd bb c5   CALL c5bb
 c588  eb         XCHG
@@ -933,7 +1017,7 @@ c58b  1a         LDAX DE
 c58c  b7         ORA A
 c58d  fa 56 c5   JM c556
 c590  be         CMP M
-c591  c4 b5 fd   CNZ fdb5
+c591  c4 b5 fd   CNZ SET_COMMAND_MODE_FLAG (fdb5)
 c594  13         INX DE
 c595  23         INX HL
 c596  05         DCR B
@@ -1465,15 +1549,15 @@ c7ff  c4 3e 7b   CNZ 7b3e
 c802  32 59 f7   STA INPUT_POLARITY (f759)
 c805  cd bb c5   CALL c5bb
 c808  fe 0d      CPI A, 0d
-c80a  ca b5 fd   JZ fdb5
+c80a  ca b5 fd   JZ SET_COMMAND_MODE_FLAG (fdb5)
 c80d  b7         ORA A
-c80e  fa b5 fd   JM fdb5
+c80e  fa b5 fd   JM SET_COMMAND_MODE_FLAG (fdb5)
 c811  fe 3b      CPI A, 3b
-c813  ca b0 fd   JZ fdb0
+c813  ca b0 fd   JZ RESET_COMMAND_MODE_FLAG (fdb0)
 c816  cd 73 c2   CALL c273
 c819  cc 22 c8   CZ c822
 c81c  cd 7e c5   CALL c57e
-c81f  c3 b0 fd   JMP fdb0
+c81f  c3 b0 fd   JMP RESET_COMMAND_MODE_FLAG (fdb0)
 ????:
 c822  cd 72 c5   CALL c572
 c825  da 8d fb   JC fb8d
@@ -1734,7 +1818,7 @@ c9f2  2a 53 f7   LHLD ARG_2 (f753)
 c9f5  e5         PUSH HL
 c9f6  2a 55 f7   LHLD ARG_3 (f755)
 c9f9  e5         PUSH HL
-c9fa  2a 57 f7   LHLD f757
+c9fa  2a 57 f7   LHLD ARG_4 (f757)
 c9fd  e5         PUSH HL
 c9fe  21 9c ff   LXI HL, ff9c
 ca01  3a 7b f7   LDA f77b
@@ -1744,7 +1828,7 @@ ca07  f5         PUSH PSW
 ca08  c4 53 f8   CNZ f853
 ca0b  f1         POP PSW
 ca0c  e1         POP HL
-ca0d  22 57 f7   SHLD f757
+ca0d  22 57 f7   SHLD ARG_4 (f757)
 ca10  e1         POP HL
 ca11  22 55 f7   SHLD ARG_3 (f755)
 ca14  e1         POP HL
@@ -1764,7 +1848,7 @@ ca33  22 55 f7   SHLD ARG_3 (f755)
 ????:
 ca36  11 7b f7   LXI DE, f77b
 ca39  2a 55 f7   LHLD ARG_3 (f755)
-ca3c  22 57 f7   SHLD f757
+ca3c  22 57 f7   SHLD ARG_4 (f757)
 ????:
 ca3f  7e         MOV A, M
 ca40  12         STAX DE
@@ -1776,7 +1860,7 @@ ca48  7b         MOV A, E
 ca49  fe bb      CPI A, bb
 ca4b  c2 3f ca   JNZ ca3f
 ????:
-ca4e  2a 57 f7   LHLD f757
+ca4e  2a 57 f7   LHLD ARG_4 (f757)
 ca51  cd 4d fc   CALL PRINT_HL (fc4d)
 ca54  c3 6c ca   JMP ca6c
 ????:
@@ -1784,7 +1868,7 @@ ca57  22 55 f7   SHLD ARG_3 (f755)
 ca5a  cd 00 c8   CALL c800
 ca5d  da 4e ca   JC ca4e
 ca60  cd 4b fb   CALL fb4b
-ca63  dc b5 fd   CC fdb5
+ca63  dc b5 fd   CC SET_COMMAND_MODE_FLAG (fdb5)
 ca66  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)
 ca69  f2 36 ca   JP ca36
 ????:
@@ -1805,7 +1889,7 @@ ca87  2a 51 f7   LHLD ARG_1 (f751)
 ca8a  06 00      MVI B, 00
 ca8c  09         DAD BC
 ca8d  22 51 f7   SHLD ARG_1 (f751)
-ca90  cd cc fb   CALL fbcc
+ca90  cd cc fb   CALL LOAD_ARGUMENTS (fbcc)
 ca93  c8         RZ
 ca94  d8         RC
 ca95  c3 7d ca   JMP ca7d

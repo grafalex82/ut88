@@ -1172,6 +1172,8 @@ DO_PARSE_AND_LOAD_ARGUMENTS:
 DO_PARSE_AND_LOAD_ARGUMENTS_ALT:
     fbc9  cd d9 fb   CALL PARSE_ARGUMENTS (fbd9)
 
+; Load argument 1 into DE, argument 2 into HL
+LOAD_ARGUMENTS:
     fbcc  2a 51 f7   LHLD ARG_1 (f751)          ; Load 1st argument into DE
     fbcf  eb         XCHG
     fbd0  2a 53 f7   LHLD ARG_2 (f753)          ; Load 2nd argument into HL
@@ -2142,7 +2144,7 @@ COMMANDS_TABLE:
     ffbd  4a a2 c0      db 'J', COMMAND_J_QUICK_JUMP (c0a2)
     ffc0  48 92 c0      db 'H', COMMAND_H_SUM_DIFF_ARG (c092)
     ffc3  54 6a ff      db 'T', COMMAND_T_TRACE_CMD_LINE (ff6a)
-    ffc6  53 34 c1      db 'S', c134
+    ffc6  53 34 c1      db 'S', COMMAND_S_SEARCH_STRING (c134)
     ffc9  45 00 cb      db 'E', cb00
     ffcc  41 20 ca      db 'A', ca20
     ffcf  4e c2 ca      db 'N', cac2
