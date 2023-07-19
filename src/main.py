@@ -393,6 +393,7 @@ class UT88OSConfiguration(VideoConfiguration):
 
 
     def configure_logging(self):
+        self.suppress_logging(0xf936, 0xf98a, "In byte")
         self.suppress_logging(0xf98b, 0xf9b2, "Out byte")
         self.suppress_logging(0xf9f4, 0xfa1d, "Put char")
         self.suppress_logging(0xf86b, 0xf90c, "Kbd input")
