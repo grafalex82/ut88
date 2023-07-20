@@ -2138,7 +2138,7 @@ COMMANDS_TABLE:
     ffab  4b 38 fe      db 'K', COMMAND_K_CRC (fe38)
     ffae  56 fa c0      db 'V', COMMAND_V_TAPE_SPEED_ADJUST (c0fa)
     ffb1  52 63 ff      db 'R', COMMAND_R_ENABLE_SCROLL (ff63)
-    ffb4  43 00 c0      db 'C', cc00
+    ffb4  43 00 c0      db 'C', COMMAND_C_MEM_COPY (c000)
     ffb7  44 b5 c0      db 'D', COMMAND_D_DUMP_MEMORY (c0b5)
     ffba  46 63 c0      db 'F', COMMAND_F_FILL_MEMORY (c063)
     ffbd  4a a2 c0      db 'J', COMMAND_J_QUICK_JUMP (c0a2)

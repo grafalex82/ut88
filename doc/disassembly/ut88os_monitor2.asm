@@ -1,76 +1,103 @@
-
-?????:
-c000  cd c1 fc   CALL PARSE_COMMAND_MODE (fcc1)
-c003  cd c9 fb   CALL DO_PARSE_AND_LOAD_ARGUMENTS_ALT (fbc9)
-
-c006  e5         PUSH HL
-c007  2a 55 f7   LHLD ARG_3 (f755)
-c00a  44         MOV B, H
-c00b  4d         MOV C, L
-
-c00c  cd d3 fb   CALL CMP_HL_DE (fbd3)
-c00f  e1         POP HL
-c010  d2 4d c0   JNC c04d
-
-????:
-c013  af         XRA A
-c014  32 59 f7   STA INPUT_POLARITY (f759)
-c017  23         INX HL
-c018  eb         XCHG
-????:
-c019  e5         PUSH HL
-c01a  cd 48 c0   CALL PRINT_BC (c048)
-c01d  e1         POP HL
-????:
-c01e  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)
-c021  c2 26 c0   JNZ c026
-c024  7e         MOV A, M
-c025  02         STAX BC
-????:
-c026  0a         LDAX BC
-c027  be         CMP M
-c028  c4 a1 fb   CNZ PRINT_BC_HL (fba1)
-c02b  03         INX BC
-c02c  23         INX HL
-c02d  3a 59 f7   LDA INPUT_POLARITY (f759)
-c030  b7         ORA A
-c031  ca 38 c0   JZ c038
-c034  0b         DCX BC
-c035  0b         DCX BC
-c036  2b         DCX HL
-c037  2b         DCX HL
-????:
-c038  cd d3 fb   CALL CMP_HL_DE (fbd3)
-c03b  c2 1e c0   JNZ c01e
-c03e  0b         DCX BC
-c03f  3a 59 f7   LDA INPUT_POLARITY (f759)
-c042  b7         ORA A
-c043  ca 4d fc   JZ PRINT_HL (fc4d)
-c046  03         INX BC
-c047  03         INX BC
+; General description TBD
 
 
-; Helper function to print BC register in hex form
-PRINT_BC:
-    c048  60         MOV H, B
+
+; Command C: Memory Copy and Compare
+;
+; Usage:
+; C/CY <src_start>, <src_end>, <dst_start>
+;
+; Commadn CY will do the memory copy from source memory range to destination
+; Command C will compare two memory ranges, and display differences
+;
+; The command can copy overlapped memory ranges. If destination address is lower than source range address,
+; the copying/comparison will be done from lower addresses to upper. And vice versa, if destination address
+; is higher than source address, the copying/comparison happens from upper to lower addresses.
+COMMAND_C_MEM_COPY:
+    c000  cd c1 fc   CALL PARSE_COMMAND_MODE (fcc1) ; Parse arguments
+    c003  cd c9 fb   CALL DO_PARSE_AND_LOAD_ARGUMENTS_ALT (fbc9)
+
+    c006  e5         PUSH HL                        ; Load target address in BC
+    c007  2a 55 f7   LHLD ARG_3 (f755)
+    c00a  44         MOV B, H
+    c00b  4d         MOV C, L
+
+    c00c  cd d3 fb   CALL CMP_HL_DE (fbd3)          ; Compare source and destination start addresses
+    c00f  e1         POP HL
+    c010  d2 4d c0   JNC MEM_COPY_BACKWARDS (c04d)  ; Jump if dest addr > src addr
+
+MEM_COPY_FORWARD:
+    c013  af         XRA A                          ; Reset direction flag (will copy from lower to higher
+    c014  32 59 f7   STA INPUT_POLARITY (f759)      ; addresses)
+
+    c017  23         INX HL                         ; HL - src start
+    c018  eb         XCHG                           ; DE - 1 byte after src end
+
+MEM_COPY_START:
+    c019  e5         PUSH HL                        ; Print the target address
+    c01a  cd 48 c0   CALL PRINT_BC (c048)
+    c01d  e1         POP HL
+
+MEM_COPY_LOOP:
+    c01e  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)  ; CY command - mem copy, C command - mem compare
+    c021  c2 26 c0   JNZ MEM_COPY_COMPARE (c026)
+
+    c024  7e         MOV A, M                       ; Copy a byte from source to destination
+    c025  02         STAX BC
+
+MEM_COPY_COMPARE:
+    c026  0a         LDAX BC                        ; Compare source and destination memory byte
+    c027  be         CMP M
+
+    c028  c4 a1 fb   CNZ PRINT_BC_HL (fba1)         ; If mismatch - print source and dest addresses and values
+
+    c02b  03         INX BC                         ; Advance to the next byte
+    c02c  23         INX HL
+
+    c02d  3a 59 f7   LDA INPUT_POLARITY (f759)      ; Check the direction flag
+    c030  b7         ORA A
+    c031  ca 38 c0   JZ MEM_COPY_ADVANCE_TO_NEXT (c038)
+
+    c034  0b         DCX BC                         ; If reverse direction is set - move to the previous byte
+    c035  0b         DCX BC
+    c036  2b         DCX HL
+    c037  2b         DCX HL
+
+MEM_COPY_ADVANCE_TO_NEXT:
+    c038  cd d3 fb   CALL CMP_HL_DE (fbd3)          ; Repeat until end of the range reached
+    c03b  c2 1e c0   JNZ MEM_COPY_LOOP (c01e)
+
+    c03e  0b         DCX BC                         ; If copying from higher to lower addresses - print
+    c03f  3a 59 f7   LDA INPUT_POLARITY (f759)      ; source end address
+    c042  b7         ORA A
+    c043  ca 4d fc   JZ PRINT_HL (fc4d)
+
+    c046  03         INX BC                         ; Otherwise print destination start address
+    c047  03         INX BC
+
+MEM_COPY_PRINT_DEST:
+    c048  60         MOV H, B                       ; Print destination address
     c049  69         MOV L, C
     c04a  c3 4d fc   JMP PRINT_HL (fc4d)
 
-????:
-c04d  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)
-c050  c2 13 c0   JNZ c013
+MEM_COPY_BACKWARDS:
+    c04d  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)  ; CY command - memory copy, C command - mem compare
+    c050  c2 13 c0   JNZ MEM_COPY_FORWARD (c013)    ; Compare will be processed in forward direction
 
-c053  af         XRA A
-c054  2f         CMA
-c055  32 59 f7   STA INPUT_POLARITY (f759)
+    c053  af         XRA A                          ; Set the direction flag (will copy from higher addr to
+    c054  2f         CMA                            ; lower.
+    c055  32 59 f7   STA INPUT_POLARITY (f759)
 
-c058  e5         PUSH HL
-c059  cd c6 fd   CALL HL_SUB_DE (fdc6)
-c05c  09         DAD BC
-c05d  e3         XTHL
-c05e  c1         POP BC
-c05f  1b         DCX DE
-c060  c3 19 c0   JMP c019
+    c058  e5         PUSH HL                        ; Calculate memory range length
+    c059  cd c6 fd   CALL HL_SUB_DE (fdc6)
+
+    c05c  09         DAD BC                         ; Calculate destination end address
+    
+    c05d  e3         XTHL                           ; HL - source end addr
+    c05e  c1         POP BC                         ; BC - destination end addr
+    c05f  1b         DCX DE                         ; DE - 1 byte below source start
+
+    c060  c3 19 c0   JMP MEM_COPY_START (c019)      ; Start copying
 
 
 ; Command F: Fill/Verify memory with a byte
@@ -478,14 +505,16 @@ c200  3a 7a f7   LDA f77a
 c203  f5         PUSH PSW
 c204  af         XRA A
 c205  32 7a f7   STA f77a
+
 c208  0e 1f      MVI C, 1f
-c20a  cd f0 f9   CALL f9f0
+c20a  cd f0 f9   CALL PUT_CHAR (f9f0)
+
 c20d  16 f4      MVI D, f4
 c20f  5f         MOV E, A
 c210  47         MOV B, A
 ????:
 c211  78         MOV A, B
-c212  cd af fb   CALL fbaf
+c212  cd af fb   CALL PRINT_BYTE_CHECK_KBD (fbaf)
 c215  1a         LDAX DE
 c216  13         INX DE
 c217  6f         MOV L, A
@@ -714,6 +743,9 @@ c382  78         MOV A, B
 c383  46         MOV B, M
 c384  2b         DCX HL
 c385  c9         RET
+
+
+COMMAND_L_????:
 c386  cd bf fb   CALL PARSE_AND_LOAD_ARGUMENTS (fbbf)
 c389  06 10      MVI B, 10
 c38b  eb         XCHG
@@ -722,7 +754,7 @@ c38d  c2 93 c3   JNZ c393
 c390  11 00 b0   LXI DE, b000
 ????:
 c393  0e 0a      MVI C, 0a
-c395  cd f0 f9   CALL f9f0
+c395  cd f0 f9   CALL PUT_CHAR (f9f0)
 c398  05         DCR B
 c399  cc b7 c3   CZ c3b7
 c39c  cd 4d fc   CALL PRINT_HL (fc4d)
@@ -738,7 +770,7 @@ c3a9  ca 93 c3   JZ c393
 c3ac  e5         PUSH HL
 c3ad  cd 28 fe   CALL fe28
 c3b0  e1         POP HL
-c3b1  cd f0 f9   CALL f9f0
+c3b1  cd f0 f9   CALL PUT_CHAR (f9f0)
 c3b4  c3 9f c3   JMP c39f
 ????:
 c3b7  cd 6b f8   CALL f86b
@@ -748,6 +780,8 @@ c3bd  c0         RNZ
 c3be  c5         PUSH BC
 c3bf  06 0f      MVI B, 0f
 c3c1  c9         RET
+
+COMMAND_W_????:
 c3c2  cd bf fb   CALL PARSE_AND_LOAD_ARGUMENTS (fbbf)
 c3c5  c2 ce c3   JNZ c3ce
 c3c8  21 ff ff   LXI HL, ffff
@@ -756,7 +790,7 @@ c3cb  22 53 f7   SHLD ARG_2 (f753)
 c3ce  cd b0 fd   CALL RESET_COMMAND_MODE_FLAG (fdb0)
 ????:
 c3d1  0e 57      MVI C, 57
-c3d3  cd f0 f9   CALL f9f0
+c3d3  cd f0 f9   CALL PUT_CHAR (f9f0)
 c3d6  cd 6b f8   CALL f86b
 c3d9  fe 20      CPI A, 20
 c3db  c2 e5 c3   JNZ c3e5
@@ -768,11 +802,11 @@ c3e5  d6 32      SUI A, 32
 c3e7  ca f1 c3   JZ c3f1
 c3ea  fe ff      CPI A, ff
 c3ec  0e 19      MVI C, 19
-c3ee  c2 f0 f9   JNZ f9f0
+c3ee  c2 f0 f9   JNZ PUT_CHAR (f9f0)
 ????:
 c3f1  32 ff f7   STA f7ff
 c3f4  01 0c 18   LXI BC, 180c
-c3f7  cd f0 f9   CALL f9f0
+c3f7  cd f0 f9   CALL PUT_CHAR (f9f0)
 ????:
 c3fa  c5         PUSH BC
 c3fb  78         MOV A, B
@@ -835,7 +869,7 @@ c45b  11 7b f7   LXI DE, f77b
 ????:
 c45e  1a         LDAX DE
 c45f  cd 28 fe   CALL fe28
-c462  cd f0 f9   CALL f9f0
+c462  cd f0 f9   CALL PUT_CHAR (f9f0)
 c465  13         INX DE
 c466  7b         MOV A, E
 c467  fe 95      CPI A, 95
@@ -850,7 +884,7 @@ c478  c3 d1 c3   JMP c3d1
 ????:
 c47b  01 18 1f   LXI BC, 1f18
 ????:
-c47e  cd f0 f9   CALL f9f0
+c47e  cd f0 f9   CALL PUT_CHAR (f9f0)
 c481  05         DCR B
 c482  c2 7e c4   JNZ c47e
 c485  c9         RET
