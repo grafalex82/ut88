@@ -487,46 +487,63 @@ SEARCH_STRING_HEX_LOOP:
     c1e8  c3 ce c1   JMP SEARCH_STRING_SYMBOLIC_1 (c1ce)
 
 
+; Command Z: Zero/dump 0xf400-0xf5ff range
+; 
+; Usage:
+; Z         - Dump the range (print in 16-bit words)
+; Z0        - Fill the range with zeros
+COMMAND_Z_ZERO_RANGE:
+    c1eb  3a 7c f7   LDA f77b + 1 (f77c)        ; Get the second command byte
+    c1ee  fe 30      CPI A, 30                  ; If it is '0' - go and clear memory range
+    c1f0  c2 00 c2   JNZ c200
 
-COMMAND_Z_????:
-c1eb  3a 7c f7   LDA f77b + 1 (f77c)
-c1ee  fe 30      CPI A, 30
-c1f0  c2 00 c2   JNZ c200
-c1f3  21 ff f3   LXI HL, f3ff
-????:
-c1f6  23         INX HL
-c1f7  7c         MOV A, H
-c1f8  fe f6      CPI A, f6
-c1fa  c8         RZ
-c1fb  36 00      MVI M, 00
-c1fd  c3 f6 c1   JMP c1f6
-????:
-c200  3a 7a f7   LDA f77a
-c203  f5         PUSH PSW
-c204  af         XRA A
-c205  32 7a f7   STA f77a
+    c1f3  21 ff f3   LXI HL, f3ff               ; 1 byte before start address
 
-c208  0e 1f      MVI C, 1f
-c20a  cd f0 f9   CALL PUT_CHAR (f9f0)
+ZERO_RANGE_CLEAR_LOOP:
+    c1f6  23         INX HL                     ; Advance to the next byte
 
-c20d  16 f4      MVI D, f4
-c20f  5f         MOV E, A
-c210  47         MOV B, A
-????:
-c211  78         MOV A, B
-c212  cd af fb   CALL PRINT_BYTE_CHECK_KBD (fbaf)
-c215  1a         LDAX DE
-c216  13         INX DE
-c217  6f         MOV L, A
-c218  1a         LDAX DE
-c219  13         INX DE
-c21a  67         MOV H, A
-c21b  cd 4d fc   CALL PRINT_HL (fc4d)
-c21e  04         INR B
-c21f  c2 11 c2   JNZ c211
-c222  f1         POP PSW
-c223  32 7a f7   STA f77a
-c226  c9         RET
+    c1f7  7c         MOV A, H                   ; Check if we reached the end of the range
+    c1f8  fe f6      CPI A, f6
+    c1fa  c8         RZ
+
+    c1fb  36 00      MVI M, 00                  ; Fill byte with zero
+
+    c1fd  c3 f6 c1   JMP ZERO_RANGE_CLEAR_LOOP (c1f6)   ; Repeat for the next byte
+
+ZERO_RANGE_COMPARE:
+    c200  3a 7a f7   LDA ENABLE_SCROLL (f77a)   ; Disable scroll, will output page by page
+    c203  f5         PUSH PSW
+    c204  af         XRA A
+    c205  32 7a f7   STA ENABLE_SCROLL (f77a)
+
+    c208  0e 1f      MVI C, 1f                  ; Clear screen
+    c20a  cd f0 f9   CALL PUT_CHAR (f9f0)
+
+    c20d  16 f4      MVI D, f4                  ; Set DE to 0xf400 (start range)
+    c20f  5f         MOV E, A
+
+    c210  47         MOV B, A                   ; Zero record index
+
+ZERO_RANGE_COMPARE_LOOP:
+    c211  78         MOV A, B                   ; Print the index
+    c212  cd af fb   CALL PRINT_BYTE_CHECK_KBD (fbaf)
+
+    c215  1a         LDAX DE                    ; Load next word to HL
+    c216  13         INX DE
+    c217  6f         MOV L, A
+    c218  1a         LDAX DE
+    c219  13         INX DE
+    c21a  67         MOV H, A
+
+    c21b  cd 4d fc   CALL PRINT_HL (fc4d)       ; Print the value
+
+    c21e  04         INR B                      ; Advance to the next word, repeat until reached end of range
+    c21f  c2 11 c2   JNZ ZERO_RANGE_COMPARE_LOOP (c211)
+
+    c222  f1         POP PSW                    ; Restore scroll mode
+    c223  32 7a f7   STA ENABLE_SCROLL (f77a)
+
+    c226  c9         RET
 
 
 COMMAND_P_????:
