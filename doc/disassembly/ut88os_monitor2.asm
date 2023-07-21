@@ -546,220 +546,390 @@ ZERO_RANGE_COMPARE_LOOP:
     c226  c9         RET
 
 
-COMMAND_P_????:
-c227  cd 70 c2   CALL c270
-c22a  c2 79 c2   JNZ c279
-c22d  cd c9 fb   CALL DO_PARSE_AND_LOAD_ARGUMENTS_ALT (fbc9)
-c230  2a 55 f7   LHLD ARG_3 (f755)
-c233  cd c6 fd   CALL HL_SUB_DE (fdc6)
-c236  cd 4d fc   CALL PRINT_HL (fc4d)
-c239  44         MOV B, H
-c23a  4d         MOV C, L
-c23b  11 ff f3   LXI DE, f3ff
-????:
-c23e  13         INX DE
-c23f  3e f6      MVI A, f6
-c241  ba         CMP D
-c242  c8         RZ
-c243  1a         LDAX DE
-c244  13         INX DE
-c245  6f         MOV L, A
-c246  1a         LDAX DE
-c247  1b         DCX DE
-c248  67         MOV H, A
-c249  d5         PUSH DE
-c24a  eb         XCHG
-c24b  2a 51 f7   LHLD ARG_1 (f751)
-c24e  2b         DCX HL
-c24f  cd d3 fb   CALL CMP_HL_DE (fbd3)
-c252  d2 6a c2   JNC c26a
-c255  2a 53 f7   LHLD ARG_2 (f753)
-c258  23         INX HL
-c259  eb         XCHG
-c25a  cd d3 fb   CALL CMP_HL_DE (fbd3)
-c25d  d1         POP DE
-c25e  d2 6c c2   JNC c26c
-c261  09         DAD BC
-c262  7d         MOV A, L
-c263  12         STAX DE
-c264  13         INX DE
-c265  7c         MOV A, H
-c266  12         STAX DE
-c267  c3 3e c2   JMP c23e
-????:
-c26a  eb         XCHG
-c26b  d1         POP DE
-????:
-c26c  13         INX DE
-c26d  c3 3e c2   JMP c23e
-????:
-c270  11 7c f7   LXI DE, f77b + 1 (f77c)
-????:
-c273  1a         LDAX DE
-c274  fe 40      CPI A, 40
-c276  c0         RNZ
-c277  13         INX DE
-c278  c9         RET
-????:
-c279  11 7c f7   LXI DE, f77b + 1 (f77c)
-c27c  1a         LDAX DE
-c27d  fe 4e      CPI A, 4e
-c27f  c2 83 c2   JNZ c283
-c282  13         INX DE
-????:
-c283  cd d9 fb   CALL fbd9
-c286  cc b9 fb   CZ REPORT_INPUT_ERROR (fbb9)
-c289  d5         PUSH DE
-c28a  cd cc fb   CALL LOAD_ARGUMENTS (fbcc)
-c28d  2b         DCX HL
-c28e  22 53 f7   SHLD ARG_2 (f753)
-c291  dc b9 fb   CC REPORT_INPUT_ERROR (fbb9)
-c294  2a 55 f7   LHLD ARG_3 (f755)
-c297  eb         XCHG
-c298  2a 57 f7   LHLD ARG_4 (f757)
-c29b  cd d3 fb   CALL CMP_HL_DE (fbd3)
-c29e  dc b9 fb   CC REPORT_INPUT_ERROR (fbb9)
-c2a1  d1         POP DE
-c2a2  cd 04 fc   CALL PARSE_HEX (fc04)
-c2a5  eb         XCHG
-c2a6  2a 55 f7   LHLD ARG_3 (f755)
-c2a9  eb         XCHG
-c2aa  cd c6 fd   CALL HL_SUB_DE (fdc6)
-c2ad  22 5e f7   SHLD f75e
-????:
-c2b0  2a 51 f7   LHLD ARG_1 (f751)
-c2b3  e5         PUSH HL
-c2b4  7e         MOV A, M
-c2b5  cd 1c c3   CALL c31c
-c2b8  e1         POP HL
-c2b9  d2 ed c2   JNC c2ed
-c2bc  23         INX HL
-c2bd  5e         MOV E, M
-c2be  23         INX HL
-c2bf  56         MOV D, M
-c2c0  2a 55 f7   LHLD ARG_3 (f755)
-c2c3  2b         DCX HL
-c2c4  cd d3 fb   CALL CMP_HL_DE (fbd3)
-c2c7  d2 0b c3   JNC c30b
-c2ca  2a 57 f7   LHLD ARG_4 (f757)
-c2cd  cd d3 fb   CALL CMP_HL_DE (fbd3)
-c2d0  da 0b c3   JC c30b
-c2d3  78         MOV A, B
-c2d4  fe 07      CPI A, 07
-c2d6  c2 e1 c2   JNZ c2e1
-c2d9  3a 7c f7   LDA f77b + 1 (f77c)
-c2dc  fe 4e      CPI A, 4e
-c2de  ca 03 c3   JZ c303
-????:
-c2e1  2a 5e f7   LHLD f75e
-c2e4  19         DAD DE
-c2e5  eb         XCHG
-c2e6  2a 51 f7   LHLD ARG_1 (f751)
-c2e9  23         INX HL
-c2ea  73         MOV M, E
-c2eb  23         INX HL
-c2ec  72         MOV M, D
-????:
-c2ed  79         MOV A, C
-c2ee  fe 02      CPI A, 02
-c2f0  c2 0b c3   JNZ c30b
-c2f3  23         INX HL
-c2f4  3a 56 f7   LDA f756
-c2f7  3d         DCR A
-c2f8  be         CMP M
-c2f9  d2 0b c3   JNC c30b
-c2fc  3a 58 f7   LDA f758
-c2ff  be         CMP M
-c300  da 0b c3   JC c30b
-????:
-c303  cd 47 fc   CALL fc47
-c306  3e 21      MVI A, 21
-c308  cd e9 f9   CALL f9e9
-????:
-c30b  2a 51 f7   LHLD ARG_1 (f751)
-c30e  06 00      MVI B, 00
-c310  09         DAD BC
-c311  22 51 f7   SHLD ARG_1 (f751)
-c314  cd cc fb   CALL LOAD_ARGUMENTS (fbcc)
-c317  c8         RZ
-c318  d8         RC
-c319  c3 b0 c2   JMP c2b0
-????:
-c31c  21 cd c5   LXI HL, c5cd
-c31f  47         MOV B, A
-????:
-c320  23         INX HL
-c321  23         INX HL
-c322  23         INX HL
-c323  23         INX HL
-c324  be         CMP M
-c325  23         INX HL
-c326  ca 68 c3   JZ c368
-c329  23         INX HL
-c32a  34         INR M
-c32b  35         DCR M
-c32c  f2 20 c3   JP c320
-c32f  21 1c c3   LXI HL, c31c
-c332  e5         PUSH HL
-c333  e6 cf      ANI A, cf
-c335  fe c1      CPI A, c1
-c337  c8         RZ
-c338  fe c5      CPI A, c5
-c33a  c8         RZ
-c33b  e6 f7      ANI A, f7
-c33d  ca 64 c3   JZ c364
-c340  fe c7      CPI A, c7
-c342  c8         RZ
-c343  e6 f0      ANI A, f0
-c345  fe 40      CPI A, 40
-c347  c8         RZ
-c348  78         MOV A, B
-c349  e6 c4      ANI A, c4
-c34b  ca 60 c3   JZ c360
-c34e  e6 f0      ANI A, f0
-c350  c2 57 c3   JNZ c357
-c353  78         MOV A, B
-c354  e6 c7      ANI A, c7
-c356  c9         RET
-????:
-c357  fe 80      CPI A, 80
-c359  c2 64 c3   JNZ c364
-c35c  78         MOV A, B
-c35d  e6 f8      ANI A, f8
-c35f  c9         RET
-????:
-c360  78         MOV A, B
-c361  e6 cf      ANI A, cf
-c363  c9         RET
-????:
-c364  e1         POP HL
-c365  21 a6 c7   LXI HL, c7a6
-????:
-c368  7e         MOV A, M
-c369  e5         PUSH HL
-c36a  21 82 c3   LXI HL, c382
-c36d  e3         XTHL
-c36e  0e 03      MVI C, 03
-c370  ff         RST 7
-c371  02         STAX BC
-c372  37         STC
-c373  c8         RZ
-c374  fe 07      CPI A, 07
-c376  37         STC
-c377  c8         RZ
-c378  0d         DCR C
-c379  fe 01      CPI A, 01
-c37b  c8         RZ
-c37c  fe 09      CPI A, 09
-c37e  c8         RZ
-c37f  af         XRA A
-c380  0d         DCR C
-c381  c9         RET
-????:
-c382  78         MOV A, B
-c383  46         MOV B, M
-c384  2b         DCX HL
-c385  c9         RET
+; Command P: Relocate program to another memory address range
+;
+; Usage:
+; - P[N]<w1>,<w2>,<s1>,<s2>,<t>     - Relocate program (see arguments description below)
+; - P@<s1>,<s2>,<t>                 - Adjust addresses in 0xf400-0xf5ff
+;
+; P/PN command is used to relocate a program from one memory range to another. The command iterates over 
+; program instructions, and checks 2- and 3-byte instructions whether they have an address in source memory
+; range, and correct them to match the target memory range. 
+;
+; Arguments description:
+; - <s1>-<s2> (arguments 3 and 4) represent the source program memory range. The P command searches for all
+;   3-byte instructions that possibly contain an address in <s1>-<s2> range. These instructions are corrected
+;   so that they match the target memory range (argument 5)
+; - <w1>-<w2> (arguments 3 and 4) represent a working copy of the program. It may happen that command P is
+;   used to relocate the program from a ROM to different addresses. In this case modifying <s1>-<s2> source
+;   range may not be possible. The user may copy program from the ROM to a working RAM at <w1>-<w2> range,
+;   where then instruction modification happens. Note, that command P does not perform copying from <s1>-<s2>
+;   to <w1>-<w2>, but expects instructions copied before command P is executed.
+; - <t> (argument 5) represents the target address range where the program shall work after relocation. Note
+;   that command does not make any copying to target address range. It only change a working copy so that 
+;   all the addresses point to the target range.
+;
+; Example:
+; Suppose you have a working program at 0x2000-0x2fff memory range, and you want to port the program to a
+; different computer that will execute the program at 0x5000-0x5fff range. 
+;
+; In order not to corrupt the original program, you may create a working copy, say at 0x4000-0x4fff range:
+; CY 2000,2fff,4000
+;
+; Now you can perform relocation with command P - working copy range (arg1/2), specify original program range
+; in arg3/4, and target address:
+; P 4000,4fff,2000,2fff,5000
+;
+; Imagine that source program (which is located in 0x2000-0x2fff range) has an instruction:
+;   JMP 2345
+;
+; Since address 0x2345 belongs to source program range (0x2000-0x2fff), it will be replaced with the 
+; corresponding address in the target memory range:
+;   JMP 5345
+;
+; The change is performed in working copy only (0x4000-0x4fff), leaving the original program intact.
+;
+; In some cases programs may use low and high bytes of the address separately. For example:
+;   MVI A, f6
+;   CMP D
+;
+; This code in fact may implement an address checking. For example check that DE counter reached 0xf600
+; address. Unfortunately relocation program can't state this for sure, and prints a warning, specifying
+; address of suspicious MVI instruction. The user may then double check whether this is related to address
+; calculations, and correct the constant if needed.
+;
+; By default it is assumed that LXI instruction loads an address too. If the address is in program memory
+; range, it will be adjusted. The 'PN' command will treat LXI arguments as a number, and will not be adjusted
+; even if it matches the memory range. The warning will be displayed indicating a suspicious instruction
+; address, so that the User can double check.
+;
+; Target range and a working copy may coincide. If you want to relocate the program to another range on the
+; same system, you can follow the next example:
+; CY 2000,2fff,5000
+; P 5000,5fff,2000,2fff,5000
+; The first command will copy the original program from 0x2000-0x2fff range to 0x5000. The second command
+; will adjust instructions that refers the original range so that it points the new address range.
+;   
+;
+; The P@ command also does an address adjustment, but in a different way:
+; - 0xf400-0xf5ff range is considered as an array of 256 16-byte address values
+; - the command iterates over these values, and check whether they are in <s1>-<s2> range
+; - if the address match the source range, it will be adjusted to a corresponding target address
+;
+; Let's imagine there are 2 addresses at 0xf400+ - 0x2345 and 0x4567
+; If you want to relocate all addresses in 0x2000-0x2fff range to 0x6000-0x6fff range, enter the command:
+;   P@ 2000,2fff,6000
+;
+; The first address at 0xf400 will be changed to 0x6345. The second address will remain 0x4567 as it does
+; not belong the 0x2000-0x2fff range.
+COMMAND_P_RELOCATE:
+    c227  cd 70 c2   CALL CHECK_AT_MODIFIER (c270)  ; Check if this is P@ command
+    c22a  c2 79 c2   JNZ c279
+
+    ; The following process P@ command
+    c22d  cd c9 fb   CALL DO_PARSE_AND_LOAD_ARGUMENTS_ALT (fbc9); Parse arguments
+
+    c230  2a 55 f7   LHLD ARG_3 (f755)          ; Load arg 3 to HL (source start address)
+    c233  cd c6 fd   CALL HL_SUB_DE (fdc6)      ; Calculate offset from DE (destination end address)
+
+    c236  cd 4d fc   CALL PRINT_HL (fc4d)       ; Print source start address
+
+    c239  44         MOV B, H                   ; BC - offset to apply
+    c23a  4d         MOV C, L
+    c23b  11 ff f3   LXI DE, f3ff               ; DE - 0xd400 destination start address
+
+RELOCATE_ADDR_LOOP:
+    c23e  13         INX DE                     ; Advance to the next value, stop if reached 0xf600
+    c23f  3e f6      MVI A, f6
+    c241  ba         CMP D
+    c242  c8         RZ
+
+    c243  1a         LDAX DE                    ; Load the word at [DE] to HL
+    c244  13         INX DE
+    c245  6f         MOV L, A
+    c246  1a         LDAX DE
+    c247  1b         DCX DE
+    c248  67         MOV H, A
+
+    c249  d5         PUSH DE
+    c24a  eb         XCHG
+
+    c24b  2a 51 f7   LHLD ARG_1 (f751)          ; Check if the value is higher than arg1
+    c24e  2b         DCX HL
+    c24f  cd d3 fb   CALL CMP_HL_DE (fbd3)
+    c252  d2 6a c2   JNC RELOCATE_ADDR_1 (c26a)
+
+    c255  2a 53 f7   LHLD ARG_2 (f753)          ; Check if the value is lower than arg2
+    c258  23         INX HL
+    c259  eb         XCHG
+    c25a  cd d3 fb   CALL CMP_HL_DE (fbd3)
+
+    c25d  d1         POP DE                     ; If not in arg1-arg2 range - advance to the next value
+    c25e  d2 6c c2   JNC RELOCATE_ADDR_2 (c26c)
+
+    c261  09         DAD BC                     ; Apply the offset
+
+    c262  7d         MOV A, L                   ; Store value back
+    c263  12         STAX DE
+    c264  13         INX DE
+    c265  7c         MOV A, H
+    c266  12         STAX DE
+
+    c267  c3 3e c2   JMP RELOCATE_ADDR_LOOP (c23e)  ; Repeat for the next address
+
+RELOCATE_ADDR_1:
+    c26a  eb         XCHG
+    c26b  d1         POP DE
+
+RELOCATE_ADDR_2:
+    c26c  13         INX DE                     ; Advance to the next address
+    c26d  c3 3e c2   JMP RELOCATE_ADDR_LOOP (c23e)
+
+
+; Helper function to check whether '@' modifier is added to the command
+; Raise Z flag if '@' modifier is present
+CHECK_AT_MODIFIER:
+    c270  11 7c f7   LXI DE, f77b + 1 (f77c)
+
+CHECK_AT_SYMBOL:
+    c273  1a         LDAX DE                    ; Check if symbol at [DE] is @
+    c274  fe 40      CPI A, 40
+    c276  c0         RNZ                        ; Z flag reset if no @
+
+    c277  13         INX DE                     ; Advance DE to the next symbol after @
+    c278  c9         RET                        ; Z flag is set if @ is present
+
+
+; The following process P command (not P@)
+RELOCATE_PROGRAM:
+    c279  11 7c f7   LXI DE, f77b + 1 (f77c)
+
+    c27c  1a         LDAX DE                    ; Skip 'N' command alteration char
+    c27d  fe 4e      CPI A, 4e
+    c27f  c2 83 c2   JNZ RELOCATE_PROGRAM_1 (c283)
+
+    c282  13         INX DE
+
+RELOCATE_PROGRAM_1:
+    c283  cd d9 fb   CALL PARSE_ARGUMENTS (fbd9); Parse arguments, report an error not all arguments provided
+    c286  cc b9 fb   CZ REPORT_INPUT_ERROR (fbb9)
+
+    c289  d5         PUSH DE                    ; Decrement arg2 (destination end address)
+    c28a  cd cc fb   CALL LOAD_ARGUMENTS (fbcc)
+    c28d  2b         DCX HL
+    c28e  22 53 f7   SHLD ARG_2 (f753)
+
+    c291  dc b9 fb   CC REPORT_INPUT_ERROR (fbb9)   ; Report error if dest start addr > dest end addr
+
+    c294  2a 55 f7   LHLD ARG_3 (f755)          ; Compare source start and end addresses
+    c297  eb         XCHG
+    c298  2a 57 f7   LHLD ARG_4 (f757)
+    c29b  cd d3 fb   CALL CMP_HL_DE (fbd3)
+
+    c29e  dc b9 fb   CC REPORT_INPUT_ERROR (fbb9)   ; Report error if src start addr > src end addr
+
+    c2a1  d1         POP DE                     ; Parse argument 5
+    c2a2  cd 04 fc   CALL PARSE_HEX (fc04)
+    c2a5  eb         XCHG
+
+    c2a6  2a 55 f7   LHLD ARG_3 (f755)          ; Calculate arg5-arg3 difference
+    c2a9  eb         XCHG
+    c2aa  cd c6 fd   CALL HL_SUB_DE (fdc6)
+    c2ad  22 5e f7   SHLD f75e
+
+RELOCATE_PROGRAM_LOOP:
+    c2b0  2a 51 f7   LHLD ARG_1 (f751)          ; Get next byte at [arg1] (destination range)
+    c2b3  e5         PUSH HL
+    c2b4  7e         MOV A, M
+
+    c2b5  cd 1c c3   CALL MATCH_INSTRUCTION (c31c)  ; Match the opcode
+    c2b8  e1         POP HL
+    c2b9  d2 ed c2   JNC RELOCATE_PROGRAM_2_BYTE_OPCODE (c2ed)  ; C flag indicates a 3-byte instruction
+
+    c2bc  23         INX HL                     ; Load the instruction argument to DE
+    c2bd  5e         MOV E, M
+    c2be  23         INX HL
+    c2bf  56         MOV D, M
+
+    c2c0  2a 55 f7   LHLD ARG_3 (f755)          ; Check if the argument is greater or equal than source start 
+    c2c3  2b         DCX HL                     ; address
+    c2c4  cd d3 fb   CALL CMP_HL_DE (fbd3)
+    c2c7  d2 0b c3   JNC RELOCATE_PROGRAM_1_BYTE_OPCODE (c30b)
+
+    c2ca  2a 57 f7   LHLD ARG_4 (f757)          ; Check if the argument is lower than source end address
+    c2cd  cd d3 fb   CALL CMP_HL_DE (fbd3)
+    c2d0  da 0b c3   JC RELOCATE_PROGRAM_1_BYTE_OPCODE (c30b)
+
+    c2d3  78         MOV A, B                   ; The argument is in source memory range. Check if the
+    c2d4  fe 07      CPI A, 07                  ; instruction is LXI (argument is not necessarily an address)
+    c2d6  c2 e1 c2   JNZ RELOCATE_PROGRAM_2 (c2e1)
+
+    c2d9  3a 7c f7   LDA f77b + 1 (f77c)        ; Check if the 'N' command alteration enabled, which warns
+    c2dc  fe 4e      CPI A, 4e                  ; the user that argument is probably an address, and shall be
+    c2de  ca 03 c3   JZ RELOCATE_PROGRAM_PRINT_WARNING (c303)   ; double checked
+
+RELOCATE_PROGRAM_2:
+    c2e1  2a 5e f7   LHLD f75e                  ; Adjust the instruction argument to the target memory range
+    c2e4  19         DAD DE
+
+    c2e5  eb         XCHG                       ; Store the calculated value as a new instruction argument
+    c2e6  2a 51 f7   LHLD ARG_1 (f751)
+    c2e9  23         INX HL
+    c2ea  73         MOV M, E
+    c2eb  23         INX HL
+    c2ec  72         MOV M, D
+
+RELOCATE_PROGRAM_2_BYTE_OPCODE:
+    c2ed  79         MOV A, C                   ; Check if this is a 2-byte instruction
+    c2ee  fe 02      CPI A, 02
+    c2f0  c2 0b c3   JNZ RELOCATE_PROGRAM_1_BYTE_OPCODE (c30b)
+
+    c2f3  23         INX HL                     ; Advance to the argument byte
+
+    c2f4  3a 56 f7   LDA ARG_3 + 1 (f756)       ; Perhaps the argument is a high byte of an address.
+    c2f7  3d         DCR A                      ; Check if it higher than source start address high byte
+    c2f8  be         CMP M
+    c2f9  d2 0b c3   JNC RELOCATE_PROGRAM_1_BYTE_OPCODE (c30b)
+
+    c2fc  3a 58 f7   LDA ARG_4 + 1 (f758)       ; And lower than source end address high byte
+    c2ff  be         CMP M
+    c300  da 0b c3   JC RELOCATE_PROGRAM_1_BYTE_OPCODE (c30b)
+
+RELOCATE_PROGRAM_PRINT_WARNING:
+    c303  cd 47 fc   CALL PRINT_ARG_1 (fc47)    ; Print the address with an exclamation mark. These 2-byte
+    c306  3e 21      MVI A, 21                  ; instructions will not be changed automatically, but are
+    c308  cd e9 f9   CALL PUT_CHAR_A (f9e9)     ; listed to the user as potentially requiring a change
+
+RELOCATE_PROGRAM_1_BYTE_OPCODE:
+    c30b  2a 51 f7   LHLD ARG_1 (f751)          ; Advance to the next instruction (C is instruction length)
+    c30e  06 00      MVI B, 00
+    c310  09         DAD BC
+    c311  22 51 f7   SHLD ARG_1 (f751)
+
+    c314  cd cc fb   CALL LOAD_ARGUMENTS (fbcc) ; Stop when reached end of the range
+    c317  c8         RZ
+    c318  d8         RC
+
+    c319  c3 b0 c2   JMP RELOCATE_PROGRAM_LOOP (c2b0)
+
+
+
+; Match byte in A with one of CPU instructions
+; Return:
+; A - matched and masked instruction
+; B - attributes byte
+; C - number of instruction bytes
+; HL - pointer to the instruction record
+; C flag is set if 3-byte instruction is matched
+;
+; The function tries to match exact instruction code agains the instruction table. If no specific 
+; instruction matched, the function applies different bitmasks in order to match a whole instruction
+; classes (e.g. full class of MOV instructions). In this case only the first instruction in the class 
+; is returned.
+MATCH_INSTRUCTION:
+    c31c  21 cd c5   LXI HL, INSTRUCTION_DESCRIPTORS (c5cd) ; Get instructions descriptors
+
+    c31f  47         MOV B, A                   ; Store instruction in B
+
+MATCH_INSTRUCTION_LOOP:
+    c320  23         INX HL                     ; Skip mnemonic
+    c321  23         INX HL
+    c322  23         INX HL
+    c323  23         INX HL
+
+    c324  be         CMP M                      ; Compare instruction code, proceed when matched
+    c325  23         INX HL
+    c326  ca 68 c3   JZ MATCH_INSTRUCTION_ATTRIBUTE (c368)
+
+    c329  23         INX HL                     ; If we reached end of the table, this probably an instruction
+    c32a  34         INR M                      ; that needs to be matched with mask
+    c32b  35         DCR M
+    c32c  f2 20 c3   JP MATCH_INSTRUCTION_LOOP (c320)
+
+    c32f  21 1c c3   LXI HL, MATCH_INSTRUCTION (c31c)   ; Set return address to MATCH_INSTRUCTION so that 
+    c332  e5         PUSH HL                    ; instructions can be matched again after bitmask is applied
+
+    c333  e6 cf      ANI A, cf                  ; Mask POP instructions class, go match exact instruction
+    c335  fe c1      CPI A, c1
+    c337  c8         RZ
+
+    c338  fe c5      CPI A, c5                  ; Mask PUSH instructions class, go match exact instruction
+    c33a  c8         RZ
+
+    c33b  e6 f7      ANI A, f7                  ; Filter out some non-valid instructions
+    c33d  ca 64 c3   JZ MATCH_INSTRUCTION_DATA_BYTE (c364)
+
+    c340  fe c7      CPI A, c7                  ; Mask RST instructions class, go match exact instruction
+    c342  c8         RZ
+
+    c343  e6 f0      ANI A, f0                  ; Mask MOV instructions class, go match exact instruction
+    c345  fe 40      CPI A, 40
+    c347  c8         RZ
+
+    c348  78         MOV A, B                   ; Match LXI, STAX, INX, DCX, DAD, and LDAX instruction classes
+    c349  e6 c4      ANI A, c4
+    c34b  ca 60 c3   JZ MATCH_INSTRUCTION_2 (c360)
+
+    c34e  e6 f0      ANI A, f0                  ; Filter out some instruction set
+    c350  c2 57 c3   JNZ MATCH_INSTRUCTION_1 (c357)
+
+    c353  78         MOV A, B                   ; Mask MVI, INR, and DCR instruction classes
+    c354  e6 c7      ANI A, c7
+    c356  c9         RET
+
+MATCH_INSTRUCTION_1:
+    c357  fe 80      CPI A, 80                  ; Match ADD, ADC, SUB, SBB, ANA, XRA, ORA, and CMP
+    c359  c2 64 c3   JNZ MATCH_INSTRUCTION_DATA_BYTE (c364) ; instruction classes
+
+    c35c  78         MOV A, B                   ; Apply mask (remove register bits)
+    c35d  e6 f8      ANI A, f8
+    c35f  c9         RET
+
+MATCH_INSTRUCTION_2:
+    c360  78         MOV A, B                   ; Apply mask for LXI, STAX, INX, DCX, DAD, and LDAX
+    c361  e6 cf      ANI A, cf                  ; instruction classes
+    c363  c9         RET
+
+MATCH_INSTRUCTION_DATA_BYTE:
+    c364  e1         POP HL                     ; No exact instruction matched, will return "DB" directive
+    c365  21 a6 c7   LXI HL, c7a6
+
+MATCH_INSTRUCTION_ATTRIBUTE:
+    c368  7e         MOV A, M                   ; Load attribute byte in A
+    c369  e5         PUSH HL
+
+    c36a  21 82 c3   LXI HL, MATCH_INSTRUCTION_EXIT (c382)  ; Set the exit handler
+    c36d  e3         XTHL
+
+    c36e  0e 03      MVI C, 03                  ; Match 3-byte instruction attribute
+
+    c370  fe 02      CPI A, 02                  ; Match 0x02 attribute byte (normal 3-byte instruction) ????
+    c372  37         STC
+    c373  c8         RZ
+
+    c374  fe 07      CPI A, 07                  ; Match 0x07 attribute byte (LXI instruction)
+    c376  37         STC
+    c377  c8         RZ
+
+    c378  0d         DCR C                      ; Match 2-byte instruction attribute
+
+    c379  fe 01      CPI A, 01                  ; Match 0x01 attribute byte (normal 2-byte instruction) ????
+    c37b  c8         RZ
+
+    c37c  fe 09      CPI A, 09                  ; Match 0x09 attribute byte ????
+    c37e  c8         RZ
+
+    c37f  af         XRA A                      ; Everything else is 1-byte instructions, attribute byte is 0
+    c380  0d         DCR C
+    c381  c9         RET
+
+MATCH_INSTRUCTION_EXIT:
+    c382  78         MOV A, B                   ; Return masked instruction byte in A
+    c383  46         MOV B, M                   ; Return instruction attribute byte in B
+    c384  2b         DCX HL                     ; Return pointer to instruction record+4 in HL 
+    c385  c9         RET
+
+
 
 
 COMMAND_L_????:
@@ -843,7 +1013,7 @@ c413  fe 96      CPI A, 96
 c415  c2 0e c4   JNZ c40e
 c418  c1         POP BC
 c419  cd 86 c4   CALL c486
-c41c  cd 1c c3   CALL c31c
+c41c  cd 1c c3   CALL MATCH_INSTRUCTION (c31c)
 c41f  11 a6 c7   LXI DE, c7a6
 c422  1b         DCX DE
 c423  cd d3 fb   CALL CMP_HL_DE (fbd3)
@@ -1104,448 +1274,104 @@ c5c5  13         INX DE
 c5c6  cd d5 c8   CALL c8d5
 c5c9  c3 bb c5   JMP c5bb
 c5cc  00         NOP
-????:
-c5cd  41         MOV B, C
-c5ce  43         MOV B, E
-c5cf  49         MOV C, C
-c5d0  20         db 20
-c5d1  ce 01      ACI A, 01
-c5d3  41         MOV B, C
-c5d4  44         MOV B, H
-c5d5  43         MOV B, E
-c5d6  20         db 20
-c5d7  88         ADC B
-c5d8  03         INX BC
-c5d9  41         MOV B, C
-c5da  44         MOV B, H
-c5db  44         MOV B, H
-c5dc  20         db 20
-c5dd  80         ADD B
-c5de  03         INX BC
-c5df  41         MOV B, C
-c5e0  44         MOV B, H
-c5e1  49         MOV C, C
-c5e2  20         db 20
-c5e3  c6 01      ADI A, 01
-c5e5  41         MOV B, C
-c5e6  4e         MOV C, M
-c5e7  41         MOV B, C
-c5e8  20         db 20
-c5e9  a0         ANA B
-c5ea  03         INX BC
-c5eb  41         MOV B, C
-c5ec  4e         MOV C, M
-c5ed  49         MOV C, C
-c5ee  20         db 20
-c5ef  e6 01      ANI A, 01
-c5f1  43         MOV B, E
-c5f2  41         MOV B, C
-c5f3  4c         MOV C, H
-c5f4  4c         MOV C, H
-c5f5  cd 02 43   CALL 4302
-c5f8  43         MOV B, E
-c5f9  20         db 20
-c5fa  20         db 20
-c5fb  dc 02 43   CC 4302
-c5fe  4d         MOV C, L
-c5ff  20         db 20
-c600  20         db 20
-c601  fc 02 43   CM 4302
-c604  4d         MOV C, L
-c605  41         MOV B, C
-c606  20         db 20
-c607  2f         CMA
-c608  00         NOP
-c609  43         MOV B, E
-c60a  4d         MOV C, L
-c60b  43         MOV B, E
-c60c  20         db 20
-c60d  3f         CMC
-c60e  00         NOP
-c60f  43         MOV B, E
-c610  4d         MOV C, L
-c611  50         MOV D, B
-c612  20         db 20
-c613  b8         CMP B
-c614  03         INX BC
-c615  43         MOV B, E
-c616  4e         MOV C, M
-c617  43         MOV B, E
-c618  20         db 20
-c619  d4 02 43   CNC 4302
-c61c  4e         MOV C, M
-c61d  5a         MOV E, D
-c61e  20         db 20
-c61f  c4 02 43   CNZ 4302
-c622  50         MOV D, B
-c623  20         db 20
-c624  20         db 20
-c625  f4 02 43   CP 4302
-c628  50         MOV D, B
-c629  45         MOV B, L
-c62a  20         db 20
-c62b  ec 02 43   CPE 4302
-c62e  50         MOV D, B
-c62f  49         MOV C, C
-c630  20         db 20
-c631  fe 01      CPI A, 01
-c633  43         MOV B, E
-c634  50         MOV D, B
-c635  4f         MOV C, A
-c636  20         db 20
-c637  e4 02 43   CPO 4302
-c63a  5a         MOV E, D
-c63b  20         db 20
-c63c  20         db 20
-c63d  cc 02 44   CZ 4402
-c640  41         MOV B, C
-c641  41         MOV B, C
-c642  20         db 20
-c643  27         DAA
-????:
-c644  00         NOP
-c645  44         MOV B, H
-c646  41         MOV B, C
-c647  44         MOV B, H
-c648  20         db 20
-c649  09         DAD BC
-c64a  04         INR B
-c64b  44         MOV B, H
-c64c  43         MOV B, E
-c64d  52         MOV D, D
-c64e  20         db 20
-c64f  05         DCR B
-c650  05         DCR B
-c651  44         MOV B, H
-c652  43         MOV B, E
-c653  58         MOV E, B
-c654  20         db 20
-c655  0b         DCX BC
-c656  04         INR B
-c657  44         MOV B, H
-c658  49         MOV C, C
-c659  20         db 20
-c65a  20         db 20
-c65b  f3         DI
-c65c  00         NOP
-c65d  45         MOV B, L
-c65e  49         MOV C, C
-c65f  20         db 20
-c660  20         db 20
-c661  fb         EI
-c662  00         NOP
-c663  48         MOV C, B
-c664  4c         MOV C, H
-c665  54         MOV D, H
-c666  20         db 20
-c667  76         HLT
-c668  00         NOP
-c669  49         MOV C, C
-c66a  4e         MOV C, M
-c66b  20         db 20
-c66c  20         db 20
-c66d  db a1      IN a1
-c66f  49         MOV C, C
-c670  4e         MOV C, M
-c671  52         MOV D, D
-c672  20         db 20
-c673  04         INR B
-c674  05         DCR B
-c675  49         MOV C, C
-c676  4e         MOV C, M
-c677  58         MOV E, B
-c678  20         db 20
-c679  03         INX BC
-c67a  04         INR B
-c67b  4a         MOV C, D
-c67c  43         MOV B, E
-c67d  20         db 20
-c67e  20         db 20
-c67f  da 02 4a   JC 4a02
-c682  4d         MOV C, L
-c683  20         db 20
-c684  20         db 20
-c685  fa 02 4a   JM 4a02
-c688  4d         MOV C, L
-c689  50         MOV D, B
-c68a  20         db 20
-c68b  c3 02 4a   JMP 4a02
-c68e  4e         MOV C, M
-c68f  43         MOV B, E
-c690  20         db 20
-c691  d2 02 4a   JNC 4a02
-c694  4e         MOV C, M
-c695  5a         MOV E, D
-c696  20         db 20
-c697  c2 02 4a   JNZ 4a02
-c69a  50         MOV D, B
-c69b  20         db 20
-c69c  20         db 20
-c69d  f2 02 4a   JP 4a02
-c6a0  50         MOV D, B
-c6a1  45         MOV B, L
-c6a2  20         db 20
-c6a3  ea 02 4a   JPE 4a02
-c6a6  50         MOV D, B
-c6a7  4f         MOV C, A
-c6a8  20         db 20
-c6a9  e2 02 4a   JPO 4a02
-c6ac  5a         MOV E, D
-c6ad  20         db 20
-c6ae  20         db 20
-c6af  ca 02 4c   JZ 4c02
-c6b2  44         MOV B, H
-c6b3  41         MOV B, C
-c6b4  20         db 20
-c6b5  3a 02 4c   LDA 4c02
-c6b8  44         MOV B, H
-c6b9  41         MOV B, C
-c6ba  58         MOV E, B
-c6bb  0a         LDAX BC
-c6bc  06 4c      MVI B, 4c
-c6be  48         MOV C, B
-c6bf  4c         MOV C, H
-c6c0  44         MOV B, H
-c6c1  2a 02 4c   LHLD 4c02
-c6c4  58         MOV E, B
-c6c5  49         MOV C, C
-c6c6  20         db 20
-c6c7  01 07 4d   LXI BC, 4d07
-c6ca  4f         MOV C, A
-c6cb  56         MOV D, M
-c6cc  20         db 20
-c6cd  40         MOV B, B
-c6ce  08         db 08
-c6cf  4d         MOV C, L
-c6d0  56         MOV D, M
-c6d1  49         MOV C, C
-c6d2  20         db 20
-c6d3  06 09      MVI B, 09
-c6d5  4e         MOV C, M
-c6d6  4f         MOV C, A
-c6d7  50         MOV D, B
-c6d8  20         db 20
-c6d9  00         NOP
-c6da  00         NOP
-c6db  4f         MOV C, A
-c6dc  52         MOV D, D
-c6dd  41         MOV B, C
-c6de  20         db 20
-c6df  b0         ORA B
-c6e0  03         INX BC
-c6e1  4f         MOV C, A
-c6e2  52         MOV D, D
-c6e3  49         MOV C, C
-c6e4  20         db 20
-c6e5  f6 01      ORI A, 01
-c6e7  4f         MOV C, A
-c6e8  55         MOV D, L
-c6e9  54         MOV D, H
-c6ea  20         db 20
-c6eb  d3 a1      OUT a1
-c6ed  50         MOV D, B
-c6ee  43         MOV B, E
-c6ef  48         MOV C, B
-c6f0  4c         MOV C, H
-c6f1  e9         PCHL
-c6f2  00         NOP
-c6f3  50         MOV D, B
-c6f4  4f         MOV C, A
-c6f5  50         MOV D, B
-c6f6  20         db 20
-c6f7  c1         POP BC
-c6f8  04         INR B
-c6f9  50         MOV D, B
-c6fa  55         MOV D, L
-c6fb  53         MOV D, E
-c6fc  48         MOV C, B
-c6fd  c5         PUSH BC
-c6fe  04         INR B
-c6ff  52         MOV D, D
-c700  41         MOV B, C
-c701  4c         MOV C, H
-c702  20         db 20
-c703  17         RAL
-c704  00         NOP
-c705  52         MOV D, D
-c706  41         MOV B, C
-c707  52         MOV D, D
-c708  20         db 20
-c709  1f         RAR
-c70a  00         NOP
-c70b  52         MOV D, D
-c70c  43         MOV B, E
-c70d  20         db 20
-c70e  20         db 20
-c70f  d8         RC
-c710  00         NOP
-c711  52         MOV D, D
-c712  45         MOV B, L
-c713  54         MOV D, H
-c714  20         db 20
-c715  c9         RET
-c716  00         NOP
-c717  52         MOV D, D
-c718  4c         MOV C, H
-c719  43         MOV B, E
-c71a  20         db 20
-c71b  07         RLC
-c71c  00         NOP
-c71d  52         MOV D, D
-c71e  4d         MOV C, L
-c71f  20         db 20
-c720  20         db 20
-c721  f8         RM
-c722  00         NOP
-c723  52         MOV D, D
-c724  4e         MOV C, M
-c725  43         MOV B, E
-c726  20         db 20
-c727  d0         RNC
-c728  00         NOP
-c729  52         MOV D, D
-c72a  4e         MOV C, M
-c72b  5a         MOV E, D
-c72c  20         db 20
-c72d  c0         RNZ
-c72e  00         NOP
-c72f  52         MOV D, D
-c730  50         MOV D, B
-c731  20         db 20
-c732  20         db 20
-c733  f0         RP
-c734  00         NOP
-c735  52         MOV D, D
-c736  50         MOV D, B
-c737  45         MOV B, L
-c738  20         db 20
-c739  e8         RPE
-c73a  00         NOP
-c73b  52         MOV D, D
-c73c  50         MOV D, B
-c73d  4f         MOV C, A
-c73e  20         db 20
-c73f  e0         RPO
-c740  00         NOP
-c741  52         MOV D, D
-c742  52         MOV D, D
-c743  43         MOV B, E
-c744  20         db 20
-c745  0f         RRC
-c746  00         NOP
-c747  52         MOV D, D
-c748  53         MOV D, E
-c749  54         MOV D, H
-c74a  20         db 20
-c74b  c7         RST 0
-c74c  05         DCR B
-c74d  52         MOV D, D
-c74e  5a         MOV E, D
-c74f  20         db 20
-c750  20         db 20
-c751  c8         RZ
-c752  00         NOP
-c753  53         MOV D, E
-c754  42         MOV B, D
-c755  42         MOV B, D
-c756  20         db 20
-c757  98         SBB B
-c758  03         INX BC
-c759  53         MOV D, E
-c75a  42         MOV B, D
-c75b  49         MOV C, C
-c75c  20         db 20
-c75d  de 01      SBI A, 01
-c75f  53         MOV D, E
-c760  48         MOV C, B
-c761  4c         MOV C, H
-c762  44         MOV B, H
-c763  22 02 53   SHLD 5302
-c766  50         MOV D, B
-c767  48         MOV C, B
-c768  4c         MOV C, H
-c769  f9         SPHL
-c76a  00         NOP
-c76b  53         MOV D, E
-c76c  54         MOV D, H
-c76d  41         MOV B, C
-c76e  20         db 20
-c76f  32 02 53   STA 5302
-c772  54         MOV D, H
-c773  41         MOV B, C
-c774  58         MOV E, B
-c775  02         STAX BC
-c776  06 53      MVI B, 53
-c778  54         MOV D, H
-c779  43         MOV B, E
-c77a  20         db 20
-c77b  37         STC
-c77c  00         NOP
-c77d  53         MOV D, E
-c77e  55         MOV D, L
-c77f  42         MOV B, D
-c780  20         db 20
-c781  90         SUB B
-c782  03         INX BC
-c783  53         MOV D, E
-c784  55         MOV D, L
-c785  49         MOV C, C
-c786  20         db 20
-c787  d6 01      SUI A, 01
-c789  58         MOV E, B
-c78a  43         MOV B, E
-c78b  48         MOV C, B
-c78c  47         MOV B, A
-c78d  eb         XCHG
-c78e  00         NOP
-c78f  58         MOV E, B
-c790  52         MOV D, D
-c791  41         MOV B, C
-c792  20         db 20
-c793  a8         XRA B
-c794  03         INX BC
-c795  58         MOV E, B
-c796  52         MOV D, D
-c797  49         MOV C, C
-c798  20         db 20
-c799  ee 01      XRI A, 01
-c79b  58         MOV E, B
-c79c  54         MOV D, H
-c79d  48         MOV C, B
-c79e  4c         MOV C, H
-c79f  e3         XTHL
-c7a0  00         NOP
-c7a1  44         MOV B, H
-c7a2  42         MOV B, D
-c7a3  20         db 20
-c7a4  20         db 20
-c7a5  00         NOP
-????:
-c7a6  0a         LDAX BC
-c7a7  45         MOV B, L
-c7a8  51         MOV D, C
-c7a9  55         MOV D, L
-c7aa  20         db 20
-c7ab  00         NOP
-c7ac  0b         DCX BC
-c7ad  4f         MOV C, A
-c7ae  52         MOV D, D
-c7af  47         MOV B, A
-c7b0  20         db 20
-c7b1  00         NOP
-c7b2  0c         INR C
-c7b3  44         MOV B, H
-c7b4  57         MOV D, A
-c7b5  20         db 20
-c7b6  20         db 20
-c7b7  00         NOP
-c7b8  0d         DCR C
-c7b9  44         MOV B, H
-c7ba  49         MOV C, C
-c7bb  52         MOV D, D
-c7bc  20         db 20
-c7bd  00         NOP
-c7be  0e ff      MVI C, ff
+
+; List of CPU instructions. Each record contains:
+; - 4-char mnemonic
+; - opcode
+; - instruction attributes where:
+;   - 0x00  - 1-byte instruction
+;   - 0x01  - 2-byte instruction, 2nd byte is immediate value
+;   - 0x02  - 3-byte instruction, argument is an address
+;   - ...
+;   - 0x07  - 3-byte instruction, argument may be an address, but not necessarily
+INSTRUCTION_DESCRIPTORS:
+    c5cd  41 43 49 20     db "ACI ", 0xce, 0x01
+    c5d3  41 44 43 20     db "ADC ", 0x88, 0x03
+    c5d9  41 44 44 20     db "ADD ", 0x80, 0x03
+    c5df  41 44 49 20     db "ADI ", 0xc6, 0x01
+    c5e5  41 4e 41 20     db "ANA ", 0xa0, 0x03
+    c5eb  41 4e 49 20     db "ANI ", 0xe6, 0x01
+    c5f1  43 41 4c 4c     db "CALL", 0xcd, 0x02
+    c5f7  43 43 20 20     db "CC  ", 0xdc, 0x02
+    c5fd  43 4d 20 20     db "CM  ", 0xfc, 0x02
+    c603  43 4d 41 20     db "CMA ", 0x2f, 0x00
+    c609  43 4d 43 20     db "CMC ", 0x3f, 0x00
+    c60f  43 4d 50 20     db "CMP ", 0xb8, 0x03
+    c615  43 4e 43 20     db "CNC ", 0xd4, 0x02
+    c61b  43 4e 5a 20     db "CNZ ", 0xc4, 0x02
+    c621  43 50 20 20     db "CP  ", 0xf4, 0x02
+    c627  43 50 45 20     db "CPE ", 0xec, 0x02
+    c62d  43 50 49 20     db "CPI ", 0xfe, 0x01
+    c633  43 50 4f 20     db "CPO ", 0xe4, 0x02
+    c639  43 5a 20 20     db "CZ  ", 0xcc, 0x02
+    c63f  44 41 41 20     db "DAA ", 0x27, 0x00
+    c645  44 41 44 20     db "DAD ", 0x09, 0x04
+    c64b  44 43 52 20     db "DCR ", 0x05, 0x05
+    c651  44 43 58 20     db "DCX ", 0x0b, 0x04
+    c657  44 49 20 20     db "DI  ", 0xf3, 0x00
+    c65d  45 49 20 20     db "EI  ", 0xfb, 0x00
+    c663  48 4c 54 20     db "HLT ", 0x76, 0x00
+    c669  49 4e 20 20     db "IN  ", 0xdb, 0xa1     ; BUG? instruction matched as 1-byte
+    c66f  49 4e 52 20     db "INR ", 0x04, 0x05
+    c675  49 4e 58 20     db "INX ", 0x03, 0x04
+    c67b  4a 43 20 20     db "JC  ", 0xda, 0x02
+    c681  4a 4d 20 20     db "JM  ", 0xfa, 0x02
+    c687  4a 4d 50 20     db "JMP ", 0xc3, 0x02
+    c68d  4a 4e 43 20     db "JNC ", 0xd2, 0x02
+    c693  4a 4e 5a 20     db "JNZ ", 0xc2, 0x02
+    c699  4a 50 20 20     db "JP  ", 0xf2, 0x02
+    c69f  4a 50 45 20     db "JPE ", 0xea, 0x02
+    c6a5  4a 50 4f 20     db "JPO ", 0xe2, 0x02
+    c6ab  4a 5a 20 20     db "JZ  ", 0xca, 0x02
+    c6b1  4c 44 41 20     db "LDA ", 0x3a, 0x02
+    c6b7  4c 44 41 58     db "LDAX", 0x0a, 0x06
+    c6bd  4c 48 4c 44     db "LHLD", 0x2a, 0x02
+    c6c3  4c 58 49 20     db "LXI ", 0x01, 0x07
+    c6c9  4d 4f 56 20     db "MOV ", 0x40, 0x08
+    c6cf  4d 56 49 20     db "MVI ", 0x06, 0x09
+    c6d5  4e 4f 50 20     db "NOP ", 0x00, 0x00
+    c6db  4f 52 41 20     db "ORA ", 0xb0, 0x03
+    c6e1  4f 52 49 20     db "ORI ", 0xf6, 0x01
+    c6e7  4f 55 54 20     db "OUT ", 0xd3, 0xa1     ; BUG? instruction matched as 1-byte
+    c6ed  50 43 48 4c     db "PCHL", 0xe9, 0x00
+    c6f3  50 4f 50 20     db "POP ", 0xc1, 0x04
+    c6f9  50 55 53 48     db "PUSH", 0xc5, 0x04
+    c6ff  52 41 4c 20     db "RAL ", 0x17, 0x00
+    c705  52 41 52 20     db "RAR ", 0x1f, 0x00
+    c70b  52 43 20 20     db "RC  ", 0xd8, 0x00
+    c711  52 45 54 20     db "RET ", 0xc9, 0x00
+    c717  52 4c 43 20     db "RLC ", 0x07, 0x00
+    c71d  52 4d 20 20     db "RM  ", 0xf8, 0x00
+    c723  52 4e 43 20     db "RNC ", 0xd0, 0x00
+    c729  52 4e 5a 20     db "RNZ ", 0xc0, 0x00
+    c72f  52 50 20 20     db "RP  ", 0xf0, 0x00
+    c735  52 50 45 20     db "RPE ", 0xe8, 0x00
+    c73b  52 50 4f 20     db "RPO ", 0xe0, 0x00
+    c741  52 52 43 20     db "RRC ", 0x0f, 0x00
+    c747  52 53 54 20     db "RST ", 0xc7, 0x05
+    c74d  52 5a 20 20     db "RZ  ", 0xc8, 0x00
+    c753  53 42 42 20     db "SBB ", 0x98, 0x03
+    c759  53 42 49 20     db "SBI ", 0xde, 0x01
+    c75f  53 48 4c 44     db "SHLD", 0x22, 0x02
+    c765  53 50 48 4c     db "SPHL", 0xf9, 0x00
+    c76b  53 54 41 20     db "STA ", 0x32, 0x02
+    c771  53 54 41 58     db "STAX", 0x02, 0x06
+    c777  53 54 43 20     db "STC ", 0x37, 0x00
+    c77d  53 55 42 20     db "SUB ", 0x90, 0x03
+    c783  53 55 49 20     db "SUI ", 0xd6, 0x01
+    c789  58 43 48 47     db "XCHG", 0xeb, 0x00
+    c78f  58 52 41 20     db "XRA ", 0xa8, 0x03
+    c795  58 52 49 20     db "XRI ", 0xee, 0x01
+    c79b  58 54 48 4c     db "XTHL", 0xe3, 0x00
+    c7a1  44 42 20 20     db "DB  ", 0x00, 0x0a
+    c7a7  45 51 55 20     db "EQU ", 0x00, 0x0b
+    c7ad  4f 52 47 20     db "ORG ", 0x00, 0x0c
+    c7b3  44 57 20 20     db "DW  ", 0x00, 0x0d
+    c7b9  44 49 52 20     db "DIR ", 0x00, 0x0e
+
+    c7bf  ff
+
+
 ????:
 c7c0  41         MOV B, C
 c7c1  4d         MOV C, L
@@ -1605,7 +1431,7 @@ c80d  b7         ORA A
 c80e  fa b5 fd   JM SET_COMMAND_MODE_FLAG (fdb5)
 c811  fe 3b      CPI A, 3b
 c813  ca b0 fd   JZ RESET_COMMAND_MODE_FLAG (fdb0)
-c816  cd 73 c2   CALL c273
+c816  cd 73 c2   CALL CHECK_AT_SYMBOL (c273)
 c819  cc 22 c8   CZ c822
 c81c  cd 7e c5   CALL c57e
 c81f  c3 b0 fd   JMP RESET_COMMAND_MODE_FLAG (fdb0)
@@ -1630,7 +1456,7 @@ c838  3d         DCR A
 ????:
 c839  32 ff f7   STA f7ff
 c83c  cd bb c5   CALL c5bb
-c83f  cd 73 c2   CALL c273
+c83f  cd 73 c2   CALL CHECK_AT_SYMBOL (c273)
 c842  ca 7a c8   JZ c87a
 c845  fe 27      CPI A, 27
 c847  ca 95 c8   JZ c895
@@ -1746,7 +1572,7 @@ c8f0  c3 da c8   JMP c8da
 ????:
 c8f3  32 60 f7   STA f760
 c8f6  cd bb c5   CALL c5bb
-c8f9  cd 73 c2   CALL c273
+c8f9  cd 73 c2   CALL CHECK_AT_SYMBOL (c273)
 c8fc  c2 1a c9   JNZ c91a
 c8ff  cd 72 c5   CALL c572
 c902  da 56 c5   JC c556
@@ -1790,7 +1616,7 @@ c959  c3 e3 c8   JMP c8e3
 c95c  cd 35 c8   CALL c835
 c95f  1e 7a      MVI E, 7a
 c961  cd c5 c5   CALL c5c5
-c964  cd 73 c2   CALL c273
+c964  cd 73 c2   CALL CHECK_AT_SYMBOL (c273)
 c967  c2 56 c5   JNZ c556
 c96a  cd 72 c5   CALL c572
 c96d  da 56 c5   JC c556
@@ -1888,7 +1714,7 @@ ca18  e1         POP HL
 ca19  22 51 f7   SHLD ARG_1 (f751)
 ca1c  c0         RNZ
 ca1d  c3 56 c5   JMP c556
-ca20  cd 70 c2   CALL c270
+ca20  cd 70 c2   CALL CHECK_AT_MODIFIER (c270)
 ca23  f5         PUSH PSW
 ca24  21 00 a0   LXI HL, a000
 ca27  22 51 f7   SHLD ARG_1 (f751)
@@ -1930,11 +1756,11 @@ ca73  cd 4d fc   CALL PRINT_HL (fc4d)
 ca76  f1         POP PSW
 ca77  c0         RNZ
 ca78  3e 40      MVI A, 40
-ca7a  cd e9 f9   CALL f9e9
+ca7a  cd e9 f9   CALL PUT_CHAR_A (f9e9)
 ????:
 ca7d  2a 51 f7   LHLD ARG_1 (f751)
 ca80  7e         MOV A, M
-ca81  cd 1c c3   CALL c31c
+ca81  cd 1c c3   CALL MATCH_INSTRUCTION (c31c)
 ca84  dc 98 ca   CC ca98
 ca87  2a 51 f7   LHLD ARG_1 (f751)
 ca8a  06 00      MVI B, 00
@@ -1964,7 +1790,7 @@ caab  77         MOV M, A
 caac  c9         RET
 caad  21 fe af   LXI HL, affe
 cab0  22 53 f7   SHLD ARG_2 (f753)
-cab3  cd 70 c2   CALL c270
+cab3  cd 70 c2   CALL CHECK_AT_MODIFIER (c270)
 cab6  21 00 a0   LXI HL, a000
 cab9  22 51 f7   SHLD ARG_1 (f751)
 cabc  cd b1 c5   CALL c5b1
@@ -1972,7 +1798,7 @@ cabf  c3 7d ca   JMP ca7d
 cac2  21 00 a0   LXI HL, a000
 cac5  22 53 f7   SHLD ARG_2 (f753)
 cac8  22 51 f7   SHLD ARG_1 (f751)
-cacb  cd 70 c2   CALL c270
+cacb  cd 70 c2   CALL CHECK_AT_MODIFIER (c270)
 cace  f5         PUSH PSW
 cacf  cd b1 c5   CALL c5b1
 ????:
