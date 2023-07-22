@@ -931,42 +931,68 @@ MATCH_INSTRUCTION_EXIT:
 
 
 
+; Command L: List the text from the memory
+;
+; Usage:
+; L - <addr1>[, <addr2>]
+;
+; The command prints all printable characters in addr1-addr2 range. 0xb000 will be used if no addr2
+; specified. Every line of the text is supplied with line start address. The command prints 16 lines
+; at a time, and then waits for a key press. Space key continues execution for another 16 lines, other
+; key stops the printing.
+COMMAND_L_LIST_TEXT:
+    c386  cd bf fb   CALL PARSE_AND_LOAD_ARGUMENTS (fbbf)   ; Parse arguments
 
-COMMAND_L_????:
-c386  cd bf fb   CALL PARSE_AND_LOAD_ARGUMENTS (fbbf)
-c389  06 10      MVI B, 10
-c38b  eb         XCHG
-c38c  13         INX DE
-c38d  c2 93 c3   JNZ c393
-c390  11 00 b0   LXI DE, b000
-????:
-c393  0e 0a      MVI C, 0a
-c395  cd f0 f9   CALL PUT_CHAR (f9f0)
-c398  05         DCR B
-c399  cc b7 c3   CZ c3b7
-c39c  cd 4d fc   CALL PRINT_HL (fc4d)
-????:
-c39f  cd d3 fb   CALL CMP_HL_DE (fbd3)
-c3a2  c8         RZ
-c3a3  7e         MOV A, M
-c3a4  b7         ORA A
-c3a5  f8         RM
-c3a6  fe 0d      CPI A, 0d
-c3a8  23         INX HL
-c3a9  ca 93 c3   JZ c393
-c3ac  e5         PUSH HL
-c3ad  cd 28 fe   CALL fe28
-c3b0  e1         POP HL
-c3b1  cd f0 f9   CALL PUT_CHAR (f9f0)
-c3b4  c3 9f c3   JMP c39f
-????:
-c3b7  cd 6b f8   CALL f86b
-c3ba  fe 20      CPI A, 20
-c3bc  c1         POP BC
-c3bd  c0         RNZ
-c3be  c5         PUSH BC
-c3bf  06 0f      MVI B, 0f
-c3c1  c9         RET
+    c389  06 10      MVI B, 10                  ; Will print 10 lines at a time
+
+    c38b  eb         XCHG                       ; HL - start address, DE - end address (if specified)
+    c38c  13         INX DE                     ; Adjust end address so that it is 1 byte after the range
+
+    c38d  c2 93 c3   JNZ c393                   ; Set end address as 0xb000 if no end address is specified
+    c390  11 00 b0   LXI DE, b000
+
+LIST_TEXT_NEW_LINE:
+    c393  0e 0a      MVI C, 0a                  ; Print new line
+    c395  cd f0 f9   CALL PUT_CHAR (f9f0)
+
+    c398  05         DCR B                      ; Pause every 16 lines, wait for a keyboard press for continue
+    c399  cc b7 c3   CZ LIST_TEXT_WAIT_KBD (c3b7)
+
+    c39c  cd 4d fc   CALL PRINT_HL (fc4d)       ; Print line start address
+
+LIST_TEXT_NEXT_CHAR:
+    c39f  cd d3 fb   CALL CMP_HL_DE (fbd3)      ; Exit if reached end address
+    c3a2  c8         RZ
+
+    c3a3  7e         MOV A, M                   ; Load the next symbol, exit if symbol code is >= 0x80
+    c3a4  b7         ORA A
+    c3a5  f8         RM
+
+    c3a6  fe 0d      CPI A, 0d                  ; Restart the line if EOL symbol is found
+    c3a8  23         INX HL
+    c3a9  ca 93 c3   JZ LIST_TEXT_NEW_LINE (c393)
+
+    c3ac  e5         PUSH HL                    ; Print the char (of '_' if char not printable)
+    c3ad  cd 28 fe   CALL GET_PRINTABLE_SYMBOL (fe28)
+    c3b0  e1         POP HL
+    c3b1  cd f0 f9   CALL PUT_CHAR (f9f0)
+
+    c3b4  c3 9f c3   JMP LIST_TEXT_NEXT_CHAR (c39f) ; Repeat until end address is reached
+
+
+LIST_TEXT_WAIT_KBD:
+    c3b7  cd 6b f8   CALL KBD_INPUT (f86b)      ; Wait for a keyboard press
+
+    c3ba  fe 20      CPI A, 20                  ; Non-space char exits the command
+    c3bc  c1         POP BC
+    c3bd  c0         RNZ
+
+    c3be  c5         PUSH BC                    ; Space char continues the command execution for next 16 lines
+    c3bf  06 0f      MVI B, 0f
+    c3c1  c9         RET
+
+
+
 
 COMMAND_W_????:
 c3c2  cd bf fb   CALL PARSE_AND_LOAD_ARGUMENTS (fbbf)
@@ -978,7 +1004,7 @@ c3ce  cd b0 fd   CALL RESET_COMMAND_MODE_FLAG (fdb0)
 ????:
 c3d1  0e 57      MVI C, 57
 c3d3  cd f0 f9   CALL PUT_CHAR (f9f0)
-c3d6  cd 6b f8   CALL f86b
+c3d6  cd 6b f8   CALL KBD_INPUT (f86b)
 c3d9  fe 20      CPI A, 20
 c3db  c2 e5 c3   JNZ c3e5
 c3de  3a ff f7   LDA f7ff
@@ -1055,7 +1081,7 @@ c45a  c9         RET
 c45b  11 7b f7   LXI DE, f77b
 ????:
 c45e  1a         LDAX DE
-c45f  cd 28 fe   CALL fe28
+c45f  cd 28 fe   CALL GET_PRINTABLE_SYMBOL (fe28)
 c462  cd f0 f9   CALL PUT_CHAR (f9f0)
 c465  13         INX DE
 c466  7b         MOV A, E
@@ -1083,7 +1109,7 @@ c48a  4f         MOV C, A
 c48b  2a 51 f7   LHLD ARG_1 (f751)
 c48e  7e         MOV A, M
 c48f  02         STAX BC
-c490  cd c0 f9   CALL f9c0
+c490  cd c0 f9   CALL CONVERT_BYTE_TO_CHARS (f9c0)
 c493  e3         XTHL
 c494  71         MOV M, C
 c495  23         INX HL

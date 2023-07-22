@@ -2149,9 +2149,9 @@ COMMANDS_TABLE:
     ffcc  41 20 ca      db 'A', ca20
     ffcf  4e c2 ca      db 'N', cac2
     ffd2  40 ad ca      db '@', caad
-    ffd5  4c 86 c3      db 'L', c386
+    ffd5  4c 86 c3      db 'L', COMMAND_L_LIST_TEXT (c386)
     ffd8  57 c2 c3      db 'W', c3c2
-    ffdb  5a eb c1      db 'Z', c1eb
+    ffdb  5a eb c1      db 'Z', COMMAND_Z_ZERO_RANGE (c1eb)
     ffde  50 27 c2      db 'P', COMMAND_P_RELOCATE (c227)
     ffe1  1f e9 f9      db 0x1f, f9e9
     ffe4  42 00 d8      db 'B', d800
