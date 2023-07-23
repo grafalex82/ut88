@@ -903,7 +903,7 @@ MATCH_INSTRUCTION_ATTRIBUTE:
 
     c36e  0e 03      MVI C, 03                  ; Match 3-byte instruction attribute
 
-    c370  fe 02      CPI A, 02                  ; Match 0x02 attribute byte (normal 3-byte instruction) ????
+    c370  fe 02      CPI A, 02                  ; Match 0x02 attribute byte (normal 3-byte instruction)
     c372  37         STC
     c373  c8         RZ
 
@@ -913,10 +913,10 @@ MATCH_INSTRUCTION_ATTRIBUTE:
 
     c378  0d         DCR C                      ; Match 2-byte instruction attribute
 
-    c379  fe 01      CPI A, 01                  ; Match 0x01 attribute byte (normal 2-byte instruction) ????
+    c379  fe 01      CPI A, 01                  ; Match 0x01 attribute byte (normal 2-byte instruction)
     c37b  c8         RZ
 
-    c37c  fe 09      CPI A, 09                  ; Match 0x09 attribute byte ????
+    c37c  fe 09      CPI A, 09                  ; Match 0x09 (MVI instruction) attribute byte
     c37e  c8         RZ
 
     c37f  af         XRA A                      ; Everything else is 1-byte instructions, attribute byte is 0
@@ -994,216 +994,364 @@ LIST_TEXT_WAIT_KBD:
 
 
 
-COMMAND_W_????:
-c3c2  cd bf fb   CALL PARSE_AND_LOAD_ARGUMENTS (fbbf)
-c3c5  c2 ce c3   JNZ c3ce
-c3c8  21 ff ff   LXI HL, ffff
-c3cb  22 53 f7   SHLD ARG_2 (f753)
-????:
-c3ce  cd b0 fd   CALL RESET_COMMAND_MODE_FLAG (fdb0)
-????:
-c3d1  0e 57      MVI C, 57
-c3d3  cd f0 f9   CALL PUT_CHAR (f9f0)
-c3d6  cd 6b f8   CALL KBD_INPUT (f86b)
-c3d9  fe 20      CPI A, 20
-c3db  c2 e5 c3   JNZ c3e5
-c3de  3a ff f7   LDA f7ff
-c3e1  2f         CMA
-c3e2  c3 f1 c3   JMP c3f1
-????:
-c3e5  d6 32      SUI A, 32
-c3e7  ca f1 c3   JZ c3f1
-c3ea  fe ff      CPI A, ff
-c3ec  0e 19      MVI C, 19
-c3ee  c2 f0 f9   JNZ PUT_CHAR (f9f0)
-????:
-c3f1  32 ff f7   STA f7ff
-c3f4  01 0c 18   LXI BC, 180c
-c3f7  cd f0 f9   CALL PUT_CHAR (f9f0)
-????:
-c3fa  c5         PUSH BC
-c3fb  78         MOV A, B
-c3fc  fe 18      CPI A, 18
-c3fe  c4 6b fc   CNZ PRINT_NEW_LINE (fc6b)
-c401  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)
-c404  cc 7b c4   CZ c47b
-c407  cd 4a fc   CALL fc4a
-c40a  01 7b f7   LXI BC, f77b
-c40d  c5         PUSH BC
-????:
-c40e  3e 20      MVI A, 20
-c410  02         STAX BC
-c411  03         INX BC
-c412  79         MOV A, C
-c413  fe 96      CPI A, 96
-c415  c2 0e c4   JNZ c40e
-c418  c1         POP BC
-c419  cd 86 c4   CALL c486
-c41c  cd 1c c3   CALL MATCH_INSTRUCTION (c31c)
-c41f  11 a6 c7   LXI DE, c7a6
-c422  1b         DCX DE
-c423  cd d3 fb   CALL CMP_HL_DE (fbd3)
-c426  c2 31 c4   JNZ c431
-c429  eb         XCHG
-c42a  2a 7b f7   LHLD f77b
-c42d  22 87 f7   SHLD f787
-c430  eb         XCHG
-????:
-c431  11 5b c4   LXI DE, c45b
-c434  d5         PUSH DE
-c435  e5         PUSH HL
-c436  cd 9b c4   CALL c49b
-c439  7d         MOV A, L
-c43a  c6 1e      ADI A, 1e
-c43c  6f         MOV L, A
-c43d  cd a6 c4   CALL c4a6
-c440  01 82 f7   LXI BC, f782
-c443  e3         XTHL
-c444  2b         DCX HL
-c445  2b         DCX HL
-c446  2b         DCX HL
-c447  2b         DCX HL
-c448  16 04      MVI D, 04
-????:
-c44a  7e         MOV A, M
-c44b  02         STAX BC
-c44c  03         INX BC
-c44d  23         INX HL
-c44e  15         DCR D
-c44f  c2 4a c4   JNZ c44a
-c452  eb         XCHG
-????:
-c453  2a 51 f7   LHLD ARG_1 (f751)
-c456  23         INX HL
-c457  22 51 f7   SHLD ARG_1 (f751)
-c45a  c9         RET
-????:
-c45b  11 7b f7   LXI DE, f77b
-????:
-c45e  1a         LDAX DE
-c45f  cd 28 fe   CALL GET_PRINTABLE_SYMBOL (fe28)
-c462  cd f0 f9   CALL PUT_CHAR (f9f0)
-c465  13         INX DE
-c466  7b         MOV A, E
-c467  fe 95      CPI A, 95
-c469  c2 5e c4   JNZ c45e
-c46c  c1         POP BC
-c46d  cd cc fb   CALL LOAD_ARGUMENTS (fbcc)
-c470  d8         RC
-c471  05         DCR B
-c472  c2 fa c3   JNZ c3fa
-c475  cd 6b fc   CALL PRINT_NEW_LINE (fc6b)
-c478  c3 d1 c3   JMP c3d1
-????:
-c47b  01 18 1f   LXI BC, 1f18
-????:
-c47e  cd f0 f9   CALL PUT_CHAR (f9f0)
-c481  05         DCR B
-c482  c2 7e c4   JNZ c47e
-c485  c9         RET
-????:
-c486  c5         PUSH BC
-c487  79         MOV A, C
-c488  c6 13      ADI A, 13
-c48a  4f         MOV C, A
-c48b  2a 51 f7   LHLD ARG_1 (f751)
-c48e  7e         MOV A, M
-c48f  02         STAX BC
-c490  cd c0 f9   CALL CONVERT_BYTE_TO_CHARS (f9c0)
-c493  e3         XTHL
-c494  71         MOV M, C
-c495  23         INX HL
-c496  70         MOV M, B
-c497  23         INX HL
-c498  e3         XTHL
-c499  c1         POP BC
-c49a  c9         RET
-????:
-c49b  23         INX HL
-c49c  7e         MOV A, M
-c49d  07         RLC
-c49e  6f         MOV L, A
-c49f  26 00      MVI H, 00
-c4a1  11 cc c7   LXI DE, c7cc
-c4a4  19         DAD DE
-c4a5  c9         RET
-????:
-c4a6  5e         MOV E, M
-c4a7  23         INX HL
-c4a8  56         MOV D, M
-c4a9  eb         XCHG
-c4aa  c9         RET
-????:
-c4ab  01 7d f7   LXI BC, f77d
-????:
-c4ae  cd 86 c4   CALL c486
-c4b1  01 87 f7   LXI BC, f787
-????:
-c4b4  cd 86 c4   CALL c486
-c4b7  c3 53 c4   JMP c453
-c4ba  01 7d f7   LXI BC, f77d
-c4bd  cd 86 c4   CALL c486
-c4c0  01 89 f7   LXI BC, f789
-c4c3  cd b4 c4   CALL c4b4
-c4c6  01 7f f7   LXI BC, f77f
-c4c9  c3 ae c4   JMP c4ae
-????:
-c4cc  01 ff 01   LXI BC, 01ff
-????:
-c4cf  21 c8 c7   LXI HL, c7c8
-????:
-c4d2  cd 24 c5   CALL c524
-c4d5  32 87 f7   STA f787
-c4d8  c9         RET
-????:
-c4d9  01 ff 10   LXI BC, 10ff
-c4dc  21 cc c7   LXI HL, c7cc
-c4df  c3 d2 c4   JMP c4d2
-????:
-c4e2  01 ff 08   LXI BC, 08ff
-c4e5  c3 cf c4   JMP c4cf
-????:
-c4e8  cd d9 c4   CALL c4d9
-c4eb  01 8b f7   LXI BC, f78b
-c4ee  cd 18 c5   CALL c518
-c4f1  01 89 f7   LXI BC, f789
-c4f4  cd 86 c4   CALL c486
-c4f7  01 7f f7   LXI BC, f77f
-c4fa  c3 b4 c4   JMP c4b4
-c4fd  01 c7 01   LXI BC, 01c7
-c500  cd cf c4   CALL c4cf
-c503  32 89 f7   STA f789
-c506  01 f8 08   LXI BC, 08f8
-c509  cd cf c4   CALL c4cf
-????:
-c50c  3e 2c      MVI A, 2c
-c50e  32 88 f7   STA f788
-c511  c9         RET
-????:
-c512  cd e2 c4   CALL c4e2
-c515  01 89 f7   LXI BC, f789
-????:
-c518  cd 86 c4   CALL c486
-c51b  01 7d f7   LXI BC, f77d
-c51e  cd b4 c4   CALL c4b4
-c521  c3 0c c5   JMP c50c
-????:
-c524  e5         PUSH HL
-c525  2a 51 f7   LHLD ARG_1 (f751)
-c528  2b         DCX HL
-c529  7e         MOV A, M
-c52a  e1         POP HL
-c52b  a1         ANA C
-c52c  4f         MOV C, A
-c52d  1a         LDAX DE
-c52e  90         SUB B
-????:
-c52f  2b         DCX HL
-c530  80         ADD B
-c531  b9         CMP C
-c532  c2 2f c5   JNZ c52f
-c535  7e         MOV A, M
-c536  c9         RET
+
+; Command W: Interactive disassembler
+;
+; Usage:
+; W <start_addr>[, <end_addr>]
+; 0xffff will be used as end address, if second argument is not specified.
+;
+; The command does line by line disassembly of the specified memory range. The command prints disassembly
+; list page by page (24 lines each). It is possible to use 2-screen disassembly, so that 2 pages can be
+; displayed simultaneously on left and right part of the screen. Before printing the next page of data, 
+; the program waits a keyboard press. The user may select which part of the screen to use for the next page:
+; - '1' - use left part of the screen
+; - '2' - use right part of the screen
+; - ' ' - use part of the screen alternate to the previously printed page
+; - other key will exit to the monitor
+; 
+; For every instruction the algorithm finds a matching instruction descriptor. The descriptor includes
+; 4-char instruction mnemonic, and an attribute code, which is used to find the right printer function for
+; the arguments area. These functions are used to fill the string in a buffer, and then print whole string
+; on the screen at cursor position.
+COMMAND_W_DISASSEMBLER:
+    c3c2  cd bf fb   CALL PARSE_AND_LOAD_ARGUMENTS (fbbf)   ; Parse arguments
+
+    c3c5  c2 ce c3   JNZ DISASSEMBLER_START (c3ce)  ; If no second argument added - set it as 0xffff
+    c3c8  21 ff ff   LXI HL, ffff
+    c3cb  22 53 f7   SHLD ARG_2 (f753)
+
+DISASSEMBLER_START:
+    c3ce  cd b0 fd   CALL RESET_COMMAND_MODE_FLAG (fdb0); Will use left part of the screen for the first page
+    
+DISASSEMBLER_GET_MODE:
+    c3d1  0e 57      MVI C, 57                  ; Print 'W' char, indicating we are in disassembler, and waiting 
+    c3d3  cd f0 f9   CALL PUT_CHAR (f9f0)       ; for the page number (left, right, alternate)
+
+    c3d6  cd 6b f8   CALL KBD_INPUT (f86b)      ; Wait for the keyboard char
+
+    c3d9  fe 20      CPI A, 20                  ; Check if space bar is pressed
+    c3db  c2 e5 c3   JNZ DISASSEMBLER_GET_MODE_1 (c3e5)
+
+    c3de  3a ff f7   LDA f7ff                   ; Space will alternate the screen part (left to right, right
+    c3e1  2f         CMA                        ; to left)
+    c3e2  c3 f1 c3   JMP DISASSEMBLER_GET_MODE_2 (c3f1)
+
+DISASSEMBLER_GET_MODE_1:
+    c3e5  d6 32      SUI A, 32                  ; '2'-0x32 = 0x00 (right screen); '1'-0x32 = 0xff (left screen)
+    c3e7  ca f1 c3   JZ DISASSEMBLER_GET_MODE_2 (c3f1)  ; other keys produce other values
+
+    c3ea  fe ff      CPI A, ff                  ; Compare if other key is pressed
+
+    c3ec  0e 19      MVI C, 19                  ; If other key is pressed the disassembler will exit
+    c3ee  c2 f0 f9   JNZ PUT_CHAR (f9f0)        ; through PUT_CHAR
+
+DISASSEMBLER_GET_MODE_2:
+    c3f1  32 ff f7   STA f7ff                   ; Store the selected screen flag
+
+    c3f4  01 0c 18   LXI BC, 180c               ; Will print up to 24 lines (0x18)
+    c3f7  cd f0 f9   CALL PUT_CHAR (f9f0)       ; Also move cursor to the top-left corner (0x0c)
+
+DISASSEMBLER_LINE_LOOP:
+    c3fa  c5         PUSH BC                    ; Print every instruction with a new line, until 24 lines are
+    c3fb  78         MOV A, B                   ; filled
+    c3fc  fe 18      CPI A, 18
+    c3fe  c4 6b fc   CNZ PRINT_NEW_LINE (fc6b)
+
+    c401  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)  ; If right screen selected - move cursor to col 32
+    c404  cc 7b c4   CZ DISASSEMBLER_MOVE_CURSOR_RIGHT (c47b)
+
+    c407  cd 4a fc   CALL PRINT_ARG_1_NO_NEW_LINE (fc4a)    ; Print the instruction address
+
+    c40a  01 7b f7   LXI BC, f77b               ; Going to fill command line buffer with spaces
+    c40d  c5         PUSH BC
+
+DISASSEMBLER_CLEAR_LINE_LOOP:
+    c40e  3e 20      MVI A, 20                  ; Fill next char with space symbol
+    c410  02         STAX BC
+    c411  03         INX BC
+
+    c412  79         MOV A, C                   ; Continue until reached 0xf796 address
+    c413  fe 96      CPI A, 96
+    c415  c2 0e c4   JNZ DISASSEMBLER_CLEAR_LINE_LOOP (c40e)
+
+    c418  c1         POP BC                     ; Print the instruction byte to the buffer
+    c419  cd 86 c4   CALL DISASSEMBLER_PRINT_BYTE (c486)
+
+    c41c  cd 1c c3   CALL MATCH_INSTRUCTION (c31c)  ; Search if it matches an instruction
+    c41f  11 a6 c7   LXI DE, c7a6               
+    c422  1b         DCX DE
+    c423  cd d3 fb   CALL CMP_HL_DE (fbd3)
+    c426  c2 31 c4   JNZ DISASSEMBLER_FILL_INSTRUCTION_LINE (c431)
+
+    c429  eb         XCHG                       ; Instruction not matched. Will be printing DB directive
+    c42a  2a 7b f7   LHLD f77b                  ; Copy the byte from bytes area to arguments area
+    c42d  22 87 f7   SHLD f77b + 12 (f787)
+    c430  eb         XCHG
+
+DISASSEMBLER_FILL_INSTRUCTION_LINE:
+    c431  11 5b c4   LXI DE, DISASSEMBLER_PRINT_LINE (c45b) ; Print the disassembled line when ready
+    c434  d5         PUSH DE
+
+    c435  e5         PUSH HL
+    c436  cd 9b c4   CALL DISASSEMBLER_GET_ATTRIBUTE_HANDLER (c49b)
+
+    c439  7d         MOV A, L                   ; Advance to the corresponding argument printing handler 
+    c43a  c6 1e      ADI A, 1e                  ; (15 records after)
+    c43c  6f         MOV L, A
+
+    c43d  cd a6 c4   CALL DISASSEMBLER_GET_HANDLER_ADDR (c4a6)  ; Get the handler function address
+
+    c440  01 82 f7   LXI BC, f77b + 7 (f782)    ; Get offset where to place instruction mnemonic
+
+    c443  e3         XTHL                       ; Restore address to instruction descriptor
+                                                ; Store printing handler address on stack
+
+    c444  2b         DCX HL                     ; Move to descriptor mnemonic field
+    c445  2b         DCX HL
+    c446  2b         DCX HL
+    c447  2b         DCX HL
+
+    c448  16 04      MVI D, 04                  ; Copy 4 chars of the mnemonic
+
+DISASSEMBLER_COPY_MNEMONIC_LOOP:
+    c44a  7e         MOV A, M                   ; Copy next char of the mnemonic
+    c44b  02         STAX BC
+
+    c44c  03         INX BC                     ; Advance to the next byte
+    c44d  23         INX HL
+
+    c44e  15         DCR D                      ; Repeat for all 4 chars
+    c44f  c2 4a c4   JNZ DISASSEMBLER_COPY_MNEMONIC_LOOP (c44a)
+
+    c452  eb         XCHG
+
+DISASSEMBLER_NEXT_BYTE:
+    c453  2a 51 f7   LHLD ARG_1 (f751)          ; Advance to the next byte of the instruction
+    c456  23         INX HL
+    c457  22 51 f7   SHLD ARG_1 (f751)
+
+    c45a  c9         RET
+
+
+DISASSEMBLER_PRINT_LINE:
+    c45b  11 7b f7   LXI DE, f77b               ; Set pointer to the beginning of the buffer
+
+DISASSEMBLER_PRINT_LINE_LOOP:
+    c45e  1a         LDAX DE                    ; Load and print next char
+    c45f  cd 28 fe   CALL GET_PRINTABLE_SYMBOL (fe28)
+    c462  cd f0 f9   CALL PUT_CHAR (f9f0)
+
+    c465  13         INX DE                     ; Advance to the next char
+
+    c466  7b         MOV A, E                   ; Repeat until reached 0x7f95 (26 chars)
+    c467  fe 95      CPI A, 95
+    c469  c2 5e c4   JNZ DISASSEMBLER_PRINT_LINE_LOOP (c45e)
+
+    c46c  c1         POP BC                     ; Stop disassembling when reached end address
+    c46d  cd cc fb   CALL LOAD_ARGUMENTS (fbcc)
+    c470  d8         RC
+
+    c471  05         DCR B                      ; Decrement line counter, and repeat for next instruction
+    c472  c2 fa c3   JNZ DISASSEMBLER_LINE_LOOP (c3fa)
+
+    c475  cd 6b fc   CALL PRINT_NEW_LINE (fc6b) ; Print newline at the end
+
+    c478  c3 d1 c3   JMP DISASSEMBLER_GET_MODE (c3d1)   ; Wait for the new disassembler command
+
+
+; Move cursor to right part of the screen (to position #31)
+DISASSEMBLER_MOVE_CURSOR_RIGHT:
+    c47b  01 18 1f   LXI BC, 1f18               ; Will be printing 31 (0x1f) 'move right' chars (0x18)
+
+DISASSEMBLER_MOVE_CURSOR_RIGHT_LOOP:
+    c47e  cd f0 f9   CALL PUT_CHAR (f9f0)
+    c481  05         DCR B
+    c482  c2 7e c4   JNZ DISASSEMBLER_MOVE_CURSOR_RIGHT_LOOP (c47e)
+
+    c485  c9         RET
+
+
+; Print byte as hex in the buffer
+; HL - pointer to the byte to print
+; BC - pointer to the working buffer where to print the byte
+; The function also adds the byte itself for symbolic printer at BC+0x13
+DISASSEMBLER_PRINT_BYTE:
+    c486  c5         PUSH BC                    ; Calculate buffer start + 0x13 (19 dec) offset
+    c487  79         MOV A, C
+    c488  c6 13      ADI A, 13
+    c48a  4f         MOV C, A
+
+    c48b  2a 51 f7   LHLD ARG_1 (f751)          ; Store the byte to disassemble there
+    c48e  7e         MOV A, M
+    c48f  02         STAX BC
+
+    c490  cd c0 f9   CALL BYTE_TO_HEX (f9c0)    ; Print byte as hex at the buffer address
+    c493  e3         XTHL
+    c494  71         MOV M, C
+    c495  23         INX HL
+    c496  70         MOV M, B
+    c497  23         INX HL
+
+    c498  e3         XTHL                       ; Restore registers and exit
+    c499  c1         POP BC
+    c49a  c9         RET
+
+; Calculate address in the attribute handlers table
+; Having HL pointing to instruction descriptor, the function loads the attribute, and calculates the address
+; in the attribute handlers table
+DISASSEMBLER_GET_ATTRIBUTE_HANDLER:
+    c49b  23         INX HL                     ; Load instruction attribute byte
+    c49c  7e         MOV A, M
+
+    c49d  07         RLC                        ; Multiply it by 2, and put to HL
+    c49e  6f         MOV L, A
+    c49f  26 00      MVI H, 00
+
+    c4a1  11 cc c7   LXI DE, DISASSEMBLER_ATTR_HANDLERS (c7cc)  ; Calculate the element address in table
+    c4a4  19         DAD DE
+    c4a5  c9         RET
+
+; Get printing handler address (HL = [HL])
+DISASSEMBLER_GET_HANDLER_ADDR:
+    c4a6  5e         MOV E, M
+    c4a7  23         INX HL
+    c4a8  56         MOV D, M
+    c4a9  eb         XCHG
+
+DISASSEMBLER_NOP:
+    c4aa  c9         RET
+
+
+; Print byte argument at bytes area and mnemonics area
+DISASSEMBLER_PRINT_BYTE_ARG:
+    c4ab  01 7d f7   LXI BC, f77b + 2 (f77d)        ; Will be printing argument at bytes area first
+
+DISASSEMBLER_PRINT_BYTE_ARG_1:
+    c4ae  cd 86 c4   CALL DISASSEMBLER_PRINT_BYTE (c486); Print the byte at bytes area
+    
+    c4b1  01 87 f7   LXI BC, f77b + 12 (f787)       ; Print the byte at mnemonic/argument area
+
+
+; Print byte as hex at BC and advance to the next byte
+DISASSEMBLER_PRINT_BYTE_AND_ADVANCE:
+    c4b4  cd 86 c4   CALL DISASSEMBLER_PRINT_BYTE (c486)
+    c4b7  c3 53 c4   JMP DISASSEMBLER_NEXT_BYTE (c453)
+
+
+; Print 2 bytes at bytes area, and 4-digit hex at mnemonics area (as instruction argument)
+DISASSEMBLER_PRINT_ADDRESS_ARG:
+    c4ba  01 7d f7   LXI BC, f77b + 2 (f77d)        ; Print first byte of the argument at bytes area
+    c4bd  cd 86 c4   CALL DISASSEMBLER_PRINT_BYTE (c486)
+
+    c4c0  01 89 f7   LXI BC, f77b + 14 (f789)       ; Print it also as low byte at mnemonic area
+    c4c3  cd b4 c4   CALL DISASSEMBLER_PRINT_BYTE_AND_ADVANCE (c4b4)
+
+    c4c6  01 7f f7   LXI BC, f77b + 4 (f77f)        ; Print second byte of the argument
+    c4c9  c3 ae c4   JMP DISASSEMBLER_PRINT_BYTE_ARG_1 (c4ae)
+
+
+; Print register name letter to the mnemonic argument area
+DISASSEMBLER_PRINT_REGISTER_ARG:
+    c4cc  01 ff 01   LXI BC, 01ff               ; Register is coded in lower 3 bits (B=1)
+
+DISASSEMBLER_PRINT_REGISTER_ARG_1:
+    c4cf  21 c8 c7   LXI HL, DISASSEMBLER_REGISTER_LETTERS + 8 (c7c8)
+
+DISASSEMBLER_PRINT_REGISTER_ARG_2:
+    c4d2  cd 24 c5   CALL DISASSEMBLER_GET_REGISTER_LETTER (c524)   ; Get the letter that correspond to the
+    c4d5  32 87 f7   STA f77b + 12 (f787)                           ; register and put to arguments area
+    c4d8  c9         RET
+
+
+; Print register pair name letter to the mnemonics argument area
+DISASSEMBLER_PRINT_REGPAIR_ARG:
+    c4d9  01 ff 10   LXI BC, 10ff               ; Register is coded in --xx---- bits (B=0x10)
+    c4dc  21 cc c7   LXI HL, DISASSEMBLER_REGPAIR_LETTERS + 4 (c7cc)
+    c4df  c3 d2 c4   JMP DISASSEMBLER_PRINT_REGISTER_ARG_2 (c4d2)
+
+
+; Print register name letter to the mnemonics argument area (but different bits used for coding the register)
+DISASSEMBLER_PRINT_REGISTER_ARG_3:
+    c4e2  01 ff 08   LXI BC, 08ff               ; Register is coded in --xxx--- bits (B=0x08)
+    c4e5  c3 cf c4   JMP DISASSEMBLER_PRINT_REGISTER_ARG_1 (c4cf)
+
+
+; Print "<regpair>, value" string in arguments area
+DISASSEMBLER_PRINT_LXI_ARG:
+    c4e8  cd d9 c4   CALL DISASSEMBLER_PRINT_REGPAIR_ARG (c4d9) ; Print the regpair name first
+
+    c4eb  01 8b f7   LXI BC, f77b + 0x10 (f78b)     ; Print low byte in the arguments and bytes area
+    c4ee  cd 18 c5   CALL DISASSEMBLER_PRINT_BYTE_AFTER_COMMA (c518)    ; Also print comma after reg name
+
+    c4f1  01 89 f7   LXI BC, f77b + 14 (f789)       ; Print high byte in the arguments area
+    c4f4  cd 86 c4   CALL DISASSEMBLER_PRINT_BYTE (c486)
+
+    c4f7  01 7f f7   LXI BC, f77b + 4 (f77f)        ; Print high byte in the bytes ares
+    c4fa  c3 b4 c4   JMP DISASSEMBLER_PRINT_BYTE_AND_ADVANCE (c4b4)
+
+; Print "<reg>, <reg>" string in arguments area (MOV instruction)
+DISASSEMBLER_PRINT_MOV_ARG:
+    c4fd  01 c7 01   LXI BC, 01c7                   ; Print destination register name
+    c500  cd cf c4   CALL DISASSEMBLER_PRINT_REGISTER_ARG_1 (c4cf)
+
+    c503  32 89 f7   STA f77b + 14 (f789)           ; Print source register name
+    c506  01 f8 08   LXI BC, 08f8
+    c509  cd cf c4   CALL DISASSEMBLER_PRINT_REGISTER_ARG_1 (c4cf)
+
+; Print comma symbol after destination register name
+DISASSEMBLER_PRINT_COMA:
+    c50c  3e 2c      MVI A, 2c                  ; Print comma in arguments area
+    c50e  32 88 f7   STA f77b + 13 (f788)
+    c511  c9         RET
+
+; Print "<reg>, <value>" string (MVI instruction)
+DISASSEMBLER_PRINT_MVI_ARG:
+    c512  cd e2 c4   CALL DISASSEMBLER_PRINT_REGISTER_ARG_3 (c4e2)
+    c515  01 89 f7   LXI BC, f77b + 14 (f789)
+
+; Prints ", <byte>" substring at BC. 
+; Can be used with reg or regpair on the left to comma, and 1- or 2-byte argument at the right
+DISASSEMBLER_PRINT_BYTE_AFTER_COMMA:
+    c518  cd 86 c4   CALL DISASSEMBLER_PRINT_BYTE (c486)    ; Print the byte at BC address
+
+    c51b  01 7d f7   LXI BC, f77b + 2 (f77d)                ; Print the same byte in bytes area
+    c51e  cd b4 c4   CALL DISASSEMBLER_PRINT_BYTE_AND_ADVANCE (c4b4)
+
+    c521  c3 0c c5   JMP DISASSEMBLER_PRINT_COMA (c50c)
+
+
+; Get letter that corresponds to the register that the opcode is operating with
+; Arguments:
+; - HL - pointer to the register letters (1 byte after the actual data, will iterate backwards)
+; - B - increment to the next register in the opcode
+; - C - opcode mask
+; - DE - pointer to the instruction opcode within the matched instruction descriptor
+DISASSEMBLER_GET_REGISTER_LETTER:
+    c524  e5         PUSH HL                    ; Get the instruction opcode
+    c525  2a 51 f7   LHLD ARG_1 (f751)
+    c528  2b         DCX HL
+    c529  7e         MOV A, M
+    c52a  e1         POP HL
+
+    c52b  a1         ANA C                      ; Apply the mask
+    c52c  4f         MOV C, A
+
+    c52d  1a         LDAX DE                    ; Get the masked instruction opcode from the descriptor
+
+    c52e  90         SUB B                      ; Preflight for the ADD instruction below
+
+DISASSEMBLER_GET_REGISTER_LETTER_LOOP:
+    c52f  2b         DCX HL                     ; Iterate over the register letters until opcode matches
+    c530  80         ADD B
+
+    c531  b9         CMP C                      ; Repeat until opcodes match
+    c532  c2 2f c5   JNZ DISASSEMBLER_GET_REGISTER_LETTER_LOOP (c52f)
+
+    c535  7e         MOV A, M                   ; Return the register letter
+    c536  c9         RET
+
+
 ????:
 c537  01 03 10   LXI BC, 1003
 c53a  21 c8 c7   LXI HL, c7c8
@@ -1211,7 +1359,7 @@ c53d  c3 46 c5   JMP c546
 ????:
 c540  01 07 08   LXI BC, 0807
 ????:
-c543  21 c0 c7   LXI HL, c7c0
+c543  21 c0 c7   LXI HL, DISASSEMBLER_REGISTER_LETTERS (c7c0)
 ????:
 c546  32 ff f7   STA f7ff
 c549  cd bb c5   CALL c5bb
@@ -1278,8 +1426,8 @@ c5a3  1b         DCX DE
 c5a4  eb         XCHG
 c5a5  cd d5 c8   CALL c8d5
 c5a8  46         MOV B, M
-c5a9  cd 9b c4   CALL c49b
-c5ac  cd a6 c4   CALL c4a6
+c5a9  cd 9b c4   CALL DISASSEMBLER_GET_ATTRIBUTE_HANDLER (c49b)
+c5ac  cd a6 c4   CALL DISASSEMBLER_GET_HANDLER_ADDR (c4a6)
 c5af  78         MOV A, B
 c5b0  e9         PCHL
 ????:
@@ -1307,9 +1455,14 @@ c5cc  00         NOP
 ; - instruction attributes where:
 ;   - 0x00  - 1-byte instruction
 ;   - 0x01  - 2-byte instruction, 2nd byte is immediate value
-;   - 0x02  - 3-byte instruction, argument is an address
-;   - ...
-;   - 0x07  - 3-byte instruction, argument may be an address, but not necessarily
+;   - 0x02  - 3-byte instruction, argument is an 2-byte address
+;   - 0x03  - 1-byte instruction, argument is a register name (register is coded by -----xxx bits)
+;   - 0x04  - 1-byte instruction, argument is a register pair name (register is coded by --xx---- bits)
+;   - 0x05  - 1-byte instruction, argument is a register name (register is coded by --xxx--- bits)
+;   - 0X06  - 3-byte instruction, argument is a register pair name (register is coded by ---x---- bits)
+;   - 0x07  - 3-byte instruction, argument may be an address, but not necessarily (LXI instruction)
+;   - 0x08  - 1-byte instruction, argument is 2 registers (coded --dddsss, typically MOV instruction)
+;   - 0x09  - 1-byte DB pseudo instruction, 2nd byte is immediate value (arg not printed by handler)
 INSTRUCTION_DESCRIPTORS:
     c5cd  41 43 49 20     db "ACI ", 0xce, 0x01
     c5d3  41 44 43 20     db "ADC ", 0x88, 0x03
@@ -1337,7 +1490,7 @@ INSTRUCTION_DESCRIPTORS:
     c657  44 49 20 20     db "DI  ", 0xf3, 0x00
     c65d  45 49 20 20     db "EI  ", 0xfb, 0x00
     c663  48 4c 54 20     db "HLT ", 0x76, 0x00
-    c669  49 4e 20 20     db "IN  ", 0xdb, 0xa1     ; BUG? instruction matched as 1-byte
+    c669  49 4e 20 20     db "IN  ", 0xdb, 0xa1     ; BUG! Attr 0xa1 causes crash. Must be 0x01 (2-byte op)
     c66f  49 4e 52 20     db "INR ", 0x04, 0x05
     c675  49 4e 58 20     db "INX ", 0x03, 0x04
     c67b  4a 43 20 20     db "JC  ", 0xda, 0x02
@@ -1358,7 +1511,7 @@ INSTRUCTION_DESCRIPTORS:
     c6d5  4e 4f 50 20     db "NOP ", 0x00, 0x00
     c6db  4f 52 41 20     db "ORA ", 0xb0, 0x03
     c6e1  4f 52 49 20     db "ORI ", 0xf6, 0x01
-    c6e7  4f 55 54 20     db "OUT ", 0xd3, 0xa1     ; BUG? instruction matched as 1-byte
+    c6e7  4f 55 54 20     db "OUT ", 0xd3, 0xa1     ; BUG! Attr 0xa1 causes crash. Must be 0x01 (2-byte op)
     c6ed  50 43 48 4c     db "PCHL", 0xe9, 0x00
     c6f3  50 4f 50 20     db "POP ", 0xc1, 0x04
     c6f9  50 55 53 48     db "PUSH", 0xc5, 0x04
@@ -1398,57 +1551,44 @@ INSTRUCTION_DESCRIPTORS:
     c7bf  ff
 
 
+DISASSEMBLER_REGISTER_LETTERS:
+    c7c0  41 4d 4c 48 45 44 43 42   db "AMLHEDCB"
+
+DISASSEMBLER_REGPAIR_LETTERS:
+    c7c8  53 48 44 42               db "SHDB"
+
+DISASSEMBLER_ATTR_HANDLERS:
+c7cc  da c8         dw c8da
+c7ce  e3 c8         dw c8e3
+c7d0  f3 c8         dw c8f3
+c7d2  29 c9         dw c929
+c7d4  32 c9         dw c932
+c7d6  38 c9         dw c938
+c7d8  3e c9         dw c93e
+c7da  4a c9         dw c94a
+c7dc  50 c9         dw c950
+c7de  56 c9         dw c956
+c7e0  76 c9         dw c976
+c7e2  5c c9         dw c95c
+c7e4  b9 c9         dw c9b9
+c7e6  d2 c9         dw c9d2
+c7e8  df c9         dw c9df
+
+    ; Argument printing handlers
+    c7ea  aa c4         dw DISASSEMBLER_NOP (c4aa)              ; No need to print arguments for 1-byte opcodes
+    c7ec  ab c4         dw DISASSEMBLER_PRINT_BYTE_ARG (c4ab)
+    c7ee  ba c4         dw DISASSEMBLER_PRINT_ADDRESS_ARG (c4ba)
+    c7f0  cc c4         dw DISASSEMBLER_PRINT_REGISTER_ARG (c4cc)
+    c7f2  d9 c4         dw DISASSEMBLER_PRINT_REGPAIR_ARG (c4d9)
+    c7f4  e2 c4         dw DISASSEMBLER_PRINT_REGISTER_ARG_3 (c4e2)
+    c7f6  d9 c4         dw DISASSEMBLER_PRINT_REGPAIR_ARG (c4d9)
+    c7f8  e8 c4         dw DISASSEMBLER_PRINT_LXI_ARG (c4e8)
+    c7fa  fd c4         dw DISASSEMBLER_PRINT_MOV_ARG (c4fd)
+    c7fc  12 c5         dw DISASSEMBLER_PRINT_MVI_ARG (c512)
+    c7fe  aa c4         dw DISASSEMBLER_NOP (c4aa)
+
 ????:
-c7c0  41         MOV B, C
-c7c1  4d         MOV C, L
-c7c2  4c         MOV C, H
-c7c3  48         MOV C, B
-c7c4  45         MOV B, L
-c7c5  44         MOV B, H
-c7c6  43         MOV B, E
-c7c7  42         MOV B, D
-????:
-c7c8  53         MOV D, E
-c7c9  48         MOV C, B
-????:
-c7ca  44         MOV B, H
-c7cb  42         MOV B, D
-????:
-c7cc  da c8 e3   JC e3c8
-c7cf  c8         RZ
-c7d0  f3         DI
-c7d1  c8         RZ
-c7d2  29         DAD HL
-c7d3  c9         RET
-c7d4  32 c9 38   STA 38c9
-c7d7  c9         RET
-c7d8  3e c9      MVI A, c9
-c7da  4a         MOV C, D
-c7db  c9         RET
-c7dc  50         MOV D, B
-c7dd  c9         RET
-c7de  56         MOV D, M
-c7df  c9         RET
-c7e0  76         HLT
-c7e1  c9         RET
-c7e2  5c         MOV E, H
-c7e3  c9         RET
-c7e4  b9         CMP C
-c7e5  c9         RET
-c7e6  d2 c9 df   JNC dfc9
-c7e9  c9         RET
-c7ea  aa         XRA D
-c7eb  c4 ab c4   CNZ c4ab
-c7ee  ba         CMP D
-c7ef  c4 cc c4   CNZ c4cc
-c7f2  d9         db d9
-c7f3  c4 e2 c4   CNZ c4e2
-c7f6  d9         db d9
-c7f7  c4 e8 c4   CNZ c4e8
-c7fa  fd         db fd
-c7fb  c4 12 c5   CNZ c512
-c7fe  aa         XRA D
-c7ff  c4 3e 7b   CNZ 7b3e
+c800  3e 70      ????
 c802  32 59 f7   STA INPUT_POLARITY (f759)
 c805  cd bb c5   CALL c5bb
 c808  fe 0d      CPI A, 0d
@@ -1579,12 +1719,14 @@ c8d2  c3 ab c8   JMP c8ab
 c8d5  7b         MOV A, E
 c8d6  32 59 f7   STA INPUT_POLARITY (f759)
 c8d9  c9         RET
+
 ????:
 c8da  2a 53 f7   LHLD ARG_2 (f753)
 c8dd  77         MOV M, A
 c8de  23         INX HL
 c8df  22 53 f7   SHLD ARG_2 (f753)
 c8e2  c9         RET
+
 ????:
 c8e3  32 60 f7   STA f760
 ????:
@@ -1595,6 +1737,8 @@ c8e9  3a 60 f7   LDA f760
 c8ec  cd da c8   CALL c8da
 c8ef  79         MOV A, C
 c8f0  c3 da c8   JMP c8da
+
+
 ????:
 c8f3  32 60 f7   STA f760
 c8f6  cd bb c5   CALL c5bb
@@ -1621,24 +1765,39 @@ c921  78         MOV A, B
 c922  cd da c8   CALL c8da
 c925  2a 5e f7   LHLD f75e
 c928  e9         PCHL
+
 ????:
 c929  01 07 01   LXI BC, 0107
 c92c  cd 43 c5   CALL c543
 c92f  c3 da c8   JMP c8da
+
+????:
 c932  cd 37 c5   CALL c537
 c935  c3 da c8   JMP c8da
+
+????:
 c938  cd 40 c5   CALL c540
 c93b  c3 da c8   JMP c8da
+
+????:
 c93e  01 01 10   LXI BC, 1001
 c941  21 ca c7   LXI HL, c7ca
 c944  cd 46 c5   CALL c546
 c947  c3 da c8   JMP c8da
+
+????:
 c94a  cd 37 c5   CALL c537
 c94d  c3 f3 c8   JMP c8f3
+
+????:
 c950  cd 40 c5   CALL c540
 c953  c3 29 c9   JMP c929
+
+????:
 c956  cd 40 c5   CALL c540
 c959  c3 e3 c8   JMP c8e3
+
+????:
 c95c  cd 35 c8   CALL c835
 c95f  1e 7a      MVI E, 7a
 c961  cd c5 c5   CALL c5c5
@@ -1650,6 +1809,8 @@ c970  50         MOV D, B
 c971  59         MOV E, C
 c972  eb         XCHG
 c973  c3 2f c8   JMP c82f
+
+
 ????:
 c976  cd bb c5   CALL c5bb
 c979  fe 27      CPI A, 27
@@ -1687,10 +1848,12 @@ c9b0  cd c5 c5   CALL c5c5
 c9b3  fe 2c      CPI A, 2c
 c9b5  13         INX DE
 c9b6  c3 86 c9   JMP c986
+
+????:
 c9b9  cd 35 c8   CALL c835
 c9bc  eb         XCHG
 c9bd  cd 6b fc   CALL PRINT_NEW_LINE (fc6b)
-c9c0  cd 4a fc   CALL fc4a
+c9c0  cd 4a fc   CALL PRINT_ARG_1_NO_NEW_LINE (fc4a)
 c9c3  2a 53 f7   LHLD ARG_2 (f753)
 c9c6  2b         DCX HL
 c9c7  cd 4d fc   CALL PRINT_HL (fc4d)
@@ -1698,6 +1861,7 @@ c9ca  eb         XCHG
 c9cb  22 51 f7   SHLD ARG_1 (f751)
 c9ce  22 53 f7   SHLD ARG_2 (f753)
 c9d1  c9         RET
+
 ????:
 c9d2  cd 35 c8   CALL c835
 c9d5  3c         INR A
@@ -1705,7 +1869,10 @@ c9d6  79         MOV A, C
 c9d7  48         MOV C, B
 c9d8  cd ec c8   CALL c8ec
 c9db  ca d2 c9   JZ c9d2
+
 c9de  c9         RET
+
+????:
 c9df  cd bb c5   CALL c5bb
 c9e2  21 7b f7   LXI HL, f77b
 ????:
@@ -1775,7 +1942,7 @@ ca63  dc b5 fd   CC SET_COMMAND_MODE_FLAG (fdb5)
 ca66  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)
 ca69  f2 36 ca   JP ca36
 ????:
-ca6c  cd 4a fc   CALL fc4a
+ca6c  cd 4a fc   CALL PRINT_ARG_1_NO_NEW_LINE (fc4a)
 ca6f  2a 53 f7   LHLD ARG_2 (f753)
 ca72  2b         DCX HL
 ca73  cd 4d fc   CALL PRINT_HL (fc4d)

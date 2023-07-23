@@ -569,7 +569,7 @@ BIT_DELAY_LOOP:
 PRINT_BYTE_HEX:
     f9b3  c5         PUSH BC
 
-    f9b4  cd c0 f9   CALL CONVERT_BYTE_TO_CHARS (f9c0)
+    f9b4  cd c0 f9   CALL BYTE_TO_HEX (f9c0)
     f9b7  cd f0 f9   CALL PUT_CHAR (f9f0)       ; Print high nibble
 
     f9ba  48         MOV C, B                   ; Print low nibble
@@ -579,7 +579,7 @@ PRINT_BYTE_HEX:
     f9bf  c9         RET
 
 ; Converts byte in A into 2 printable hex chars in B (low nibble) and C (high nibble)
-CONVERT_BYTE_TO_CHARS:
+BYTE_TO_HEX:
     f9c0  f5         PUSH PSW                   ; Save the byte
     f9c1  47         MOV B, A
 
@@ -1309,6 +1309,8 @@ PARSE_HEX_DIGIT:
 ; Print command argument #1 in a hex form
 PRINT_ARG_1:
     fc47  cd 6b fc   CALL PRINT_NEW_LINE (fc6b)
+
+PRINT_ARG_1_NO_NEW_LINE:
     fc4a  2a 51 f7   LHLD ARG_1 (f751)
 
 
@@ -2150,7 +2152,7 @@ COMMANDS_TABLE:
     ffcf  4e c2 ca      db 'N', cac2
     ffd2  40 ad ca      db '@', caad
     ffd5  4c 86 c3      db 'L', COMMAND_L_LIST_TEXT (c386)
-    ffd8  57 c2 c3      db 'W', c3c2
+    ffd8  57 c2 c3      db 'W', COMMAND_W_DISASSEMBLER (c3c2)
     ffdb  5a eb c1      db 'Z', COMMAND_Z_ZERO_RANGE (c1eb)
     ffde  50 27 c2      db 'P', COMMAND_P_RELOCATE (c227)
     ffe1  1f e9 f9      db 0x1f, f9e9
