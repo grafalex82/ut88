@@ -29,6 +29,11 @@ class EmulatedInstance:
         return self._emulator._cpu
 
 
+    @property
+    def emulator(self):
+        return self._emulator
+
+
     def set_byte(self, addr, value):
         self._machine.write_memory_byte(addr, value)
 
