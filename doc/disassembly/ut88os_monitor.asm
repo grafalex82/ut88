@@ -1093,9 +1093,9 @@ INPUT_LINE_DELETE_LOOP:
     fb8c  c9         RET
 
 
-????:
-fb8d  33         INX SP
-fb8e  33         INX SP
+INPUT_ERROR_1:
+    fb8d  33         INX SP
+    fb8e  33         INX SP
 
 
 ; Indicate error on input: produce a long beep, and print '?' char
@@ -2148,9 +2148,9 @@ COMMANDS_TABLE:
     ffc3  54 6a ff      db 'T', COMMAND_T_TRACE_CMD_LINE (ff6a)
     ffc6  53 34 c1      db 'S', COMMAND_S_SEARCH_STRING (c134)
     ffc9  45 00 cb      db 'E', cb00
-    ffcc  41 20 ca      db 'A', ca20
-    ffcf  4e c2 ca      db 'N', cac2
-    ffd2  40 ad ca      db '@', caad
+    ffcc  41 20 ca      db 'A', COMMAND_A_ASSEMBLER (ca20)
+    ffcf  4e c2 ca      db 'N', COMMAND_N_INTERACTIVE_ASSEMBLER (cac2)
+    ffd2  40 ad ca      db '@', COMMAND_@_ASSEMBLER_2ND_PASS (caad)
     ffd5  4c 86 c3      db 'L', COMMAND_L_LIST_TEXT (c386)
     ffd8  57 c2 c3      db 'W', COMMAND_W_DISASSEMBLER (c3c2)
     ffdb  5a eb c1      db 'Z', COMMAND_Z_ZERO_RANGE (c1eb)

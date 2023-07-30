@@ -487,11 +487,15 @@ SEARCH_STRING_HEX_LOOP:
     c1e8  c3 ce c1   JMP SEARCH_STRING_SYMBOLIC_1 (c1ce)
 
 
-; Command Z: Zero/dump 0xf400-0xf5ff range
+; Command Z: Zero/dump label reference 0xf400-0xf5ff range
 ; 
 ; Usage:
-; Z         - Dump the range (print in 16-bit words)
+; Z         - Dump the range (print 256 16-bit words, each word correspond to a label value)
 ; Z0        - Fill the range with zeros
+;
+; This command is supposed to be used with assembler commands (A, N, @). Label values are filled during
+; assembly process with addresses of labels found in the source code. These values may be then applied
+; back to the compiled program using @ command. Command Z allows the user to verify label values.
 COMMAND_Z_ZERO_RANGE:
     c1eb  3a 7c f7   LDA f77b + 1 (f77c)        ; Get the second command byte
     c1ee  fe 30      CPI A, 30                  ; If it is '0' - go and clear memory range
@@ -1352,102 +1356,172 @@ DISASSEMBLER_GET_REGISTER_LETTER_LOOP:
     c536  c9         RET
 
 
-????:
-c537  01 03 10   LXI BC, 1003
-c53a  21 c8 c7   LXI HL, c7c8
-c53d  c3 46 c5   JMP c546
-????:
-c540  01 07 08   LXI BC, 0807
-????:
-c543  21 c0 c7   LXI HL, DISASSEMBLER_REGISTER_LETTERS (c7c0)
-????:
-c546  32 ff f7   STA f7ff
-c549  cd bb c5   CALL c5bb
-????:
-c54c  be         CMP M
-c54d  ca 5a c5   JZ c55a
-c550  23         INX HL
-c551  0d         DCR C
-c552  f2 4c c5   JP c54c
-????:
-c555  d1         POP DE
-????:
-c556  37         STC
-c557  c3 8d fb   JMP fb8d
+; Parse register pair specification
+ASSEMBLER_PARSE_REGPAIR:
+    c537  01 03 10   LXI BC, 1003               ; Set corresponding bitmasks
+    c53a  21 c8 c7   LXI HL, DISASSEMBLER_REGPAIR_LETTERS (c7c8)
+    c53d  c3 46 c5   JMP ASSEMBLER_PARSE_REG_OR_REGPAIR (c546)
 
-????:
-c55a  13         INX DE
-c55b  cd 0b fc   CALL fc0b
-c55e  da 55 c5   JC c555
-c561  7c         MOV A, H
-c562  b5         ORA L
-c563  c2 55 c5   JNZ c555
-c566  cd d5 c8   CALL c8d5
-c569  3a ff f7   LDA f7ff
-????:
-c56c  81         ADD C
-c56d  05         DCR B
-c56e  c2 6c c5   JNZ c56c
-c571  c9         RET
-????:
-c572  cd 0b fc   CALL fc0b
-c575  d8         RC
-c576  7c         MOV A, H
-c577  b7         ORA A
-c578  37         STC
-c579  c0         RNZ
-c57a  26 7a      MVI H, 7a
-c57c  29         DAD HL
-c57d  c9         RET
-????:
-c57e  11 cd c5   LXI DE, c5cd
-????:
-c581  cd b0 fd   CALL RESET_COMMAND_MODE_FLAG (fdb0)
-c584  eb         XCHG
-c585  cd bb c5   CALL c5bb
-c588  eb         XCHG
-c589  06 04      MVI B, 04
-????:
-c58b  1a         LDAX DE
-c58c  b7         ORA A
-c58d  fa 56 c5   JM c556
-c590  be         CMP M
-c591  c4 b5 fd   CNZ SET_COMMAND_MODE_FLAG (fdb5)
-c594  13         INX DE
-c595  23         INX HL
-c596  05         DCR B
-c597  c2 8b c5   JNZ c58b
-c59a  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)
-c59d  13         INX DE
-c59e  13         INX DE
-c59f  c2 81 c5   JNZ c581
-c5a2  1b         DCX DE
-c5a3  1b         DCX DE
-c5a4  eb         XCHG
-c5a5  cd d5 c8   CALL c8d5
-c5a8  46         MOV B, M
-c5a9  cd 9b c4   CALL DISASSEMBLER_GET_ATTRIBUTE_HANDLER (c49b)
-c5ac  cd a6 c4   CALL DISASSEMBLER_GET_HANDLER_ADDR (c4a6)
-c5af  78         MOV A, B
-c5b0  e9         PCHL
-????:
-c5b1  1a         LDAX DE
-c5b2  fe 0d      CPI A, 0d
-c5b4  c4 c9 fb   CNZ DO_PARSE_AND_LOAD_ARGUMENTS_ALT (fbc9)
-c5b7  dc b9 fb   CC REPORT_INPUT_ERROR (fbb9)
-c5ba  c9         RET
-????:
-c5bb  16 f7      MVI D, f7
-c5bd  3a 59 f7   LDA INPUT_POLARITY (f759)
-c5c0  5f         MOV E, A
-c5c1  1a         LDAX DE
-c5c2  fe 20      CPI A, 20
-c5c4  c0         RNZ
-????:
-c5c5  13         INX DE
-c5c6  cd d5 c8   CALL c8d5
-c5c9  c3 bb c5   JMP c5bb
-c5cc  00         NOP
+
+ASSEMBLER_PARSE_DEST_REG:
+    c540  01 07 08   LXI BC, 0807               ; B - opcode increment, C - 8 registers to match
+
+ASSEMBLER_PARSE_REG:
+    c543  21 c0 c7   LXI HL, DISASSEMBLER_REGISTER_LETTERS (c7c0)   ; Go through register letters list
+
+ASSEMBLER_PARSE_REG_OR_REGPAIR:
+    c546  32 ff f7   STA f7ff                   ; Store basic opcode
+
+    c549  cd bb c5   CALL ASSEMBLER_SEARCH_NON_SPACE_CHAR (c5bb)    ; Skip spaces till register name
+
+ASSEMBLER_MATCH_REG_LOOP:
+    c54c  be         CMP M                      ; Compare register letter
+    c54d  ca 5a c5   JZ ASSEMBLER_REG_MATCHED (c55a)
+
+    c550  23         INX HL                     ; Advance to the next register letter, until all 8 registers
+    c551  0d         DCR C                      ; are matched
+    c552  f2 4c c5   JP ASSEMBLER_MATCH_REG_LOOP (c54c)
+
+
+ASSEMBLER_MATCH_ERROR:
+    c555  d1         POP DE                     ; Restore stack value, then report an error
+
+ASSEMBLER_MATCH_ERROR_1:
+    c556  37         STC                        ; Set flag indicating an error
+    c557  c3 8d fb   JMP INPUT_ERROR_1 (fb8d)   ; Report input error (beep and ? symbol, exit to monitor)
+
+
+ASSEMBLER_REG_MATCHED:
+    c55a  13         INX DE                     ; Advance to the next input symbol
+
+    c55b  cd 0b fc   CALL DO_PARSE_HEX (fc0b)   ; Perhaps register letters A/B/C/D/E may in fact be a start
+    c55e  da 55 c5   JC ASSEMBLER_MATCH_ERROR (c555); of a hex value. Report an error if any value is matched
+
+    c561  7c         MOV A, H                   ; Report an error if non-zero hex value is matched
+    c562  b5         ORA L
+    c563  c2 55 c5   JNZ ASSEMBLER_MATCH_ERROR (c555)
+
+    c566  cd d5 c8   CALL ASSEMBLER_SET_BUF_OFFSET (c8d5)   ; Advance input pointer to the next symbol
+    c569  3a ff f7   LDA f7ff
+
+ASSEMBLER_GENERATE_OPCODE_ON_REG_SPEC:
+    c56c  81         ADD C                      ; Generate the instruction opcode based on register
+    c56d  05         DCR B                      ; specification
+    c56e  c2 6c c5   JNZ ASSEMBLER_GENERATE_OPCODE_ON_REG_SPEC (c56c)
+
+    c571  c9         RET
+
+
+; Parse @<label>
+;
+; The function parses 2-digit hexadecimal value after @ symbol (@ symbol itself is parsed outside of this
+; function). The parsed 8-bit value is an index in the table of labels located at 0xf400-0xf600. The function
+; returns an address within the table that corresponds the parsed index.
+;
+; Return:
+; HL - pointer to the 16-bit label in the labels table
+; C flag set in case of error
+ASSEMBLER_PARSE_LABEL_ADDRESS:
+    c572  cd 0b fc   CALL DO_PARSE_HEX (fc0b)   ; Parse the value
+    c575  d8         RC                         ; Return in case of error
+
+    c576  7c         MOV A, H                   ; Verify that high byte is zero. Raise C flag in case of
+    c577  b7         ORA A                      ; error (parsed value > 255)
+    c578  37         STC
+    c579  c0         RNZ
+
+    c57a  26 7a      MVI H, 7a                  ; Calculate address of the 2-byte value in the 0xf400-0xf600
+    c57c  29         DAD HL                     ; table (0x7a * 2 = 0xf4)
+    c57d  c9         RET
+
+
+; Parse a single instruction
+;
+; Arguments:
+; HL    - Target address where to store bytecode
+; 
+; The function skips spaces at the line beginning, then matches instruction mnemonic with the descriptors list.
+; In case if instruction is matched, the function runs parsing handler to process instruction arguments.
+ASSEMBLER_PARSE_INSTRUCTION:
+    c57e  11 cd c5   LXI DE, INSTRUCTION_DESCRIPTORS (c5cd) ; Iterate through the instruction desriptors list
+
+DO_PARSE_INSTRUCTION_LOOP:
+    c581  cd b0 fd   CALL RESET_COMMAND_MODE_FLAG (fdb0)    ; Command flag will indicate instruction mismatch
+
+    c584  eb         XCHG                                   ; Find first non-space character
+    c585  cd bb c5   CALL ASSEMBLER_SEARCH_NON_SPACE_CHAR (c5bb)
+    c588  eb         XCHG
+
+    c589  06 04      MVI B, 04                  ; Match 4-char instruction mnemonic
+
+DO_PARSE_MNEMONIC_LOOP:
+    c58b  1a         LDAX DE                    ; Stop parsing if char code >= 0x80 found
+    c58c  b7         ORA A
+    c58d  fa 56 c5   JM ASSEMBLER_MATCH_ERROR_1 (c556)
+
+    c590  be         CMP M                      ; Compare next byte of the mnemonic
+    c591  c4 b5 fd   CNZ SET_COMMAND_MODE_FLAG (fdb5)   ; Set the flag in case of mismatch
+                                                ; Bug! This loop fails to match instructions that are shorter
+                                                ; than 4 chars (e.g. DI). User has to type all 4 chars padded
+                                                ; with spaces explicitly ("DI  ") so that instruction name
+                                                ; can be matched
+
+    c594  13         INX DE                     ; Advance to the next char
+    c595  23         INX HL
+
+    c596  05         DCR B                      ; Repeat until all 4 chars of the mnemonic matched
+    c597  c2 8b c5   JNZ DO_PARSE_MNEMONIC_LOOP (c58b)
+
+    c59a  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)  ; Load the 'match failed' flag
+
+    c59d  13         INX DE                     ; Skip instruction code and attribute byte, ready to match
+    c59e  13         INX DE                     ; next descriptor
+
+    c59f  c2 81 c5   JNZ DO_PARSE_INSTRUCTION_LOOP (c581)   ; Repeat for the next descriptor
+
+    
+    c5a2  1b         DCX DE                     ; Instruction matched, get back to instruction opcode
+    c5a3  1b         DCX DE
+
+    c5a4  eb         XCHG                       ; Store argument offset
+    c5a5  cd d5 c8   CALL ASSEMBLER_SET_BUF_OFFSET (c8d5)
+
+    c5a8  46         MOV B, M                   ; Find the parsing handler for the instruction
+    c5a9  cd 9b c4   CALL DISASSEMBLER_GET_ATTRIBUTE_HANDLER (c49b)
+    c5ac  cd a6 c4   CALL DISASSEMBLER_GET_HANDLER_ADDR (c4a6)
+
+    c5af  78         MOV A, B                   ; Load instruction opcode in A
+
+    c5b0  e9         PCHL                       ; Execute the parsing handler
+
+
+
+; Parse command line arguments if they specified
+PARSE_ARGUMENTS_IF_SPECIFIED:
+    c5b1  1a         LDAX DE                    ; Check if any argument is specified
+    c5b2  fe 0d      CPI A, 0d
+
+    c5b4  c4 c9 fb   CNZ DO_PARSE_AND_LOAD_ARGUMENTS_ALT (fbc9) ; Parse arguments
+    c5b7  dc b9 fb   CC REPORT_INPUT_ERROR (fbb9)   ; Report error if needed
+    c5ba  c9         RET
+
+
+; Search through input string (starting current position) for a non-space character
+ASSEMBLER_SEARCH_NON_SPACE_CHAR:
+    c5bb  16 f7      MVI D, f7                  ; Set address of next byte to parse to DE (in 0xf77b buffer)
+    c5bd  3a 59 f7   LDA INPUT_POLARITY (f759)  ; ????? TODO: Rename INPUT_POLARITY to something descriptove
+    c5c0  5f         MOV E, A
+
+    c5c1  1a         LDAX DE                    ; Stop if non-space char is found
+    c5c2  fe 20      CPI A, 20
+    c5c4  c0         RNZ
+
+ASSEMBLER_ADVANCE_TO_NEXT_ARG:
+    c5c5  13         INX DE                     ; Advance to the next byte
+
+    c5c6  cd d5 c8   CALL ASSEMBLER_SET_BUF_OFFSET (c8d5)
+    c5c9  c3 bb c5   JMP ASSEMBLER_SEARCH_NON_SPACE_CHAR (c5bb)
+
 
 ; List of CPU instructions. Each record contains:
 ; - 4-char mnemonic
@@ -1456,13 +1530,19 @@ c5cc  00         NOP
 ;   - 0x00  - 1-byte instruction
 ;   - 0x01  - 2-byte instruction, 2nd byte is immediate value
 ;   - 0x02  - 3-byte instruction, argument is an 2-byte address
-;   - 0x03  - 1-byte instruction, argument is a register name (register is coded by -----xxx bits)
+;   - 0x03  - 1-byte instruction, argument is a source register name (register is coded by -----xxx bits)
 ;   - 0x04  - 1-byte instruction, argument is a register pair name (register is coded by --xx---- bits)
-;   - 0x05  - 1-byte instruction, argument is a register name (register is coded by --xxx--- bits)
+;   - 0x05  - 1-byte instruction, argument is a destination register name (register is coded by --xxx--- bits)
 ;   - 0X06  - 3-byte instruction, argument is a register pair name (register is coded by ---x---- bits)
 ;   - 0x07  - 3-byte instruction, argument may be an address, but not necessarily (LXI instruction)
 ;   - 0x08  - 1-byte instruction, argument is 2 registers (coded --dddsss, typically MOV instruction)
 ;   - 0x09  - 1-byte DB pseudo instruction, 2nd byte is immediate value (arg not printed by handler)
+; - Assembler/parser specific codes:
+;   - 0x0a  - DB directive, argument is one byte, or several bytes split with comma
+;   - 0x0b  - EQU directive
+;   - 0x0c  - ORG directive
+;   - 0x0d  - DW directive
+;   - 0x0e  - DIR directive
 INSTRUCTION_DESCRIPTORS:
     c5cd  41 43 49 20     db "ACI ", 0xce, 0x01
     c5d3  41 44 43 20     db "ADC ", 0x88, 0x03
@@ -1558,21 +1638,21 @@ DISASSEMBLER_REGPAIR_LETTERS:
     c7c8  53 48 44 42               db "SHDB"
 
 DISASSEMBLER_ATTR_HANDLERS:
-c7cc  da c8         dw c8da
-c7ce  e3 c8         dw c8e3
-c7d0  f3 c8         dw c8f3
-c7d2  29 c9         dw c929
-c7d4  32 c9         dw c932
-c7d6  38 c9         dw c938
-c7d8  3e c9         dw c93e
-c7da  4a c9         dw c94a
-c7dc  50 c9         dw c950
-c7de  56 c9         dw c956
-c7e0  76 c9         dw c976
-c7e2  5c c9         dw c95c
-c7e4  b9 c9         dw c9b9
-c7e6  d2 c9         dw c9d2
-c7e8  df c9         dw c9df
+    c7cc  da c8         dw ASSEMBLER_PARSE_NO_ARGS (c8da)
+    c7ce  e3 c8         dw ASSEMBLER_PARSE_BYTE_ARG (c8e3)
+    c7d0  f3 c8         dw ASSEMBLER_PARSE_WORD_ARG (c8f3)
+    c7d2  29 c9         dw ASSEMBLER_PARSE_SRC_REG_ARG (c929)
+    c7d4  32 c9         dw ASSEMBLER_PARSE_REGPAIR_ARG (c932)
+    c7d6  38 c9         dw ASSEMBLER_PARSE_DST_REG_ARG (c938)
+    c7d8  3e c9         dw ASSEMBLER_PARSE_REGPAIR_ARG_2 (c93e)
+    c7da  4a c9         dw ASSEMBLER_PARSE_LXI_ARG (c94a)
+    c7dc  50 c9         dw ASSEMBLER_PARSE_MOV_ARG (c950)
+    c7de  56 c9         dw ASSEMBLER_PARSE_MVI_ARG (c956)
+    c7e0  76 c9         dw ASSEMBLER_PARSE_DB_ARG (c976)
+    c7e2  5c c9         dw ASSEMBLER_PARSE_EQU_ARG (c95c)
+    c7e4  b9 c9         dw ASSEMBLER_PARSE_ORG_ARG (c9b9)
+    c7e6  d2 c9         dw ASSEMBLER_PARSE_DW_ARG (c9d2)
+    c7e8  df c9         dw ASSEMBLER_PARSE_DIR_ARG (c9df)
 
     ; Argument printing handlers
     c7ea  aa c4         dw DISASSEMBLER_NOP (c4aa)              ; No need to print arguments for 1-byte opcodes
@@ -1587,442 +1667,745 @@ c7e8  df c9         dw c9df
     c7fc  12 c5         dw DISASSEMBLER_PRINT_MVI_ARG (c512)
     c7fe  aa c4         dw DISASSEMBLER_NOP (c4aa)
 
-????:
-c800  3e 70      ????
-c802  32 59 f7   STA INPUT_POLARITY (f759)
-c805  cd bb c5   CALL c5bb
-c808  fe 0d      CPI A, 0d
-c80a  ca b5 fd   JZ SET_COMMAND_MODE_FLAG (fdb5)
-c80d  b7         ORA A
-c80e  fa b5 fd   JM SET_COMMAND_MODE_FLAG (fdb5)
-c811  fe 3b      CPI A, 3b
-c813  ca b0 fd   JZ RESET_COMMAND_MODE_FLAG (fdb0)
-c816  cd 73 c2   CALL CHECK_AT_SYMBOL (c273)
-c819  cc 22 c8   CZ c822
-c81c  cd 7e c5   CALL c57e
-c81f  c3 b0 fd   JMP RESET_COMMAND_MODE_FLAG (fdb0)
-????:
-c822  cd 72 c5   CALL c572
-c825  da 8d fb   JC fb8d
-c828  cd d5 c8   CALL c8d5
-c82b  eb         XCHG
-c82c  2a 53 f7   LHLD ARG_2 (f753)
-????:
-c82f  7d         MOV A, L
-c830  12         STAX DE
-c831  13         INX DE
-c832  7c         MOV A, H
-c833  12         STAX DE
-c834  c9         RET
-????:
-c835  af         XRA A
-c836  47         MOV B, A
-c837  4f         MOV C, A
-c838  3d         DCR A
-????:
-c839  32 ff f7   STA f7ff
-c83c  cd bb c5   CALL c5bb
-c83f  cd 73 c2   CALL CHECK_AT_SYMBOL (c273)
-c842  ca 7a c8   JZ c87a
-c845  fe 27      CPI A, 27
-c847  ca 95 c8   JZ c895
-c84a  fe 23      CPI A, 23
-c84c  ca a8 c8   JZ c8a8
-c84f  fe 24      CPI A, 24
-c851  ca 8b c8   JZ c88b
-c854  cd 0b fc   CALL fc0b
-c857  da 55 c5   JC c555
-????:
-c85a  f5         PUSH PSW
-????:
-c85b  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)
-c85e  c2 68 c8   JNZ c868
-c861  7d         MOV A, L
-c862  2f         CMA
-c863  6f         MOV L, A
-c864  7c         MOV A, H
-c865  2f         CMA
-c866  67         MOV H, A
-c867  23         INX HL
-????:
-c868  cd d5 c8   CALL c8d5
-c86b  f1         POP PSW
-c86c  09         DAD BC
-c86d  44         MOV B, H
-c86e  4d         MOV C, L
-c86f  d6 2d      SUI A, 2d
-c871  ca 39 c8   JZ c839
-c874  fe fe      CPI A, fe
-c876  ca 39 c8   JZ c839
-c879  c9         RET
-????:
-c87a  cd 72 c5   CALL c572
-c87d  da 55 c5   JC c555
-c880  1b         DCX DE
-c881  1a         LDAX DE
-c882  13         INX DE
-c883  f5         PUSH PSW
-c884  7e         MOV A, M
-c885  23         INX HL
-c886  66         MOV H, M
-c887  6f         MOV L, A
-c888  c3 5b c8   JMP c85b
-????:
-c88b  cd c5 c5   CALL c5c5
-c88e  13         INX DE
-c88f  2a 53 f7   LHLD ARG_2 (f753)
-c892  c3 5a c8   JMP c85a
-????:
-c895  13         INX DE
-c896  1a         LDAX DE
-c897  26 00      MVI H, 00
-c899  6f         MOV L, A
-c89a  13         INX DE
-c89b  1a         LDAX DE
-c89c  fe 27      CPI A, 27
-c89e  c2 55 c5   JNZ c555
-c8a1  cd c5 c5   CALL c5c5
-????:
-c8a4  13         INX DE
-c8a5  c3 5a c8   JMP c85a
-????:
-c8a8  21 00 00   LXI HL, 0000
-????:
-c8ab  cd c5 c5   CALL c5c5
-c8ae  fe 30      CPI A, 30
-c8b0  da a4 c8   JC c8a4
-c8b3  fe 3a      CPI A, 3a
-c8b5  d2 a4 c8   JNC c8a4
-c8b8  d6 30      SUI A, 30
-c8ba  d5         PUSH DE
-c8bb  11 ce c8   LXI DE, c8ce
-c8be  d5         PUSH DE
-c8bf  29         DAD HL
-c8c0  d8         RC
-c8c1  54         MOV D, H
-c8c2  5d         MOV E, L
-c8c3  29         DAD HL
-c8c4  d8         RC
-c8c5  29         DAD HL
-c8c6  d8         RC
-c8c7  19         DAD DE
-c8c8  d8         RC
-c8c9  5f         MOV E, A
-c8ca  16 00      MVI D, 00
-c8cc  19         DAD DE
-c8cd  d1         POP DE
-????:
-c8ce  d1         POP DE
-c8cf  da 55 c5   JC c555
-c8d2  c3 ab c8   JMP c8ab
-????:
-c8d5  7b         MOV A, E
-c8d6  32 59 f7   STA INPUT_POLARITY (f759)
-c8d9  c9         RET
 
-????:
-c8da  2a 53 f7   LHLD ARG_2 (f753)
-c8dd  77         MOV M, A
-c8de  23         INX HL
-c8df  22 53 f7   SHLD ARG_2 (f753)
-c8e2  c9         RET
+; Parse assembler instruction line
+;
+; This function parses a line of the following format:
+; [@<label>:] <instruction> [arguments]
+;
+; The line is expected in 0xf77b line bufferg
+;
+; The instruction must be either CPU instruction mnemonic, or an assembler language directive (e.g. ORG,
+; DB, EQU, etc). The function searches for an instruction descriptor. Attribute byte in the descriptor
+; indicates a function that shall be used to parse argument, and actually generate the opcode.
+;
+; The label (if specified) must start with @ symbol and contain 2 hex digits. The label shall be finalized
+; with a non-space character (typically ':'). The label name is an index in labels table (0xf400-0xf600). 
+; Parsed command offset is stored at the label table at the corresponding index. Labels may be referrenced
+; in other instructions, and are actually substituted at the code during assembler pass #2 (see command @)
+;
+; Symbols after semicolon are considered as comments, and ignored.
+ASSEMBLER_PARSE_INSTRUCTION_LINE:
+    c800  3e 7b      MVI A, 7b                  ; Set buffer start as 0xf77b
+    c802  32 59 f7   STA INPUT_POLARITY (f759)
 
-????:
-c8e3  32 60 f7   STA f760
-????:
-c8e6  cd 35 c8   CALL c835
-????:
-c8e9  3a 60 f7   LDA f760
-????:
-c8ec  cd da c8   CALL c8da
-c8ef  79         MOV A, C
-c8f0  c3 da c8   JMP c8da
+    c805  cd bb c5   CALL ASSEMBLER_SEARCH_NON_SPACE_CHAR (c5bb); Skip spaces at the beginning
+
+    c808  fe 0d      CPI A, 0d                  ; Do not parse if nothing is entered (empty line)
+    c80a  ca b5 fd   JZ SET_COMMAND_MODE_FLAG (fdb5)    ; Raise the flag ????
+
+    c80d  b7         ORA A                      ; Also stop parsing if char >= 0x80 is found
+    c80e  fa b5 fd   JM SET_COMMAND_MODE_FLAG (fdb5)
+
+    c811  fe 3b      CPI A, 3b                  ; ';' means comment. Stop parsing this line, ready to parse next
+    c813  ca b0 fd   JZ RESET_COMMAND_MODE_FLAG (fdb0)
+
+    c816  cd 73 c2   CALL CHECK_AT_SYMBOL (c273)    ; Process label if specified
+    c819  cc 22 c8   CZ ASSEMBLER_PARSE_LABEL (c822)
+
+    c81c  cd 7e c5   CALL ASSEMBLER_PARSE_INSTRUCTION (c57e)    ; Actually parse the instruction
+
+    c81f  c3 b0 fd   JMP RESET_COMMAND_MODE_FLAG (fdb0) ; Exit, ready to parse next instruction
 
 
-????:
-c8f3  32 60 f7   STA f760
-c8f6  cd bb c5   CALL c5bb
-c8f9  cd 73 c2   CALL CHECK_AT_SYMBOL (c273)
-c8fc  c2 1a c9   JNZ c91a
-c8ff  cd 72 c5   CALL c572
-c902  da 56 c5   JC c556
-c905  1b         DCX DE
-c906  1a         LDAX DE
-c907  fe 2b      CPI A, 2b
-c909  ca 1a c9   JZ c91a
-c90c  fe 2d      CPI A, 2d
-c90e  ca 1a c9   JZ c91a
-c911  e5         PUSH HL
-c912  4d         MOV C, L
-c913  cd e9 c8   CALL c8e9
-c916  f1         POP PSW
-c917  c3 da c8   JMP c8da
-????:
-c91a  e1         POP HL
-c91b  22 5e f7   SHLD f75e
-c91e  cd e6 c8   CALL c8e6
-c921  78         MOV A, B
-c922  cd da c8   CALL c8da
-c925  2a 5e f7   LHLD f75e
-c928  e9         PCHL
+; Parse @<label> instruction
+;
+; The function parses the label (2-digit hex), calculates the address in the labels table (0xf400 + 2 * label)
+; Finally the function stores current destination offset (arg #2) to the entry in the labels table. Note, 
+; that arg#2 may be altered with ORG directive, and may not equal the output byte address.
+ASSEMBLER_PARSE_LABEL:
+    c822  cd 72 c5   CALL ASSEMBLER_PARSE_LABEL_ADDRESS (c572)  ; Parse the label index, get the address
+    c825  da 8d fb   JC INPUT_ERROR_1 (fb8d)
 
-????:
-c929  01 07 01   LXI BC, 0107
-c92c  cd 43 c5   CALL c543
-c92f  c3 da c8   JMP c8da
+    c828  cd d5 c8   CALL ASSEMBLER_SET_BUF_OFFSET (c8d5)   ; Advance the input string pointer
+    c82b  eb         XCHG
 
-????:
-c932  cd 37 c5   CALL c537
-c935  c3 da c8   JMP c8da
+    c82c  2a 53 f7   LHLD ARG_2 (f753)          ; Load the current target address
 
-????:
-c938  cd 40 c5   CALL c540
-c93b  c3 da c8   JMP c8da
+; [DE] = HL
+SAVE_HL_AT_DE:
+    c82f  7d         MOV A, L
+    c830  12         STAX DE
+    c831  13         INX DE
+    c832  7c         MOV A, H
+    c833  12         STAX DE
+    c834  c9         RET
 
-????:
-c93e  01 01 10   LXI BC, 1001
-c941  21 ca c7   LXI HL, c7ca
-c944  cd 46 c5   CALL c546
-c947  c3 da c8   JMP c8da
+; Parse immediate 1- or 2-byte value
+;
+; The function parses an immediate value provided as instruction argument. The following features are
+; supported:
+; - single hex value (e.g. 5A). 
+; - decimal values (value started with #, e.g. #123)
+; - symbolic char values (e.g. 'Q')
+; - Reference to a label (e.g. @12)
+; - $ symbol represents 'current instruction address'
+;
+; It is possible to use + and - arithmetic in the expression (e.g. $ - 5A + #123 - 'Q')
+;
+; Depending on instruction type, the value can be 1 or 2 bytes. If the value exceeds 1 byte for 2-byte
+; instructions (1 byte argument), the only low byte will be used
+;
+; Return value in BC
+ASSEMBLER_PARSE_IMMEDIATE:
+    c835  af         XRA A                      ; Zero value accumulator in BC (in case of +/- arithmetics
+    c836  47         MOV B, A                   ; used)
+    c837  4f         MOV C, A
 
-????:
-c94a  cd 37 c5   CALL c537
-c94d  c3 f3 c8   JMP c8f3
+    c838  3d         DCR A                      ; A != 0 indicating parsed value will be added to accumulator
 
-????:
-c950  cd 40 c5   CALL c540
-c953  c3 29 c9   JMP c929
+ASSEMBLER_PARSE_IMMEDIATE_LOOP:
+    c839  32 ff f7   STA f7ff                   ; Save plus/minus flag
 
-????:
-c956  cd 40 c5   CALL c540
-c959  c3 e3 c8   JMP c8e3
+    c83c  cd bb c5   CALL ASSEMBLER_SEARCH_NON_SPACE_CHAR (c5bb)    ; Search for the argument
 
-????:
-c95c  cd 35 c8   CALL c835
-c95f  1e 7a      MVI E, 7a
-c961  cd c5 c5   CALL c5c5
-c964  cd 73 c2   CALL CHECK_AT_SYMBOL (c273)
-c967  c2 56 c5   JNZ c556
-c96a  cd 72 c5   CALL c572
-c96d  da 56 c5   JC c556
-c970  50         MOV D, B
-c971  59         MOV E, C
-c972  eb         XCHG
-c973  c3 2f c8   JMP c82f
+    c83f  cd 73 c2   CALL CHECK_AT_SYMBOL (c273); Process label reference, if specified (@)
+    c842  ca 7a c8   JZ ASSEMBLER_PARSE_LABEL_REF (c87a)
+
+    c845  fe 27      CPI A, 27                  ; Single quote starts a string
+    c847  ca 95 c8   JZ ASSEMBLER_PARSE_IMMEDIATE_SYMB (c895)
+
+    c84a  fe 23      CPI A, 23                  ; Decimal numbers start with '#'
+    c84c  ca a8 c8   JZ ASSEMBLER_PARSE_DECIMAL (c8a8)
+
+    c84f  fe 24      CPI A, 24                  ; Set the current instruction address on '$'
+    c851  ca 8b c8   JZ ASSEMBLER_PARSE_IMMEDIATE_CUR_ADDR (c88b)
+
+    c854  cd 0b fc   CALL DO_PARSE_HEX (fc0b)   ; Parse the hex value
+    c857  da 55 c5   JC ASSEMBLER_MATCH_ERROR (c555)    ; Report error in case of syntax error
+
+ASSEMBLER_PARSE_IMMEDIATE_1:
+    c85a  f5         PUSH PSW                   ; Save char to parse temporarily
+
+ASSEMBLER_PARSE_IMMEDIATE_2:
+    c85b  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)  ; Check if the operand needs to be subtracted from
+    c85e  c2 68 c8   JNZ ASSEMBLER_PARSE_IMMEDIATE_3 (c868) ; result accumulator
+
+    c861  7d         MOV A, L                   ; Negate the parsed hex value, so that the following 
+    c862  2f         CMA                        ; addition operation will in fact do a subtraction
+    c863  6f         MOV L, A
+
+    c864  7c         MOV A, H                   ; HL = ~HL + 1
+    c865  2f         CMA
+    c866  67         MOV H, A
+
+    c867  23         INX HL
+
+ASSEMBLER_PARSE_IMMEDIATE_3:
+    c868  cd d5 c8   CALL ASSEMBLER_SET_BUF_OFFSET (c8d5)   ; Save the offset
+
+    c86b  f1         POP PSW                    ; Add parsed value to the result accumulator in BC
+    c86c  09         DAD BC
+    c86d  44         MOV B, H
+    c86e  4d         MOV C, L
+
+    c86f  d6 2d      SUI A, 2d                  ; Check if the next symbol is '-' ...
+    c871  ca 39 c8   JZ ASSEMBLER_PARSE_IMMEDIATE_LOOP (c839)
+
+    c874  fe fe      CPI A, fe                  ; ... or '+'. If so - go and parse another value. The result
+    c876  ca 39 c8   JZ ASSEMBLER_PARSE_IMMEDIATE_LOOP (c839)   ; of comparison will be stored as 0xf7ff flag
+
+    c879  c9         RET                        ; Return parsed value as is
+
+; Parse @<label> label reference. Use value at the reference
+ASSEMBLER_PARSE_LABEL_REF:
+    c87a  cd 72 c5   CALL ASSEMBLER_PARSE_LABEL_ADDRESS (c572)  ; Parse the reference, and get the address in
+    c87d  da 55 c5   JC ASSEMBLER_MATCH_ERROR (c555)            ; the labels table
+
+    c880  1b         DCX DE                     ; Load the next input byte
+    c881  1a         LDAX DE
+    c882  13         INX DE
+
+    c883  f5         PUSH PSW                   ; Load the reference value to HL
+    c884  7e         MOV A, M
+    c885  23         INX HL
+    c886  66         MOV H, M
+    c887  6f         MOV L, A
+
+    c888  c3 5b c8   JMP ASSEMBLER_PARSE_IMMEDIATE_2 (c85b) ; Continue with loaded value as it would be 
+                                                            ; immediate value
+
+; Parse $ symbol, treating it as 'current instruction address'
+ASSEMBLER_PARSE_IMMEDIATE_CUR_ADDR:
+    c88b  cd c5 c5   CALL ASSEMBLER_ADVANCE_TO_NEXT_ARG (c5c5)  ; Advance to the next input byte
+    c88e  13         INX DE
+
+    c88f  2a 53 f7   LHLD ARG_2 (f753)          ; Use current instruction address as immediate value
+    c892  c3 5a c8   JMP ASSEMBLER_PARSE_IMMEDIATE_1 (c85a)
+
+; Parse symbolic value (e.g. 'Q')
+ASSEMBLER_PARSE_IMMEDIATE_SYMB:
+    c895  13         INX DE                     ; Load the symbol in quotes
+    c896  1a         LDAX DE
+
+    c897  26 00      MVI H, 00                  ; Put the value to HL as it would be when parsing immediate
+    c899  6f         MOV L, A                   ; value
+
+    c89a  13         INX DE                     ; Verify there is a closing single quote
+    c89b  1a         LDAX DE
+    c89c  fe 27      CPI A, 27
+    c89e  c2 55 c5   JNZ ASSEMBLER_MATCH_ERROR (c555)
+
+    c8a1  cd c5 c5   CALL ASSEMBLER_ADVANCE_TO_NEXT_ARG (c5c5)  ; Get prepared to the next argument
+
+; Submit the value for processing
+ASSEMBLER_PARSE_IMMEDIATE_FINISH:
+    c8a4  13         INX DE                     ; Continue with the symbolic value as immediate argument
+    c8a5  c3 5a c8   JMP ASSEMBLER_PARSE_IMMEDIATE_1 (c85a)
 
 
-????:
-c976  cd bb c5   CALL c5bb
-c979  fe 27      CPI A, 27
-c97b  ca 8d c9   JZ c98d
-c97e  cd 35 c8   CALL c835
-c981  3c         INR A
-c982  79         MOV A, C
-c983  cd da c8   CALL c8da
-????:
-c986  cd d5 c8   CALL c8d5
-c989  ca 76 c9   JZ c976
-c98c  c9         RET
-????:
-c98d  13         INX DE
-c98e  1a         LDAX DE
-c98f  fe 27      CPI A, 27
-c991  ca a6 c9   JZ c9a6
-????:
-c994  cd da c8   CALL c8da
-c997  13         INX DE
-c998  1a         LDAX DE
-c999  fe 27      CPI A, 27
-c99b  ca b0 c9   JZ c9b0
-c99e  fe 0d      CPI A, 0d
-c9a0  ca 56 c5   JZ c556
-c9a3  c3 94 c9   JMP c994
-????:
-c9a6  13         INX DE
-c9a7  1a         LDAX DE
-c9a8  fe 27      CPI A, 27
-c9aa  c2 56 c5   JNZ c556
-c9ad  cd da c8   CALL c8da
-????:
-c9b0  cd c5 c5   CALL c5c5
-c9b3  fe 2c      CPI A, 2c
-c9b5  13         INX DE
-c9b6  c3 86 c9   JMP c986
+; Parse decimal number
+; On each iteration the result accumulator is multiplied by 10, and newly parsed digit is added
+ASSEMBLER_PARSE_DECIMAL:
+    c8a8  21 00 00   LXI HL, 0000               ; Clear result accumulator
 
-????:
-c9b9  cd 35 c8   CALL c835
-c9bc  eb         XCHG
-c9bd  cd 6b fc   CALL PRINT_NEW_LINE (fc6b)
-c9c0  cd 4a fc   CALL PRINT_ARG_1_NO_NEW_LINE (fc4a)
-c9c3  2a 53 f7   LHLD ARG_2 (f753)
-c9c6  2b         DCX HL
-c9c7  cd 4d fc   CALL PRINT_HL (fc4d)
-c9ca  eb         XCHG
-c9cb  22 51 f7   SHLD ARG_1 (f751)
-c9ce  22 53 f7   SHLD ARG_2 (f753)
-c9d1  c9         RET
+ASSEMBLER_PARSE_DECIMAL_LOOP:
+    c8ab  cd c5 c5   CALL ASSEMBLER_ADVANCE_TO_NEXT_ARG (c5c5)  ; Get prepared for parsing next digit (if any)
 
-????:
-c9d2  cd 35 c8   CALL c835
-c9d5  3c         INR A
-c9d6  79         MOV A, C
-c9d7  48         MOV C, B
-c9d8  cd ec c8   CALL c8ec
-c9db  ca d2 c9   JZ c9d2
+    c8ae  fe 30      CPI A, 30                  ; Non-digit (< 0x30) char stops the parsing
+    c8b0  da a4 c8   JC ASSEMBLER_PARSE_IMMEDIATE_FINISH (c8a4)
 
-c9de  c9         RET
+    c8b3  fe 3a      CPI A, 3a                  ; Non-digit (> 0x39) char stops the parsing
+    c8b5  d2 a4 c8   JNC ASSEMBLER_PARSE_IMMEDIATE_FINISH (c8a4) 
 
-????:
-c9df  cd bb c5   CALL c5bb
-c9e2  21 7b f7   LXI HL, f77b
-????:
-c9e5  1a         LDAX DE
-c9e6  fe 0d      CPI A, 0d
-c9e8  77         MOV M, A
-c9e9  13         INX DE
-c9ea  23         INX HL
-c9eb  c2 e5 c9   JNZ c9e5
-c9ee  2a 51 f7   LHLD ARG_1 (f751)
-c9f1  e5         PUSH HL
-c9f2  2a 53 f7   LHLD ARG_2 (f753)
-c9f5  e5         PUSH HL
-c9f6  2a 55 f7   LHLD ARG_3 (f755)
-c9f9  e5         PUSH HL
-c9fa  2a 57 f7   LHLD ARG_4 (f757)
-c9fd  e5         PUSH HL
-c9fe  21 9c ff   LXI HL, ff9c
-ca01  3a 7b f7   LDA f77b
-ca04  47         MOV B, A
-ca05  fe 58      CPI A, 58
-ca07  f5         PUSH PSW
-ca08  c4 53 f8   CNZ f853
-ca0b  f1         POP PSW
-ca0c  e1         POP HL
-ca0d  22 57 f7   SHLD ARG_4 (f757)
-ca10  e1         POP HL
-ca11  22 55 f7   SHLD ARG_3 (f755)
-ca14  e1         POP HL
-ca15  22 53 f7   SHLD ARG_2 (f753)
-ca18  e1         POP HL
-ca19  22 51 f7   SHLD ARG_1 (f751)
-ca1c  c0         RNZ
-ca1d  c3 56 c5   JMP c556
-ca20  cd 70 c2   CALL CHECK_AT_MODIFIER (c270)
-ca23  f5         PUSH PSW
-ca24  21 00 a0   LXI HL, a000
-ca27  22 51 f7   SHLD ARG_1 (f751)
-ca2a  22 53 f7   SHLD ARG_2 (f753)
-ca2d  cd b1 c5   CALL c5b1
-ca30  21 00 30   LXI HL, 3000
-ca33  22 55 f7   SHLD ARG_3 (f755)
-????:
-ca36  11 7b f7   LXI DE, f77b
-ca39  2a 55 f7   LHLD ARG_3 (f755)
-ca3c  22 57 f7   SHLD ARG_4 (f757)
-????:
-ca3f  7e         MOV A, M
-ca40  12         STAX DE
-ca41  23         INX HL
-ca42  13         INX DE
-ca43  fe 0d      CPI A, 0d
-ca45  ca 57 ca   JZ ca57
-ca48  7b         MOV A, E
-ca49  fe bb      CPI A, bb
-ca4b  c2 3f ca   JNZ ca3f
-????:
-ca4e  2a 57 f7   LHLD ARG_4 (f757)
-ca51  cd 4d fc   CALL PRINT_HL (fc4d)
-ca54  c3 6c ca   JMP ca6c
-????:
-ca57  22 55 f7   SHLD ARG_3 (f755)
-ca5a  cd 00 c8   CALL c800
-ca5d  da 4e ca   JC ca4e
-ca60  cd 4b fb   CALL fb4b
-ca63  dc b5 fd   CC SET_COMMAND_MODE_FLAG (fdb5)
-ca66  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)
-ca69  f2 36 ca   JP ca36
-????:
-ca6c  cd 4a fc   CALL PRINT_ARG_1_NO_NEW_LINE (fc4a)
-ca6f  2a 53 f7   LHLD ARG_2 (f753)
-ca72  2b         DCX HL
-ca73  cd 4d fc   CALL PRINT_HL (fc4d)
-ca76  f1         POP PSW
-ca77  c0         RNZ
-ca78  3e 40      MVI A, 40
-ca7a  cd e9 f9   CALL PUT_CHAR_A (f9e9)
-????:
-ca7d  2a 51 f7   LHLD ARG_1 (f751)
-ca80  7e         MOV A, M
-ca81  cd 1c c3   CALL MATCH_INSTRUCTION (c31c)
-ca84  dc 98 ca   CC ca98
-ca87  2a 51 f7   LHLD ARG_1 (f751)
-ca8a  06 00      MVI B, 00
-ca8c  09         DAD BC
-ca8d  22 51 f7   SHLD ARG_1 (f751)
-ca90  cd cc fb   CALL LOAD_ARGUMENTS (fbcc)
-ca93  c8         RZ
-ca94  d8         RC
-ca95  c3 7d ca   JMP ca7d
-????:
-ca98  2a 51 f7   LHLD ARG_1 (f751)
-ca9b  23         INX HL
-ca9c  23         INX HL
-ca9d  7e         MOV A, M
-ca9e  e6 fe      ANI A, fe
-caa0  fe f4      CPI A, f4
-caa2  c0         RNZ
-caa3  56         MOV D, M
-caa4  2b         DCX HL
-caa5  5e         MOV E, M
-caa6  1a         LDAX DE
-caa7  77         MOV M, A
-caa8  13         INX DE
-caa9  23         INX HL
-caaa  1a         LDAX DE
-caab  77         MOV M, A
-caac  c9         RET
-caad  21 fe af   LXI HL, affe
-cab0  22 53 f7   SHLD ARG_2 (f753)
-cab3  cd 70 c2   CALL CHECK_AT_MODIFIER (c270)
-cab6  21 00 a0   LXI HL, a000
-cab9  22 51 f7   SHLD ARG_1 (f751)
-cabc  cd b1 c5   CALL c5b1
-cabf  c3 7d ca   JMP ca7d
-cac2  21 00 a0   LXI HL, a000
-cac5  22 53 f7   SHLD ARG_2 (f753)
-cac8  22 51 f7   SHLD ARG_1 (f751)
-cacb  cd 70 c2   CALL CHECK_AT_MODIFIER (c270)
-cace  f5         PUSH PSW
-cacf  cd b1 c5   CALL c5b1
-????:
-cad2  cd 6b fc   CALL PRINT_NEW_LINE (fc6b)
-cad5  2a 53 f7   LHLD ARG_2 (f753)
-cad8  cd 4d fc   CALL PRINT_HL (fc4d)
-cadb  cd 8b fa   CALL INPUT_LINE (fa8b)
-cade  cd 00 c8   CALL c800
-cae1  da d2 ca   JC cad2
-cae4  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)
-cae7  f2 d2 ca   JP cad2
-caea  c3 6c ca   JMP ca6c
-caed  00         NOP
-caee  00         NOP
-caef  00         NOP
-caf0  00         NOP
-caf1  00         NOP
-caf2  00         NOP
-caf3  00         NOP
-caf4  00         NOP
-caf5  00         NOP
-caf6  00         NOP
-caf7  00         NOP
-caf8  00         NOP
-caf9  00         NOP
-cafa  00         NOP
-cafb  00         NOP
-cafc  00         NOP
-cafd  00         NOP
-cafe  00         NOP
-caff  00         NOP
+    c8b8  d6 30      SUI A, 30                  ; Convert to binary
+
+    c8ba  d5         PUSH DE                    ; Push the error handler address
+    c8bb  11 ce c8   LXI DE, ASSEMBLER_PARSE_DECIMAL_NEXT (c8ce)
+    c8be  d5         PUSH DE
+
+    c8bf  29         DAD HL                     ; HL *= 2
+
+    c8c0  d8         RC
+
+    c8c1  54         MOV D, H                   ; HL *= 5
+    c8c2  5d         MOV E, L
+    c8c3  29         DAD HL
+    c8c4  d8         RC
+    c8c5  29         DAD HL
+    c8c6  d8         RC
+    c8c7  19         DAD DE
+    c8c8  d8         RC
+
+    c8c9  5f         MOV E, A                   ; Add the lower digit
+    c8ca  16 00      MVI D, 00
+    c8cc  19         DAD DE
+    c8cd  d1         POP DE
+
+ASSEMBLER_PARSE_DECIMAL_NEXT:
+    c8ce  d1         POP DE                     ; Report error in case of overflow
+    c8cf  da 55 c5   JC ASSEMBLER_MATCH_ERROR (c555)
+
+    c8d2  c3 ab c8   JMP c8ab                   ; Repeat for the next byte
+
+
+; Set the input char pointer in a variable, and free up E register
+ASSEMBLER_SET_BUF_OFFSET:
+    c8d5  7b         MOV A, E
+    c8d6  32 59 f7   STA INPUT_POLARITY (f759)
+    c8d9  c9         RET
+
+; Parse instruction with no arguments
+; Instruction opcode is just copied to the target address
+ASSEMBLER_PARSE_NO_ARGS:
+ASSEMBLER_STORE_OUTPUT_BYTE:
+    c8da  2a 53 f7   LHLD ARG_2 (f753)          ; Store instruction at destination address
+    c8dd  77         MOV M, A 
+
+    c8de  23         INX HL                     ; Advance target address and exit
+    c8df  22 53 f7   SHLD ARG_2 (f753)          
+    c8e2  c9         RET
+
+; Parse instruction with immediate 1-byte argument
+; Save instruction opcode and argument value to the target address
+ASSEMBLER_PARSE_BYTE_ARG:
+    c8e3  32 60 f7   STA f760                   ; Temporary store instruction byte
+
+ASSEMBLER_PARSE_BYTE_ARG_1:
+    c8e6  cd 35 c8   CALL ASSEMBLER_PARSE_IMMEDIATE (c835)  ; Parse the value
+
+ASSEMBLER_PARSE_BYTE_ARG_2:
+    c8e9  3a 60 f7   LDA f760                   ; Restore instruction byte
+
+ASSEMBLER_STORE_2_BYTES:
+    c8ec  cd da c8   CALL ASSEMBLER_STORE_OUTPUT_BYTE (c8da)    ; Store instruction byte to output
+
+    c8ef  79         MOV A, C
+    c8f0  c3 da c8   JMP ASSEMBLER_STORE_OUTPUT_BYTE (c8da)     ; Store argument byte to output as well
+
+
+; Parse argument with 2-byte immediate value
+; If the argument is a label reference, the reference address is stored as an argument. This allows
+; reference processing at phase2 of the compilation
+; If the argument is a label reference as a part of arithmetic expression, reference value will be used
+; instead, and the overall expression is calculated during compile time
+ASSEMBLER_PARSE_WORD_ARG:
+    c8f3  32 60 f7   STA f760                   ; Save the instruction byte
+
+    c8f6  cd bb c5   CALL ASSEMBLER_SEARCH_NON_SPACE_CHAR (c5bb)    ; Search for the argument
+
+    c8f9  cd 73 c2   CALL CHECK_AT_SYMBOL (c273)    ; Check if reference is specified
+    c8fc  c2 1a c9   JNZ ASSEMBLER_PARSE_WORD_ARG_IMMEDIATE (c91a)  ; Parse other types as usual
+
+    c8ff  cd 72 c5   CALL ASSEMBLER_PARSE_LABEL_ADDRESS (c572)  ; Calculate the reference label address
+    c902  da 56 c5   JC ASSEMBLER_MATCH_ERROR_1 (c556)
+    
+    c905  1b         DCX DE                     ; Load the symbol after the reference
+    c906  1a         LDAX DE
+
+    c907  fe 2b      CPI A, 2b                  ; if '+' is detected, whole expression will be re-processed
+    c909  ca 1a c9   JZ ASSEMBLER_PARSE_WORD_ARG_IMMEDIATE (c91a)   ; by ASSEMBLER_PARSE_IMMEDIATE
+
+    c90c  fe 2d      CPI A, 2d                  ; if '-' is detected, whole expression will be re-processed
+    c90e  ca 1a c9   JZ ASSEMBLER_PARSE_WORD_ARG_IMMEDIATE (c91a)   ; by ASSEMBLER_PARSE_IMMEDIATE
+
+    c911  e5         PUSH HL                    ; Store instruction and low byte of the reference
+    c912  4d         MOV C, L
+    c913  cd e9 c8   CALL ASSEMBLER_PARSE_BYTE_ARG_2 (c8e9)
+
+    c916  f1         POP PSW                    ; Store high byte of the reference
+    c917  c3 da c8   JMP ASSEMBLER_STORE_OUTPUT_BYTE (c8da)
+
+
+; Parse 16-bit immediate argument, store opcode and 2-byte argument at target address
+ASSEMBLER_PARSE_WORD_ARG_IMMEDIATE:
+    c91a  e1         POP HL                     ; Temporary save return address
+    c91b  22 5e f7   SHLD f75e
+
+    c91e  cd e6 c8   CALL ASSEMBLER_PARSE_BYTE_ARG_1 (c8e6) ; Parse argument to BC, store opcode and low byte
+
+    c921  78         MOV A, B                   ; Store high byte
+    c922  cd da c8   CALL ASSEMBLER_STORE_OUTPUT_BYTE (c8da)
+
+    c925  2a 5e f7   LHLD f75e                  ; Restore return address and execute there
+    c928  e9         PCHL
+
+
+; Parse src register specification as instruction argument, store resulting opcode to output
+ASSEMBLER_PARSE_SRC_REG_ARG:
+    c929  01 07 01   LXI BC, 0107               ; Parse register and convert it into corresponding bits in
+    c92c  cd 43 c5   CALL ASSEMBLER_PARSE_REG (c543)    ; the opcode
+
+    c92f  c3 da c8   JMP ASSEMBLER_STORE_OUTPUT_BYTE (c8da) ; Store the opcode in the output
+
+
+; Parse register pair specification as instruction argument, store resulting opcode to output
+ASSEMBLER_PARSE_REGPAIR_ARG:
+    c932  cd 37 c5   CALL ASSEMBLER_PARSE_REGPAIR (c537)
+    c935  c3 da c8   JMP ASSEMBLER_STORE_OUTPUT_BYTE (c8da)
+
+
+; Parse dst register specification as instruction argument, store resulting opcode to output
+ASSEMBLER_PARSE_DST_REG_ARG:
+    c938  cd 40 c5   CALL ASSEMBLER_PARSE_DEST_REG (c540)
+    c93b  c3 da c8   JMP ASSEMBLER_STORE_OUTPUT_BYTE (c8da)
+
+
+; Parse register pair name as instruction argument, store resulting opcode to output
+ASSEMBLER_PARSE_REGPAIR_ARG_2:
+    c93e  01 01 10   LXI BC, 1001                   ; Parse register name
+    c941  21 ca c7   LXI HL, DISASSEMBLER_REGPAIR_LETTERS + 2 (c7ca)
+    c944  cd 46 c5   CALL ASSEMBLER_PARSE_REG_OR_REGPAIR (c546)
+
+    c947  c3 da c8   JMP ASSEMBLER_STORE_OUTPUT_BYTE (c8da) ; Store the opcode
+
+
+; Parse LXI argument regpair and immediate value, store resulting opcode to output
+ASSEMBLER_PARSE_LXI_ARG:
+    c94a  cd 37 c5   CALL ASSEMBLER_PARSE_REGPAIR (c537)
+    c94d  c3 f3 c8   JMP ASSEMBLER_PARSE_WORD_ARG (c8f3)
+
+
+; Parse MOV arguments (two register names), store resulting opcode to output
+ASSEMBLER_PARSE_MOV_ARG:
+    c950  cd 40 c5   CALL ASSEMBLER_PARSE_DEST_REG (c540)
+    c953  c3 29 c9   JMP ASSEMBLER_PARSE_SRC_REG_ARG (c929)
+
+
+; Parse MVI arguments (register, and immediate value), store resulting opcode to output
+ASSEMBLER_PARSE_MVI_ARG:
+    c956  cd 40 c5   CALL ASSEMBLER_PARSE_DEST_REG (c540)
+    c959  c3 e3 c8   JMP ASSEMBLER_PARSE_BYTE_ARG (c8e3)
+
+; Parse equ expression according to the next syntax:
+; @<label>: EQU <value>
+;
+; Where label has to be a 2-digit hex (label reference), and value corresponds to ASSEMBLER_PARSE_IMMEDIATE
+; requirements
+ASSEMBLER_PARSE_EQU_ARG:
+    c95c  cd 35 c8   CALL ASSEMBLER_PARSE_IMMEDIATE (c835)  ; Parse the value right to EQU directive (into BC)
+
+    c95f  1e 7a      MVI E, 7a                              ; Get back to the beginning of the line
+    c961  cd c5 c5   CALL ASSEMBLER_ADVANCE_TO_NEXT_ARG (c5c5)
+
+    c964  cd 73 c2   CALL CHECK_AT_SYMBOL (c273)            ; Verify the line starts with the label reference
+    c967  c2 56 c5   JNZ ASSEMBLER_MATCH_ERROR_1 (c556)
+
+    c96a  cd 72 c5   CALL ASSEMBLER_PARSE_LABEL_ADDRESS (c572)  ; Parse the label reference, and store label
+    c96d  da 56 c5   JC ASSEMBLER_MATCH_ERROR_1 (c556)          ; address at HL
+
+    c970  50         MOV D, B                               ; Move label address to DE, value to HL
+    c971  59         MOV E, C
+    c972  eb         XCHG
+
+    c973  c3 2f c8   JMP SAVE_HL_AT_DE (c82f)               ; Store the value in the labels table
+
+
+; Parse DB (data byte) expression
+;
+; The DB expression supports the following features:
+; - a single value (each may be an expression with $, @, #, +, -, etc. See ASSEMBLER_PARSE_IMMEDIATE)
+; - multiple values split with comma
+; - a string in single quotes (each char is stored as a data byte)
+; - ''' (triple single quote) generates ' (single quote) symbol at output
+ASSEMBLER_PARSE_DB_ARG:
+    c976  cd bb c5   CALL ASSEMBLER_SEARCH_NON_SPACE_CHAR (c5bb)    ; Skip spaces before the arg
+
+    c979  fe 27      CPI A, 27                  ; Match single quote for symbolic/string arguments
+    c97b  ca 8d c9   JZ c98d
+
+    c97e  cd 35 c8   CALL ASSEMBLER_PARSE_IMMEDIATE (c835)  ; Parse the value
+
+    c981  3c         INR A                      ; Compare A with ',' comma symbol
+
+    c982  79         MOV A, C                   ; Store parsed value to the output
+    c983  cd da c8   CALL ASSEMBLER_STORE_OUTPUT_BYTE (c8da)
+
+ASSEMBLER_PARSE_DB_NEXT_ARG:
+    c986  cd d5 c8   CALL ASSEMBLER_SET_BUF_OFFSET (c8d5)   ; Prepare for the next byte to parse
+
+    c989  ca 76 c9   JZ ASSEMBLER_PARSE_DB_ARG (c976)   ; Process another value after comma (if specified)
+    
+    c98c  c9         RET
+
+; Parse string DB argument (store bytes to output until closing singlee quote is found)
+ASSEMBLER_PARSE_DB_STRING:
+    c98d  13         INX DE                     ; Load the next symbol
+    c98e  1a         LDAX DE
+
+    c98f  fe 27      CPI A, 27                  ; Handle double single quote
+    c991  ca a6 c9   JZ ASSEMBLER_PARSE_DB_TRIPLE_QUOTE (c9a6)
+
+ASSEMBLER_PARSE_DB_STRING_LOOP:
+    c994  cd da c8   CALL ASSEMBLER_STORE_OUTPUT_BYTE (c8da)    ; Copy the byte to output
+
+    c997  13         INX DE                     ; Load the next symbol
+    c998  1a         LDAX DE
+
+    c999  fe 27      CPI A, 27                  ; Continue until closing quote is found
+    c99b  ca b0 c9   JZ c9b0
+
+    c99e  fe 0d      CPI A, 0d                  ; Unexpected EOL before closing quote is found generates error
+    c9a0  ca 56 c5   JZ ASSEMBLER_MATCH_ERROR_1 (c556)
+
+    c9a3  c3 94 c9   JMP ASSEMBLER_PARSE_DB_STRING_LOOP (c994)  ; Repeat for the next symbol
+
+ASSEMBLER_PARSE_DB_TRIPLE_QUOTE:
+    c9a6  13         INX DE                     ; Advance for one more symbol
+    c9a7  1a         LDAX DE
+
+    c9a8  fe 27      CPI A, 27                  ; Tripple single quote means a one single quote symbol
+    c9aa  c2 56 c5   JNZ ASSEMBLER_MATCH_ERROR_1 (c556)
+
+    c9ad  cd da c8   CALL ASSEMBLER_PARSE_NO_ARGS (c8da)    ; Submit the parsed symbol
+
+
+; Finalize string, go and parse another parameter if specified after comma
+ASSEMBLER_PARSE_DB_SUBMIT_STRING:
+    c9b0  cd c5 c5   CALL ASSEMBLER_ADVANCE_TO_NEXT_ARG (c5c5)  ; Look for the next argument, if any
+
+    c9b3  fe 2c      CPI A, 2c                  ; Check if there is another value after comma
+    c9b5  13         INX DE
+
+    c9b6  c3 86 c9   JMP ASSEMBLER_PARSE_DB_NEXT_ARG (c986) ; Continue with matching DB arguments
+
+
+; Parse ORG directive
+; The function sets the new target address
+; The function prints the previous target address, then sets the new one
+ASSEMBLER_PARSE_ORG_ARG:
+    c9b9  cd 35 c8   CALL ASSEMBLER_PARSE_IMMEDIATE (c835)  ; Parse the argument value to DE
+    c9bc  eb         XCHG
+
+    c9bd  cd 6b fc   CALL PRINT_NEW_LINE (fc6b)             ; Print original target start address
+    c9c0  cd 4a fc   CALL PRINT_ARG_1_NO_NEW_LINE (fc4a)
+
+    c9c3  2a 53 f7   LHLD ARG_2 (f753)                      ; Print current target address - 1
+    c9c6  2b         DCX HL
+    c9c7  cd 4d fc   CALL PRINT_HL (fc4d)
+
+    c9ca  eb         XCHG                                   ; Store argument as a new target address
+    c9cb  22 51 f7   SHLD ARG_1 (f751)
+    c9ce  22 53 f7   SHLD ARG_2 (f753)
+    c9d1  c9         RET
+
+
+; Parse DW (data word) instruction argument
+;
+; Each value corresponds ASSEMBLER_PARSE_IMMEDIATE value format (including references, arithmetic, $, #, etc).
+; The format supports several word values, separated with comma. 
+ASSEMBLER_PARSE_DW_ARG:
+    c9d2  cd 35 c8   CALL ASSEMBLER_PARSE_IMMEDIATE (c835)  ; Parse the data word
+
+    c9d5  3c         INR A                      ; 0xff will be returned in case of ',' match
+
+    c9d6  79         MOV A, C                   ; Move parsed value to A (low byte) and C (high byte)
+    c9d7  48         MOV C, B
+
+    c9d8  cd ec c8   CALL ASSEMBLER_STORE_2_BYTES (c8ec); Store parsed value to the output
+
+    c9db  ca d2 c9   JZ ASSEMBLER_PARSE_DW_ARG (c9d2)   ; If comma was matched earlier - parse next word
+
+    c9de  c9         RET
+
+
+; DIR directive allows executing Monitor's command right while parsing assembler source code
+;
+; Usage:
+; DIR <monitor command>
+ASSEMBLER_PARSE_DIR_ARG:
+    c9df  cd bb c5   CALL ASSEMBLER_SEARCH_NON_SPACE_CHAR (c5bb)    ; Set pointer to monitor command
+    c9e2  21 7b f7   LXI HL, f77b                                   ; As well as pointer to the command buf
+
+DIR_COMMAND_COPY_LOOP:
+    c9e5  1a         LDAX DE                        ; Copy next symbol
+
+    c9e6  fe 0d      CPI A, 0d                      ; Stop at EOL
+    c9e8  77         MOV M, A
+
+    c9e9  13         INX DE                         ; Advance to the next symbol
+    c9ea  23         INX HL
+
+    c9eb  c2 e5 c9   JNZ DIR_COMMAND_COPY_LOOP (c9e5)   ; Repeat until EOL found
+
+    c9ee  2a 51 f7   LHLD ARG_1 (f751)              ; Save current assembler state
+    c9f1  e5         PUSH HL
+    c9f2  2a 53 f7   LHLD ARG_2 (f753)
+    c9f5  e5         PUSH HL
+    c9f6  2a 55 f7   LHLD ARG_3 (f755)
+    c9f9  e5         PUSH HL
+    c9fa  2a 57 f7   LHLD ARG_4 (f757)
+    c9fd  e5         PUSH HL
+
+    c9fe  21 9c ff   LXI HL, ff9c               ; Load the command symbol
+    ca01  3a 7b f7   LDA f77b
+    ca04  47         MOV B, A
+
+    ca05  fe 58      CPI A, 58                  ; Execute monitor commands, unless this is X command
+    ca07  f5         PUSH PSW
+    ca08  c4 53 f8   CNZ SEARCH_COMMAND_LOOP (f853)
+
+    ca0b  f1         POP PSW                    ; Restore current assembler state
+    ca0c  e1         POP HL
+    ca0d  22 57 f7   SHLD ARG_4 (f757)
+    ca10  e1         POP HL
+    ca11  22 55 f7   SHLD ARG_3 (f755)
+    ca14  e1         POP HL
+    ca15  22 53 f7   SHLD ARG_2 (f753)
+    ca18  e1         POP HL
+    ca19  22 51 f7   SHLD ARG_1 (f751)
+
+    ca1c  c0         RNZ                        ; Report errors if any
+    ca1d  c3 56 c5   JMP ASSEMBLER_MATCH_ERROR_1 (c556)
+
+
+; Command A: Assembler
+;
+; Usage:
+; A[@] [target start addr]
+; 
+; The command runs assembler for source code located at 0x3000-0x9fff, to target location specified in the
+; argument (or 0xa000 if no argument specified).
+; 
+; Command A runs the assembler 1st pass. If @ modifier is added, second pass is executed as well. The
+; function reads source code line by line, copies line data to 0xf77b line buffer, and execute 
+; ASSEMBLER_PARSE_INSTRUCTION_LINE function to parse the line and generate the code.
+;
+; Internal variables:
+; Arg 1 - Target start address
+; Arg 2 - Target start address / Current target address
+; Arg 3 - Source start address / Current source address
+; Arg 4 - Currently parsed source string address
+COMMAND_A_ASSEMBLER:
+    ca20  cd 70 c2   CALL CHECK_AT_MODIFIER (c270)  ; Check if A@ command is requested
+
+    ca23  f5         PUSH PSW                   ; Store @ modifier flags to be checked later
+
+    ca24  21 00 a0   LXI HL, a000               ; Set 0xa000 as a default start address
+    ca27  22 51 f7   SHLD ARG_1 (f751)
+    ca2a  22 53 f7   SHLD ARG_2 (f753)
+
+    ca2d  cd b1 c5   CALL PARSE_ARGUMENTS_IF_SPECIFIED (c5b1)   ; Parse arguments if they are
+
+    ca30  21 00 30   LXI HL, 3000               ; Set 0x3000 as source start address
+    ca33  22 55 f7   SHLD ARG_3 (f755)
+
+
+; The main assembler loop
+ASSEMBLER_LOOP:
+    ca36  11 7b f7   LXI DE, f77b               ; Will copy input assembler text into the line buffer
+    ca39  2a 55 f7   LHLD ARG_3 (f755)
+    ca3c  22 57 f7   SHLD ARG_4 (f757)
+
+ASSEMBLER_COPY_LINE_LOOP:
+    ca3f  7e         MOV A, M                   ; Copy next symbol to the line buffer
+    ca40  12         STAX DE
+
+    ca41  23         INX HL                     ; Advance to the next symbol
+    ca42  13         INX DE
+
+    ca43  fe 0d      CPI A, 0d                  ; Repeat until EOL reached
+    ca45  ca 57 ca   JZ ASSEMBLER_EOL_REACHED (ca57)
+
+    ca48  7b         MOV A, E                   ; Limit the input with the size of the buffer (0x40 bytes)
+    ca49  fe bb      CPI A, bb
+    ca4b  c2 3f ca   JNZ ASSEMBLER_COPY_LINE_LOOP (ca3f)
+
+; Report line error (print line address, and finish 1st pass)
+ASSEMBLER_REPORT_LINE_ERROR:
+    ca4e  2a 57 f7   LHLD ARG_4 (f757)          ; If line is too long - print the address
+    ca51  cd 4d fc   CALL PRINT_HL (fc4d)
+
+    ca54  c3 6c ca   JMP ASSEMBLER_FINISH_PASS_1 (ca6c) ; Finish pass 1 and get prepared for pass 2
+
+; String is copied - run the assembler on it
+ASSEMBLER_EOL_REACHED:
+    ca57  22 55 f7   SHLD ARG_3 (f755)          ; Parse a single instruction line
+    ca5a  cd 00 c8   CALL ASSEMBLER_PARSE_INSTRUCTION_LINE (c800)
+    ca5d  da 4e ca   JC ASSEMBLER_REPORT_LINE_ERROR (ca4e)  ; Report error if any
+
+    ca60  cd 4b fb   CALL CHECK_CTRL_KEY (fb4b) ; Ctrl-<something> will stop execution
+    ca63  dc b5 fd   CC SET_COMMAND_MODE_FLAG (fdb5)
+
+    ca66  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)  ; Continue while flag is not yet raised
+    ca69  f2 36 ca   JP ASSEMBLER_LOOP (ca36)           ; Otherwise finalize pass 1 and proceed with pass 2
+
+
+
+ASSEMBLER_FINISH_PASS_1:
+    ca6c  cd 4a fc   CALL PRINT_ARG_1_NO_NEW_LINE (fc4a)    ; Print target start address
+
+    ca6f  2a 53 f7   LHLD ARG_2 (f753)              ; Load and print target end address
+    ca72  2b         DCX HL
+    ca73  cd 4d fc   CALL PRINT_HL (fc4d)
+
+    ca76  f1         POP PSW                        ; Restore @ modifier flag. Stop processing if no flag
+    ca77  c0         RNZ                            ; specified
+
+    ca78  3e 40      MVI A, 40                      ; Print '@' symbol
+    ca7a  cd e9 f9   CALL PUT_CHAR_A (f9e9)
+
+
+
+
+; Assembler 2nd pass
+;
+; The function goes through the assembled binary code, and looks for 3-byte instruction.
+; If 3-byte instruction refers to a label in 0xf400-0xf600 range, it substitutes the reference
+; with the actual value
+ASSEMBLER_2ND_PASS:
+    ca7d  2a 51 f7   LHLD ARG_1 (f751)          ; Load the next byte
+    ca80  7e         MOV A, M
+
+    ca81  cd 1c c3   CALL MATCH_INSTRUCTION (c31c)  ; Search corresponding instruction descriptor
+    ca84  dc 98 ca   CC ASSEMBLER_2ND_PASS_APPLY_REF (ca98) ; Process 3-byte instructions
+
+    ca87  2a 51 f7   LHLD ARG_1 (f751)          ; Advance to the next instructions (C - number of bytes in 
+    ca8a  06 00      MVI B, 00                  ; the current instruction)
+    ca8c  09         DAD BC
+    ca8d  22 51 f7   SHLD ARG_1 (f751)
+
+    ca90  cd cc fb   CALL LOAD_ARGUMENTS (fbcc) ; Stop if reached end address
+    ca93  c8         RZ
+    ca94  d8         RC
+
+    ca95  c3 7d ca   JMP ASSEMBLER_2ND_PASS (ca7d)  ; Repeat for the next instruction
+
+
+; For a 3-byte instruction pointed by ARG_1, if the instruction refers to 0xf400-0xf600 labels area, 
+; the function substitutes label value, instead of reference.
+ASSEMBLER_2ND_PASS_APPLY_REF:
+    ca98  2a 51 f7   LHLD ARG_1 (f751)          ; Load instruction address, then load high byte of the
+    ca9b  23         INX HL                     ; argument
+    ca9c  23         INX HL
+    ca9d  7e         MOV A, M
+
+    ca9e  e6 fe      ANI A, fe                  ; Check if the address within 0xf400-0xf600 range
+    caa0  fe f4      CPI A, f4
+    caa2  c0         RNZ                        ; Stop processing if address outside of the range
+
+    caa3  56         MOV D, M                   ; Load the argument into DE
+    caa4  2b         DCX HL
+    caa5  5e         MOV E, M
+
+    caa6  1a         LDAX DE                    ; Replace argument with the value in relocation table
+    caa7  77         MOV M, A
+    caa8  13         INX DE
+    caa9  23         INX HL
+    caaa  1a         LDAX DE
+    caab  77         MOV M, A
+    caac  c9         RET
+
+
+; Command @: Assembler 2nd pass
+;
+; Usage:
+; @ [addr1, addr2]
+;
+; Runs the assembler 2nd pass for <addr1>-<addr2> range (or 0xa000-0xaffe if arguments are not specified)
+;
+; See ASSEMBLER_2ND_PASS function description for 2nd pass algorithm
+COMMAND_@_ASSEMBLER_2ND_PASS:
+    caad  21 fe af   LXI HL, affe               ; Set 0xaffe as default end address
+    cab0  22 53 f7   SHLD ARG_2 (f753)
+
+    cab3  cd 70 c2   CALL CHECK_AT_MODIFIER (c270)  ; Advance to the next byte
+
+    cab6  21 00 a0   LXI HL, a000               ; Set 0xa000 as default start address
+    cab9  22 51 f7   SHLD ARG_1 (f751)
+
+    cabc  cd b1 c5   CALL PARSE_ARGUMENTS_IF_SPECIFIED (c5b1)   ; Parse start/end address if specified
+
+    cabf  c3 7d ca   JMP ASSEMBLER_2ND_PASS (ca7d)
+
+
+
+; Command N: Interactive assembler
+;
+; Usage:
+; N[@] [addr]
+;
+; Assemble program line by line as per user input. Store compiled program at <addr> (or 0xa000 if <addr> is
+; not specified). Empty line stops assembly, and exits to the Monitor. @ modifier enables pass 2.
+COMMAND_N_INTERACTIVE_ASSEMBLER:
+    cac2  21 00 a0   LXI HL, a000               ; Set 0xa000 as default start address
+    cac5  22 53 f7   SHLD ARG_2 (f753)
+    cac8  22 51 f7   SHLD ARG_1 (f751)
+
+    cacb  cd 70 c2   CALL CHECK_AT_MODIFIER (c270)  ; Check if N@ command is requested (enable 2nd pass)
+    cace  f5         PUSH PSW
+
+    cacf  cd b1 c5   CALL PARSE_ARGUMENTS_IF_SPECIFIED (c5b1)   ; Parse arguments
+
+INTERACTIVE_ASSEMBLER_LOOP:
+    cad2  cd 6b fc   CALL PRINT_NEW_LINE (fc6b) ; Every new command is entered from a new line
+
+    cad5  2a 53 f7   LHLD ARG_2 (f753)
+    cad8  cd 4d fc   CALL PRINT_HL (fc4d)       ; Print current address
+
+    cadb  cd 8b fa   CALL INPUT_LINE (fa8b)     ; Input the command to assemble
+
+    cade  cd 00 c8   CALL ASSEMBLER_PARSE_INSTRUCTION_LINE (c800); parse and process the entered command
+    cae1  da d2 ca   JC INTERACTIVE_ASSEMBLER_LOOP (cad2)   ; Restart in case of error
+
+    cae4  cd ab fd   CALL GET_COMMAND_MODE_FLAG (fdab)  ; Check if 'stop flag' is set. Otherwise continue
+    cae7  f2 d2 ca   JP INTERACTIVE_ASSEMBLER_LOOP (cad2)   ; with the next line
+
+    caea  c3 6c ca   JMP ASSEMBLER_FINISH_PASS_1 (ca6c) ; Finish pass 1 and get prepared for pass 2
+
+
+
+
 
 
 
