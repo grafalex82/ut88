@@ -1,8 +1,100 @@
-; General description TBD
+; This file contains disassembly and description for UT-88 OS Assembler and Disassembler, as well as
+; supplemental commands.
+;
+; Due to limited resources on the UT-88 computer, the assembler uses somewhat specific syntax, and workflow
+; associated with this. 
+;
+; The following describes assembler syntax:
+; - If not stated otherwise, the assembler takes input source at 0x3000-0x9fff, and produce compiled binary
+;   at 0xa000. One instruction per line is allowed. \r (0x0d) is treated as end of line. A symbol with code
+;   0x80 or greater is treated as end of input file.
+; - Line started with semicolon is a comment
+; - Most of the instructions have regular syntax (instruction mnemonics, as well as 8-bit register usage):
+;       STC             ; Instruction with no arguments
+;       INR C           ; Instruction with 1 register argument
+;       MOV A, B        ; Instruction with 2 register arguments
+;       MVI E, 55       ; Instruction with a immediate byte data
+;       LHLD 1234       ; Instruction with a immediate word data
+; - Note that due to a bug, each instruction mnemonic shall be 4 chars wide, padded with spaces on the right
+;       JZ 1234         ; Fail - mnemonic is too short (just 2 chars)
+;       JZ   1234       ; OK - mnemonic matches "JZ  "
+;       DI<\r>          ; Fail - mnemonic is too short (just 2 chars)
+;       DI  <\r>        ; OK - mnemonic matches "DI  "
+; - 2-byte registers are coded with a single letter: B=BC, D=DE, H=HL, S=SP
+;       INX D           ; Increment DE register pair
+; - Immedite arguments support multiple formats and values:
+;       LDAX 1234       ; Hex value
+;       LXI H, #12345   ; Decimal value
+;       MVI A, 'Q'      ; Char value
+;       CPI '''         ; Single quote char (0x27)
+;       JMP $           ; $ is an address of the current instruction
+;       STA @34         ; Reference to a location defined elsewhere (see description below)
+; - Immediate argument support simple expressions with + and - operations:
+;       SHLD 1234 + #35 - 'W'   ; 1234 hex + 35 dec (23 hex) - 57 hex
+; - Labels and references may be used to not to deal with absolute addresses. Labels have syntax @<num>: 
+;   preceeding an instruction, where <num> is a hex number in 00-FF range
+;       @12: DCR C      ; Decrement counter
+;            JNZ @12    ; Repeat while counter is not zero, repeat 
+; - Address of the labeled instruction is stored in the labels area 0xf400-0xf600 (2 bytes per label).
+;   Label num is the index in the label table (e.g. label 12 is stored at 0xf400+12*2 = 0xf424 address)
+; - It is possible to reference labels defined later in the code. Compiler uses 2 pass algorithm. First
+;   pass compiles program as usual, but referenced addresses point to the label area. Second pass searches
+;   such references, and substitute with actual label value.
+;            JMP @12    ; On 1st pass JMP argument is 0xf424, 2nd pass replaces it with actual label addr
+;            ...
+;       @12: ...
+; - References may be used in argument expressions, but they have to be substituted with the actual label
+;   address in compile time (during 1st pass):
+;       CALL @12 + 8    ; Substituted with whatever is in 0xf424, and advanced by 8
+; - EQU directive allows setting some label values during compilation. The syntax is @<label>: EQU <value>
+;   The value follows syntax described above
+;       @12: EQU 5A+#10 ; Set label #12 (0xf424) to 5A + 0A = 64 value
+; - DB directive is used to define some data bytes. Multiple values may be added separated with comma.
+;   each value follows the same syntax as immediate instruction arguments, but also allows defining a string.
+;       DB 5A, #23, 'A' ; several data bytes in hex form, decimal form, and char value
+;       DB $, @45       ; addresses are truncated to low byte only
+;       DB 'ABCDEF'     ; string compiled as is to 6 bytes, NULL terminated is not applied
+; - DW directive is used to define data words. Same rules apply to data words (except for strings)
+;       DW F8AB, #12343 ; 16-bit values in hex and dec form
+;       DW ABCD - 'A'   ; expressions can be used
+;       DW $, @45       ; addresses are processed normally
+; - ORG directive is used to define output address of the compiled program (same as it would be specified
+;   in as a assembler command argument in Monitor command line). Note: It is impossible to store compile
+;   output at one memory range, but compile it to be used at other address space. For these purposes Command P
+;   shall be used.
+; - DIR directive allows running external (Monitor) commands as a part of compilation process
+;       DIR DA000,A00F  ; Dump some of the compiled bytes (see Command D description)
+; 
+; Assembler comes as a suit of several commands:
+; - Command A - Assembler
+;   - A[@] [target start addr]      - compile text at 0x3000-0x9fff to 0xa000 (or other address, if specified)
+;                                     @ modifier runs 2nd pass also (by default only 1st pass is executed)
+;
+; - Command N - Interactive assembler
+;   - N[@] [addr]                   - enter program line by line, store compiled program at 0xa000 (or other
+;                                     address if specified). @ modifier runs 2nd pass also after all input
+;                                     lines are entered.
+;
+; - Command @ - Run assembler 2nd pass explicitly
+;   - @ [addr1, addr2]              - Run assembler 2nd pass for address range (or 0xa000-0xaffe)
+;
+; - Command W - Interactive disassembler
+;   - W <start_addr>[, <end_addr>]  - Run interactive disassembler for memory range (shows up to 2 pages of
+;                                     disassembled program on the screen, allows pagination of the text)
+;
+; - Command Z - View or clean labels area
+;   - Z                             - Show 0xf400-0xf600 labels area, list current values of each label
+;   - Z0                            - Zero all labels
+;
+; - Command P - relocate program from one memory range to another
+;   - P[N] <w1>,<w2>,<s1>,<s2>,<t>  - Relocate program
+;   - P@ <s1>,<s2>,<t>              - Adjust addresses in 0xf400-0xf600 labels area
+;
+; See corresponding command description for arguments and algorithm notes.
 
 
 
-; Command Z: Zero/dump label reference 0xf400-0xf5ff range
+; Command Z: Zero/dump label reference 0xf400-0xf600 range
 ; 
 ; Usage:
 ; Z         - Dump the range (print 256 16-bit words, each word correspond to a label value)
@@ -11,14 +103,14 @@
 ; This command is supposed to be used with assembler commands (A, N, @). Label values are filled during
 ; assembly process with addresses of labels found in the source code. These values may be then applied
 ; back to the compiled program using @ command. Command Z allows the user to verify label values.
-COMMAND_Z_ZERO_RANGE:
+COMMAND_Z_DUMP_LABELS:
     c1eb  3a 7c f7   LDA f77b + 1 (f77c)        ; Get the second command byte
     c1ee  fe 30      CPI A, 30                  ; If it is '0' - go and clear memory range
-    c1f0  c2 00 c2   JNZ c200
+    c1f0  c2 00 c2   JNZ DUMP_LABELS (c200)     ; Non-zero command will show label values
 
     c1f3  21 ff f3   LXI HL, f3ff               ; 1 byte before start address
 
-ZERO_RANGE_CLEAR_LOOP:
+CLEAR_LABELS_LOOP:
     c1f6  23         INX HL                     ; Advance to the next byte
 
     c1f7  7c         MOV A, H                   ; Check if we reached the end of the range
@@ -27,9 +119,9 @@ ZERO_RANGE_CLEAR_LOOP:
 
     c1fb  36 00      MVI M, 00                  ; Fill byte with zero
 
-    c1fd  c3 f6 c1   JMP ZERO_RANGE_CLEAR_LOOP (c1f6)   ; Repeat for the next byte
+    c1fd  c3 f6 c1   JMP CLEAR_LABELS_LOOP (c1f6)   ; Repeat for the next byte
 
-ZERO_RANGE_COMPARE:
+DUMP_LABELS:
     c200  3a 7a f7   LDA ENABLE_SCROLL (f77a)   ; Disable scroll, will output page by page
     c203  f5         PUSH PSW
     c204  af         XRA A
@@ -38,13 +130,13 @@ ZERO_RANGE_COMPARE:
     c208  0e 1f      MVI C, 1f                  ; Clear screen
     c20a  cd f0 f9   CALL PUT_CHAR (f9f0)
 
-    c20d  16 f4      MVI D, f4                  ; Set DE to 0xf400 (start range)
+    c20d  16 f4      MVI D, f4                  ; Set DE to 0xf400 (label #0)
     c20f  5f         MOV E, A
 
-    c210  47         MOV B, A                   ; Zero record index
+    c210  47         MOV B, A                   ; Zero label index
 
-ZERO_RANGE_COMPARE_LOOP:
-    c211  78         MOV A, B                   ; Print the index
+DUMP_LABELS_LOOP:
+    c211  78         MOV A, B                   ; Print the label index
     c212  cd af fb   CALL PRINT_BYTE_CHECK_KBD (fbaf)
 
     c215  1a         LDAX DE                    ; Load next word to HL
@@ -57,7 +149,7 @@ ZERO_RANGE_COMPARE_LOOP:
     c21b  cd 4d fc   CALL PRINT_HL (fc4d)       ; Print the value
 
     c21e  04         INR B                      ; Advance to the next word, repeat until reached end of range
-    c21f  c2 11 c2   JNZ ZERO_RANGE_COMPARE_LOOP (c211)
+    c21f  c2 11 c2   JNZ DUMP_LABELS_LOOP (c211)
 
     c222  f1         POP PSW                    ; Restore scroll mode
     c223  32 7a f7   STA ENABLE_SCROLL (f77a)
@@ -69,9 +161,9 @@ ZERO_RANGE_COMPARE_LOOP:
 ;
 ; Usage:
 ; - P[N]<w1>,<w2>,<s1>,<s2>,<t>     - Relocate program (see arguments description below)
-; - P@<s1>,<s2>,<t>                 - Adjust addresses in 0xf400-0xf5ff
+; - P@<s1>,<s2>,<t>                 - Adjust addresses in labels area (0xf400-0xf600)
 ;
-; P/PN command is used to relocate a program from one memory range to another. The command iterates over 
+; P (PN) command is used to relocate a program from one memory range to another. The command iterates over 
 ; program instructions, and checks 2- and 3-byte instructions whether they have an address in source memory
 ; range, and correct them to match the target memory range. 
 ;
@@ -92,14 +184,15 @@ ZERO_RANGE_COMPARE_LOOP:
 ; Suppose you have a working program at 0x2000-0x2fff memory range, and you want to port the program to a
 ; different computer that will execute the program at 0x5000-0x5fff range. 
 ;
-; In order not to corrupt the original program, you may create a working copy, say at 0x4000-0x4fff range:
+; In order not to corrupt the original program, you may create a working copy, say at 0x4000-0x4fff range
+; with a memory copy command:
 ; CY 2000,2fff,4000
 ;
 ; Now you can perform relocation with command P - working copy range (arg1/2), specify original program range
-; in arg3/4, and target address:
+; in arg3/4, and finally the target address:
 ; P 4000,4fff,2000,2fff,5000
 ;
-; Imagine that source program (which is located in 0x2000-0x2fff range) has an instruction:
+; Suppose that source program (which is located in 0x2000-0x2fff range) has an instruction:
 ;   JMP 2345
 ;
 ; Since address 0x2345 belongs to source program range (0x2000-0x2fff), it will be replaced with the 
@@ -117,7 +210,7 @@ ZERO_RANGE_COMPARE_LOOP:
 ; address of suspicious MVI instruction. The user may then double check whether this is related to address
 ; calculations, and correct the constant if needed.
 ;
-; By default it is assumed that LXI instruction loads an address too. If the address is in program memory
+; By default it is assumed that LXI instruction loads an address too. If the address is in source memory
 ; range, it will be adjusted. The 'PN' command will treat LXI arguments as a number, and will not be adjusted
 ; even if it matches the memory range. The warning will be displayed indicating a suspicious instruction
 ; address, so that the User can double check.
@@ -130,22 +223,22 @@ ZERO_RANGE_COMPARE_LOOP:
 ; will adjust instructions that refers the original range so that it points the new address range.
 ;   
 ;
-; The P@ command also does an address adjustment, but in a different way:
-; - 0xf400-0xf5ff range is considered as an array of 256 16-byte address values
+; The P@ command also does an address adjustment, but only for labels area:
+; - 0xf400-0xf600 range is considered as an array of 256 16-byte address values
 ; - the command iterates over these values, and check whether they are in <s1>-<s2> range
-; - if the address match the source range, it will be adjusted to a corresponding target address
+; - if the address matches the source range, it will be adjusted to a corresponding target address
 ;
-; Let's imagine there are 2 addresses at 0xf400+ - 0x2345 and 0x4567
+; Suppose there are 2 labels with values 0x2345 and 0x4567
 ; If you want to relocate all addresses in 0x2000-0x2fff range to 0x6000-0x6fff range, enter the command:
 ;   P@ 2000,2fff,6000
 ;
-; The first address at 0xf400 will be changed to 0x6345. The second address will remain 0x4567 as it does
-; not belong the 0x2000-0x2fff range.
+; The first label with value 0x2345 will be changed to 0x6345. The second address will remain 0x4567 as it
+; does not belong the 0x2000-0x2fff range.
 COMMAND_P_RELOCATE:
     c227  cd 70 c2   CALL CHECK_AT_MODIFIER (c270)  ; Check if this is P@ command
-    c22a  c2 79 c2   JNZ c279
+    c22a  c2 79 c2   JNZ RELOCATE_PROGRAM (c279)
 
-    ; The following process P@ command
+    ; The following processes P@ command
     c22d  cd c9 fb   CALL DO_PARSE_AND_LOAD_ARGUMENTS_ALT (fbc9); Parse arguments
 
     c230  2a 55 f7   LHLD ARG_3 (f755)          ; Load arg 3 to HL (source start address)
@@ -335,9 +428,9 @@ RELOCATE_PROGRAM_1_BYTE_OPCODE:
 
 ; Match byte in A with one of CPU instructions
 ; Return:
-; A - matched and masked instruction
+; A - matched and masked instruction (base instruction opcode)
 ; B - attributes byte
-; C - number of instruction bytes
+; C - number of bytes in the instruction
 ; HL - pointer to the instruction record
 ; C flag is set if 3-byte instruction is matched
 ;
@@ -411,7 +504,7 @@ MATCH_INSTRUCTION_2:
 
 MATCH_INSTRUCTION_DATA_BYTE:
     c364  e1         POP HL                     ; No exact instruction matched, will return "DB" directive
-    c365  21 a6 c7   LXI HL, c7a6
+    c365  21 a6 c7   LXI HL, INSTRUCTION_DESCRIPTORS_DB + 5 (c7a6)
 
 MATCH_INSTRUCTION_ATTRIBUTE:
     c368  7e         MOV A, M                   ; Load attribute byte in A
@@ -483,15 +576,15 @@ DISASSEMBLER_START:
     c3ce  cd b0 fd   CALL RESET_COMMAND_MODE_FLAG (fdb0); Will use left part of the screen for the first page
     
 DISASSEMBLER_GET_MODE:
-    c3d1  0e 57      MVI C, 57                  ; Print 'W' char, indicating we are in disassembler, and waiting 
-    c3d3  cd f0 f9   CALL PUT_CHAR (f9f0)       ; for the page number (left, right, alternate)
+    c3d1  0e 57      MVI C, 57                  ; Print 'W' char, indicating we are in disassembler, and  
+    c3d3  cd f0 f9   CALL PUT_CHAR (f9f0)       ; waiting for the page number (left, right, alternate)
 
     c3d6  cd 6b f8   CALL KBD_INPUT (f86b)      ; Wait for the keyboard char
 
     c3d9  fe 20      CPI A, 20                  ; Check if space bar is pressed
     c3db  c2 e5 c3   JNZ DISASSEMBLER_GET_MODE_1 (c3e5)
 
-    c3de  3a ff f7   LDA f7ff                   ; Space will alternate the screen part (left to right, right
+    c3de  3a ff f7   LDA VALUE_SIGN (f7ff)      ; Space will alternate the screen part (left to right, right
     c3e1  2f         CMA                        ; to left)
     c3e2  c3 f1 c3   JMP DISASSEMBLER_GET_MODE_2 (c3f1)
 
@@ -505,7 +598,7 @@ DISASSEMBLER_GET_MODE_1:
     c3ee  c2 f0 f9   JNZ PUT_CHAR (f9f0)        ; through PUT_CHAR
 
 DISASSEMBLER_GET_MODE_2:
-    c3f1  32 ff f7   STA f7ff                   ; Store the selected screen flag
+    c3f1  32 ff f7   STA VALUE_SIGN (f7ff)      ; Store the selected screen flag
 
     c3f4  01 0c 18   LXI BC, 180c               ; Will print up to 24 lines (0x18)
     c3f7  cd f0 f9   CALL PUT_CHAR (f9f0)       ; Also move cursor to the top-left corner (0x0c)
@@ -537,7 +630,7 @@ DISASSEMBLER_CLEAR_LINE_LOOP:
     c419  cd 86 c4   CALL DISASSEMBLER_PRINT_BYTE (c486)
 
     c41c  cd 1c c3   CALL MATCH_INSTRUCTION (c31c)  ; Search if it matches an instruction
-    c41f  11 a6 c7   LXI DE, c7a6               
+    c41f  11 a6 c7   LXI DE, INSTRUCTION_DESCRIPTORS_DB + 5 (c7a6)
     c422  1b         DCX DE
     c423  cd d3 fb   CALL CMP_HL_DE (fbd3)
     c426  c2 31 c4   JNZ DISASSEMBLER_FILL_INSTRUCTION_LINE (c431)
@@ -824,7 +917,7 @@ ASSEMBLER_PARSE_REG:
     c543  21 c0 c7   LXI HL, DISASSEMBLER_REGISTER_LETTERS (c7c0)   ; Go through register letters list
 
 ASSEMBLER_PARSE_REG_OR_REGPAIR:
-    c546  32 ff f7   STA f7ff                   ; Store basic opcode
+    c546  32 ff f7   STA VALUE_SIGN (f7ff)      ; Store basic opcode
 
     c549  cd bb c5   CALL ASSEMBLER_SEARCH_NON_SPACE_CHAR (c5bb)    ; Skip spaces till register name
 
@@ -856,7 +949,7 @@ ASSEMBLER_REG_MATCHED:
     c563  c2 55 c5   JNZ ASSEMBLER_MATCH_ERROR (c555)
 
     c566  cd d5 c8   CALL ASSEMBLER_SET_BUF_OFFSET (c8d5)   ; Advance input pointer to the next symbol
-    c569  3a ff f7   LDA f7ff
+    c569  3a ff f7   LDA VALUE_SIGN (f7ff)
 
 ASSEMBLER_GENERATE_OPCODE_ON_REG_SPEC:
     c56c  81         ADD C                      ; Generate the instruction opcode based on register
@@ -950,7 +1043,7 @@ DO_PARSE_MNEMONIC_LOOP:
 
 
 
-; Parse command line arguments if they specified
+; Parse command line arguments if they are specified
 PARSE_ARGUMENTS_IF_SPECIFIED:
     c5b1  1a         LDAX DE                    ; Check if any argument is specified
     c5b2  fe 0d      CPI A, 0d
@@ -963,7 +1056,7 @@ PARSE_ARGUMENTS_IF_SPECIFIED:
 ; Search through input string (starting current position) for a non-space character
 ASSEMBLER_SEARCH_NON_SPACE_CHAR:
     c5bb  16 f7      MVI D, f7                  ; Set address of next byte to parse to DE (in 0xf77b buffer)
-    c5bd  3a 59 f7   LDA INPUT_POLARITY (f759)  ; ????? TODO: Rename INPUT_POLARITY to something descriptove
+    c5bd  3a 59 f7   LDA BUF_OFFSET (f759)
     c5c0  5f         MOV E, A
 
     c5c1  1a         LDAX DE                    ; Stop if non-space char is found
@@ -980,7 +1073,9 @@ ASSEMBLER_ADVANCE_TO_NEXT_ARG:
 ; List of CPU instructions. Each record contains:
 ; - 4-char mnemonic
 ; - opcode
-; - instruction attributes where:
+; - instruction attribute code
+;
+; Attribute codes are (for assembler, disassembler, and relocator):
 ;   - 0x00  - 1-byte instruction
 ;   - 0x01  - 2-byte instruction, 2nd byte is immediate value
 ;   - 0x02  - 3-byte instruction, argument is an 2-byte address
@@ -991,7 +1086,7 @@ ASSEMBLER_ADVANCE_TO_NEXT_ARG:
 ;   - 0x07  - 3-byte instruction, argument may be an address, but not necessarily (LXI instruction)
 ;   - 0x08  - 1-byte instruction, argument is 2 registers (coded --dddsss, typically MOV instruction)
 ;   - 0x09  - 1-byte DB pseudo instruction, 2nd byte is immediate value (arg not printed by handler)
-; - Assembler/parser specific codes:
+; Additional attribute codes specific for Assembler/parser only:
 ;   - 0x0a  - DB directive, argument is one byte, or several bytes split with comma
 ;   - 0x0b  - EQU directive
 ;   - 0x0c  - ORG directive
@@ -1076,13 +1171,14 @@ INSTRUCTION_DESCRIPTORS:
     c78f  58 52 41 20     db "XRA ", 0xa8, 0x03
     c795  58 52 49 20     db "XRI ", 0xee, 0x01
     c79b  58 54 48 4c     db "XTHL", 0xe3, 0x00
+INSTRUCTION_DESCRIPTORS_DB:                         ; Records specific for assembler
     c7a1  44 42 20 20     db "DB  ", 0x00, 0x0a
     c7a7  45 51 55 20     db "EQU ", 0x00, 0x0b
     c7ad  4f 52 47 20     db "ORG ", 0x00, 0x0c
     c7b3  44 57 20 20     db "DW  ", 0x00, 0x0d
     c7b9  44 49 52 20     db "DIR ", 0x00, 0x0e
 
-    c7bf  ff
+    c7bf  ff                                        ; End marker
 
 
 DISASSEMBLER_REGISTER_LETTERS:
@@ -1092,6 +1188,7 @@ DISASSEMBLER_REGPAIR_LETTERS:
     c7c8  53 48 44 42               db "SHDB"
 
 DISASSEMBLER_ATTR_HANDLERS:
+    ; Argument parsing handlers
     c7cc  da c8         dw ASSEMBLER_PARSE_NO_ARGS (c8da)
     c7ce  e3 c8         dw ASSEMBLER_PARSE_BYTE_ARG (c8e3)
     c7d0  f3 c8         dw ASSEMBLER_PARSE_WORD_ARG (c8f3)
@@ -1127,26 +1224,26 @@ DISASSEMBLER_ATTR_HANDLERS:
 ; This function parses a line of the following format:
 ; [@<label>:] <instruction> [arguments]
 ;
-; The line is expected in 0xf77b line bufferg
+; The line is expected in the line buffer starting 0xf77b
 ;
 ; The instruction must be either CPU instruction mnemonic, or an assembler language directive (e.g. ORG,
 ; DB, EQU, etc). The function searches for an instruction descriptor. Attribute byte in the descriptor
 ; indicates a function that shall be used to parse argument, and actually generate the opcode.
 ;
 ; The label (if specified) must start with @ symbol and contain 2 hex digits. The label shall be finalized
-; with a non-space character (typically ':'). The label name is an index in labels table (0xf400-0xf600). 
+; with a non-space character (typically ':'). The label is an index in labels table (0xf400-0xf600). 
 ; Parsed command offset is stored at the label table at the corresponding index. Labels may be referrenced
-; in other instructions, and are actually substituted at the code during assembler pass #2 (see command @)
+; by other instructions, and are actually substituted at the code during assembler pass #2 (see command @)
 ;
 ; Symbols after semicolon are considered as comments, and ignored.
 ASSEMBLER_PARSE_INSTRUCTION_LINE:
     c800  3e 7b      MVI A, 7b                  ; Set buffer start as 0xf77b
-    c802  32 59 f7   STA INPUT_POLARITY (f759)
+    c802  32 59 f7   STA BUF_OFFSET (f759)
 
     c805  cd bb c5   CALL ASSEMBLER_SEARCH_NON_SPACE_CHAR (c5bb); Skip spaces at the beginning
 
     c808  fe 0d      CPI A, 0d                  ; Do not parse if nothing is entered (empty line)
-    c80a  ca b5 fd   JZ SET_COMMAND_MODE_FLAG (fdb5)    ; Raise the flag ????
+    c80a  ca b5 fd   JZ SET_COMMAND_MODE_FLAG (fdb5)    ; Raise the stop parsing flag
 
     c80d  b7         ORA A                      ; Also stop parsing if char >= 0x80 is found
     c80e  fa b5 fd   JM SET_COMMAND_MODE_FLAG (fdb5)
@@ -1209,14 +1306,14 @@ ASSEMBLER_PARSE_IMMEDIATE:
     c838  3d         DCR A                      ; A != 0 indicating parsed value will be added to accumulator
 
 ASSEMBLER_PARSE_IMMEDIATE_LOOP:
-    c839  32 ff f7   STA f7ff                   ; Save plus/minus flag
+    c839  32 ff f7   STA VALUE_SIGN (f7ff)      ; Save plus/minus flag
 
     c83c  cd bb c5   CALL ASSEMBLER_SEARCH_NON_SPACE_CHAR (c5bb)    ; Search for the argument
 
     c83f  cd 73 c2   CALL CHECK_AT_SYMBOL (c273); Process label reference, if specified (@)
     c842  ca 7a c8   JZ ASSEMBLER_PARSE_LABEL_REF (c87a)
 
-    c845  fe 27      CPI A, 27                  ; Single quote starts a string
+    c845  fe 27      CPI A, 27                  ; Single quote starts a letter symbol
     c847  ca 95 c8   JZ ASSEMBLER_PARSE_IMMEDIATE_SYMB (c895)
 
     c84a  fe 23      CPI A, 23                  ; Decimal numbers start with '#'
@@ -1356,7 +1453,7 @@ ASSEMBLER_PARSE_DECIMAL_NEXT:
 ; Set the input char pointer in a variable, and free up E register
 ASSEMBLER_SET_BUF_OFFSET:
     c8d5  7b         MOV A, E
-    c8d6  32 59 f7   STA INPUT_POLARITY (f759)
+    c8d6  32 59 f7   STA BUF_OFFSET (f759)
     c8d9  c9         RET
 
 ; Parse instruction with no arguments
@@ -1373,28 +1470,28 @@ ASSEMBLER_STORE_OUTPUT_BYTE:
 ; Parse instruction with immediate 1-byte argument
 ; Save instruction opcode and argument value to the target address
 ASSEMBLER_PARSE_BYTE_ARG:
-    c8e3  32 60 f7   STA f760                   ; Temporary store instruction byte
+    c8e3  32 60 f7   STA INSTRUCTION_BYTE (f760)    ; Temporary store instruction byte
 
 ASSEMBLER_PARSE_BYTE_ARG_1:
     c8e6  cd 35 c8   CALL ASSEMBLER_PARSE_IMMEDIATE (c835)  ; Parse the value
 
 ASSEMBLER_PARSE_BYTE_ARG_2:
-    c8e9  3a 60 f7   LDA f760                   ; Restore instruction byte
+    c8e9  3a 60 f7   LDA INSTRUCTION_BYTE (f760)    ; Restore instruction byte
 
 ASSEMBLER_STORE_2_BYTES:
     c8ec  cd da c8   CALL ASSEMBLER_STORE_OUTPUT_BYTE (c8da)    ; Store instruction byte to output
 
-    c8ef  79         MOV A, C
-    c8f0  c3 da c8   JMP ASSEMBLER_STORE_OUTPUT_BYTE (c8da)     ; Store argument byte to output as well
+    c8ef  79         MOV A, C                                   ; Store argument byte to output as well
+    c8f0  c3 da c8   JMP ASSEMBLER_STORE_OUTPUT_BYTE (c8da)     ; (low byte only)
 
 
 ; Parse argument with 2-byte immediate value
 ; If the argument is a label reference, the reference address is stored as an argument. This allows
 ; reference processing at phase2 of the compilation
-; If the argument is a label reference as a part of arithmetic expression, reference value will be used
-; instead, and the overall expression is calculated during compile time
+; If the argument is a label reference as a part of arithmetic expression, reference value will be
+; substituted immediately, and the overall expression is calculated during compile time
 ASSEMBLER_PARSE_WORD_ARG:
-    c8f3  32 60 f7   STA f760                   ; Save the instruction byte
+    c8f3  32 60 f7   STA INSTRUCTION_BYTE (f760)    ; Save the instruction byte
 
     c8f6  cd bb c5   CALL ASSEMBLER_SEARCH_NON_SPACE_CHAR (c5bb)    ; Search for the argument
 
@@ -1481,7 +1578,8 @@ ASSEMBLER_PARSE_MVI_ARG:
     c956  cd 40 c5   CALL ASSEMBLER_PARSE_DEST_REG (c540)
     c959  c3 e3 c8   JMP ASSEMBLER_PARSE_BYTE_ARG (c8e3)
 
-; Parse equ expression according to the next syntax:
+
+; Parse EQU expression according to the next syntax:
 ; @<label>: EQU <value>
 ;
 ; Where label has to be a 2-digit hex (label reference), and value corresponds to ASSEMBLER_PARSE_IMMEDIATE
