@@ -8,9 +8,9 @@
 ; - f722    - 
 ; - f723    - 
 ; - f724    - 
-; - f725    - 
+; - f725    - Cursor Y position (counting from top-left corner)
 ; - f726    - 
-; - f727    - ???? end of file
+; - f727    - end of file pointer (points to the next symbol after the last text char)
 ; - f729    - ????
 ; - f72b    - ????
 
@@ -33,7 +33,7 @@ EDITOR_MAIN_LOOP:
     cb19  22 2b f7   SHLD f72b
 
     cb1c  cd 9b cf   CALL GET_END_OF_FILE (cf9b); ???? get end of file pointer
-    cb1f  22 27 f7   SHLD f727
+    cb1f  22 27 f7   SHLD END_OF_FILE_PTR (f727)
 
     cb22  cd 6f ce   CALL CLEAR_BUFFER (ce6f)
 
@@ -44,7 +44,7 @@ EDITOR_MAIN_LOOP:
     cb2c  3d         DCR A                      ; ???? Store 0xff
     cb2d  32 21 f7   STA f721
     cb30  32 23 f7   STA f723
-    cb33  32 25 f7   STA f725
+    cb33  32 25 f7   STA CURSOR_Y (f725)
 
     cb36  2b         DCX HL                     ; ???? Store 0xff to f6df
     cb37  77         MOV M, A
@@ -116,6 +116,7 @@ cb96  21 4a d3   LXI HL, d34a
 cb99  7e         MOV A, M
 cb9a  b7         ORA A
 cb9b  ca da cc   JZ ccda
+
 cb9e  b9         CMP C
 cb9f  23         INX HL
 cba0  5e         MOV E, M
@@ -123,6 +124,7 @@ cba1  23         INX HL
 cba2  56         MOV D, M
 cba3  23         INX HL
 cba4  c2 99 cb   JNZ cb99
+
 cba7  e1         POP HL
 cba8  d5         PUSH DE
 cba9  c9         RET
@@ -144,7 +146,7 @@ GET_KBD_KEY:
     cbb7  4f         MOV C, A
 
     cbb8  db 05      IN 05                      ; Check if high bit in Port C is set (BUG? MSB of the port C
-    cbba  e6 80      ANI A, 80                  ; is not connected)
+    cbba  e6 80      ANI A, 80                  ; is not connected, shall be 0x02 for Ctrl key)
 
     cbbc  79         MOV A, C                   ; Return entered char in A
     cbbd  c9         RET
@@ -158,12 +160,12 @@ cbc6  e5         PUSH HL
 cbc7  21 00 30   LXI HL, 3000
 cbca  e3         XTHL
 ????:
-cbcb  cd fd cb   CALL cbfd
+cbcb  cd fd cb   CALL CLEAR_SCREEN_AND_PRINT_COMMAND_PROMPT (cbfd)
 cbce  cd 20 cc   CALL cc20
 cbd1  dc 6f ce   CC CLEAR_BUFFER (ce6f)
 cbd4  44         MOV B, H
 cbd5  4d         MOV C, L
-cbd6  2a 27 f7   LHLD f727
+cbd6  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
 cbd9  eb         XCHG
 cbda  e1         POP HL
 cbdb  e5         PUSH HL
@@ -188,23 +190,31 @@ cbf4  cd 09 f8   CALL PUT_CHAR (f809)
 ????:
 cbf7  cd db cc   CALL ccdb
 cbfa  c3 0c cb   JMP EDITOR_MAIN_LOOP (cb0c)
-????:
-cbfd  f5         PUSH PSW
-cbfe  cd ce ce   CALL cece
-cc01  f1         POP PSW
-cc02  0e 1f      MVI C, 1f
-cc04  cd 09 f8   CALL PUT_CHAR (f809)
-cc07  cd 12 cc   CALL PRINT_HELLO_PROMPT (cc12)
-????:
-cc0a  cd 81 cd   CALL PUT_CHAR_A (cd81)
-cc0d  0e 20      MVI C, 20
-cc0f  c3 09 f8   JMP PUT_CHAR (f809)
+
+
+CLEAR_SCREEN_AND_PRINT_COMMAND_PROMPT:
+    cbfd  f5         PUSH PSW                   ; ????
+    cbfe  cd ce ce   CALL cece
+    cc01  f1         POP PSW
+
+    cc02  0e 1f      MVI C, 1f                  ; Clear screen
+    cc04  cd 09 f8   CALL PUT_CHAR (f809)
+
+    cc07  cd 12 cc   CALL PRINT_HELLO_PROMPT (cc12) ; Print the prompt, then print command symbol
+
+; Print char in A register, then print a space
+PUT_CHAR_AND_SPACE:
+    cc0a  cd 81 cd   CALL PUT_CHAR_A (cd81)     ; Print char
+
+    cc0d  0e 20      MVI C, 20                  ; Print space
+    cc0f  c3 09 f8   JMP PUT_CHAR (f809)
+
 
 ; Print greetings string, and command prompt
 PRINT_HELLO_PROMPT:
     cc12  e5         PUSH HL
     cc13  21 23 d3   LXI HL, HELLO_STR (d323)
-????:
+
     cc16  cd 18 f8   CALL PRINT_STRING (f818)
     cc19  e1         POP HL
     cc1a  c9         RET
@@ -215,17 +225,21 @@ HOME_SCREEN_CURSOR:
     cc1b  0e 0c      MVI C, 0c
     cc1d  c3 09 f8   JMP PUT_CHAR (f809)
 
+
 ????:
 cc20  cd 6f ce   CALL CLEAR_BUFFER (ce6f)
 cc23  62         MOV H, D
 cc24  6b         MOV L, E
 cc25  32 23 f7   STA f723
+
 ????:
-cc28  cd ca cc   CALL ccca
+cc28  cd ca cc   CALL PRINT_HASH_CURSOR (ccca)
 cc2b  cd b4 cb   CALL GET_KBD_KEY (cbb4)
 cc2e  c2 68 cc   JNZ cc68
+
 cc31  fe 20      CPI A, 20
 cc33  c2 d4 cc   JNZ ccd4
+
 cc36  3a 24 f7   LDA f724
 cc39  2f         CMA
 cc3a  4f         MOV C, A
@@ -308,9 +322,10 @@ ccc0  2b         DCX HL
 ccc1  cd 09 f8   CALL PUT_CHAR (f809)
 ccc4  cd 09 f8   CALL PUT_CHAR (f809)
 ccc7  c3 28 cc   JMP cc28
-????:
-ccca  0e 23      MVI C, 23
-cccc  cd 09 f8   CALL PUT_CHAR (f809)
+
+PRINT_HASH_CURSOR:
+    ccca  0e 23      MVI C, 23                  ; Print '#' symbol, then move cursor left
+    cccc  cd 09 f8   CALL PUT_CHAR (f809)
 
 ; Print 'move left' symbol
 PRINT_BACKSPACE:
@@ -329,7 +344,7 @@ ccdc  f5         PUSH PSW
 ccdd  3e 55      MVI A, 55
 ccdf  47         MOV B, A
 ????:
-cce0  cd 0c f8   CALL f80c
+cce0  cd 0c f8   CALL OUT_BYTE (f80c)
 cce3  05         DCR B
 cce4  c2 e0 cc   JNZ cce0
 cce7  f1         POP PSW
@@ -365,70 +380,91 @@ cd03  af         XRA A
 cd04  32 23 f7   STA f723
 
 cd07  06 1f      MVI B, 1f
+
 ????:
 cd09  0e 3f      MVI C, 3f
 cd0b  cd 6f ce   CALL CLEAR_BUFFER (ce6f)
-????:
 
+????:
 cd0e  7e         MOV A, M
 cd0f  fe 0d      CPI A, 0d
 cd11  c2 74 cd   JNZ cd74
 
-cd14  3e 2a      MVI A, 2a
-cd16  cd 81 cd   CALL PUT_CHAR_A (cd81)
+    cd14  3e 2a      MVI A, 2a                  ; Print '*' prompt
+    cd16  cd 81 cd   CALL PUT_CHAR_A (cd81)
 
-cd19  c5         PUSH BC
-cd1a  41         MOV B, C
-cd1b  3e 01      MVI A, 01
-cd1d  0e 20      MVI C, 20
-cd1f  cd 97 d0   CALL d097
-cd22  c1         POP BC
-cd23  23         INX HL
-cd24  7e         MOV A, M
-cd25  2b         DCX HL
-cd26  b7         ORA A
-cd27  fa 32 cd   JM cd32
-cd2a  05         DCR B
-cd2b  ca 33 cd   JZ cd33
-cd2e  23         INX HL
-cd2f  c3 09 cd   JMP cd09
+    cd19  c5         PUSH BC                    ; Clear rest of the line with spaces
+    cd1a  41         MOV B, C
+    cd1b  3e 01      MVI A, 01
+    cd1d  0e 20      MVI C, 20
+    cd1f  cd 97 d0   CALL PUT_CHAR_BLOCK (d097)
+    cd22  c1         POP BC
+
+    cd23  23         INX HL                     ; Load the marker after last text symbol
+    cd24  7e         MOV A, M
+    cd25  2b         DCX HL
+
+    cd26  b7         ORA A                      ; Check if it is >=0x80
+    cd27  fa 32 cd   JM cd32
+
+    cd2a  05         DCR B                      ; ????
+    cd2b  ca 33 cd   JZ cd33
+
+    cd2e  23         INX HL                     ; ????
+    cd2f  c3 09 cd   JMP cd09
+
+
 ????:
-cd32  05         DCR B
+    cd32  05         DCR B                      ; ????
+
 ????:
-cd33  3e 08      MVI A, 08
-cd35  cd 81 cd   CALL PUT_CHAR_A (cd81)
-cd38  cd 81 cd   CALL PUT_CHAR_A (cd81)
-cd3b  3e 3f      MVI A, 3f
-cd3d  91         SUB C
-cd3e  4f         MOV C, A
-cd3f  32 21 f7   STA f721
-cd42  32 22 f7   STA f722
-cd45  3e 1e      MVI A, 1e
-cd47  90         SUB B
-cd48  32 25 f7   STA f725
-cd4b  79         MOV A, C
-cd4c  2f         CMA
-cd4d  3c         INR A
-cd4e  ca 55 cd   JZ cd55
-cd51  4f         MOV C, A
-cd52  06 ff      MVI B, ff
-cd54  09         DAD BC
+    cd33  3e 08      MVI A, 08                  ; Move 2 characters back
+    cd35  cd 81 cd   CALL PUT_CHAR_A (cd81)
+    cd38  cd 81 cd   CALL PUT_CHAR_A (cd81)
+
+    cd3b  3e 3f      MVI A, 3f                  ; ????? C = 0x3f - C
+    cd3d  91         SUB C                      ; ???? Update X coordinate????
+    cd3e  4f         MOV C, A
+
+    cd3f  32 21 f7   STA f721                   ; ????
+    cd42  32 22 f7   STA f722
+
+    cd45  3e 1e      MVI A, 1e                  ; ???? Update Y coordinate????
+    cd47  90         SUB B
+    cd48  32 25 f7   STA CURSOR_Y (f725)
+
+    cd4b  79         MOV A, C                   ; Change sign of C (X coordinate ????)
+    cd4c  2f         CMA
+    cd4d  3c         INR A
+
+    cd4e  ca 55 cd   JZ cd55                    ; Skip next operation if C is zero
+
+    cd51  4f         MOV C, A                   ; HL -= X coordinate ???
+    cd52  06 ff      MVI B, ff
+    cd54  09         DAD BC
+
 ????:
-cd55  22 2b f7   SHLD f72b
-cd58  11 e0 f6   LXI DE, f6e0
-cd5b  eb         XCHG
+    cd55  22 2b f7   SHLD f72b                  ; ????
+
+    cd58  11 e0 f6   LXI DE, f6e0               ; Load start buffer address
+    cd5b  eb         XCHG
+
 ????:
-cd5c  3a 25 f7   LDA f725
-cd5f  f5         PUSH PSW
-cd60  47         MOV B, A
-cd61  3e 1f      MVI A, 1f
-cd63  90         SUB B
-cd64  01 20 40   LXI BC, 4020
-cd67  cd 97 d0   CALL d097
-cd6a  cd 16 cc   CALL cc16
-cd6d  f1         POP PSW
-cd6e  01 1a 01   LXI BC, 011a
-cd71  c3 97 d0   JMP d097
+    cd5c  3a 25 f7   LDA CURSOR_Y (f725)        ; Calculate how many lines below the cursor
+    cd5f  f5         PUSH PSW
+    cd60  47         MOV B, A
+    cd61  3e 1f      MVI A, 1f
+    cd63  90         SUB B
+
+    cd64  01 20 40   LXI BC, 4020               ; Clear those lines
+    cd67  cd 97 d0   CALL PUT_CHAR_BLOCK (d097)
+
+    cd6a  cd 16 cc   CALL HOME_SCREEN_CURSOR (cc1b) ; Move cursor to the top-left position
+                                                    ; BUG: Wrong Scan, shall be cc1b, not cc16
+
+    cd6d  f1         POP PSW                    ; Move cursor Y positions down
+    cd6e  01 1a 01   LXI BC, 011a
+    cd71  c3 97 d0   JMP PUT_CHAR_BLOCK (d097)
 
 ????:
 cd74  0d         DCR C
@@ -479,11 +515,11 @@ cdb9  22 5c f7   SHLD f75c
 cdbc  e1         POP HL
 cdbd  d1         POP DE
 cdbe  c9         RET
-cdbf  cd fd cb   CALL cbfd
+cdbf  cd fd cb   CALL CLEAR_SCREEN_AND_PRINT_COMMAND_PROMPT (cbfd)
 cdc2  21 34 d3   LXI HL, d334
 cdc5  cd 18 f8   CALL PRINT_STRING (f818)
 cdc8  e5         PUSH HL
-cdc9  2a 27 f7   LHLD f727
+cdc9  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
 cdcc  cd f9 cd   CALL cdf9
 cdcf  eb         XCHG
 cdd0  e1         POP HL
@@ -608,7 +644,7 @@ CLEAR_BUFFER_LOOP:
 ????:
 ce80  cd 09 f8   CALL PUT_CHAR (f809)
 ce83  cd ce ce   CALL cece
-ce86  21 25 f7   LXI HL, f725
+ce86  21 25 f7   LXI HL, CURSOR_Y (f725)
 ce89  35         DCR M
 ce8a  2a 29 f7   LHLD f729
 ce8d  11 00 30   LXI DE, 3000
@@ -617,25 +653,31 @@ ce90  c9         RET
 ce91  cd ce ce   CALL cece
 ce94  2a 29 f7   LHLD f729
 ce97  06 1e      MVI B, 1e
+
 ????:
 ce99  11 00 30   LXI DE, 3000
+
 ????:
 ce9c  cd ea cc   CALL CMP_HL_DE (ccea)
 ce9f  ca fd cc   JZ ccfd
+
 cea2  2e 7e      MVI L, 7e
 cea4  fe 0d      CPI A, 0d
 cea6  c2 9c ce   JNZ ce9c
+
 cea9  05         DCR B
 ceaa  c2 9c ce   JNZ ce9c
+
 cead  23         INX HL
 ceae  c3 fd cc   JMP ccfd
+
 ????:
 ceb1  cd 80 ce   CALL ce80
 ????:
 ceb4  fc 63 ce   CM ce63
 ceb7  af         XRA A
 ceb8  32 23 f7   STA f723
-cebb  32 25 f7   STA f725
+cebb  32 25 f7   STA CURSOR_Y (f725)
 cebe  cd 1b cc   CALL HOME_SCREEN_CURSOR (cc1b)
 cec1  2a 29 f7   LHLD f729
 cec4  c3 26 ce   JMP ce26
@@ -690,10 +732,10 @@ ceff  e5         PUSH HL
 cf00  19         DAD DE
 cf01  44         MOV B, H
 cf02  4d         MOV C, L
-cf03  2a 27 f7   LHLD f727
+cf03  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
 cf06  e5         PUSH HL
 cf07  19         DAD DE
-cf08  22 27 f7   SHLD f727
+cf08  22 27 f7   SHLD END_OF_FILE_PTR (f727)
 cf0b  d1         POP DE
 cf0c  e1         POP HL
 ????:
@@ -707,13 +749,13 @@ cf15  c3 0d cf   JMP cf0d
 ????:
 cf18  23         INX HL
 cf19  e5         PUSH HL
-cf1a  2a 27 f7   LHLD f727
+cf1a  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
 cf1d  e5         PUSH HL
 cf1e  19         DAD DE
 cf1f  cd aa cf   CALL CHECK_FILE_SIZE (cfaa)
 cf22  44         MOV B, H
 cf23  4d         MOV C, L
-cf24  22 27 f7   SHLD f727
+cf24  22 27 f7   SHLD END_OF_FILE_PTR (f727)
 cf27  e1         POP HL
 cf28  d1         POP DE
 
@@ -733,7 +775,7 @@ SHIFT_STR_RIGHT:
     cf31  c3 29 cf   JMP SHIFT_STR_RIGHT (cf29)
 
 ????:
-cf34  3a 25 f7   LDA f725
+cf34  3a 25 f7   LDA CURSOR_Y (f725)
 cf37  b7         ORA A
 cf38  fa 0e d0   JM d00e
 
@@ -741,7 +783,7 @@ cf3b  0e 1a      MVI C, 1a
 cf3d  cd 09 f8   CALL PUT_CHAR (f809)
 cf40  cd ce ce   CALL cece
 cf43  cd 89 cf   CALL cf89
-cf46  21 25 f7   LXI HL, f725
+cf46  21 25 f7   LXI HL, CURSOR_Y (f725)
 cf49  34         INR M
 cf4a  7e         MOV A, M
 cf4b  fe 1f      CPI A, 1f
@@ -776,9 +818,11 @@ cf7d  c3 76 cf   JMP cf76
 ????:
 cf80  05         DCR B
 cf81  c2 7c cf   JNZ cf7c
+
 ????:
 cf84  06 02      MVI B, 02
 cf86  c3 99 ce   JMP ce99
+
 ????:
 cf89  2a 2b f7   LHLD f72b
 cf8c  3a 22 f7   LDA f722
@@ -827,7 +871,7 @@ cfbe  2a 29 f7   LHLD f729
 cfc1  22 31 f7   SHLD f731
 cfc4  2a 2b f7   LHLD f72b
 cfc7  22 2d f7   SHLD f72d
-cfca  cd ca cc   CALL ccca
+cfca  cd ca cc   CALL PRINT_HASH_CURSOR (ccca)
 ????:
 cfcd  cd b4 cb   CALL GET_KBD_KEY (cbb4)
 cfd0  ca e4 cf   JZ cfe4
@@ -847,7 +891,7 @@ cfeb  ca f4 cf   JZ cff4
 cfee  cd db cc   CALL ccdb
 cff1  c3 cd cf   JMP cfcd
 ????:
-cff4  2a 27 f7   LHLD f727
+cff4  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
 cff7  eb         XCHG
 cff8  2a 31 f7   LHLD f731
 cffb  22 29 f7   SHLD f729
@@ -858,7 +902,7 @@ d003  2a 2b f7   LHLD f72b
 d006  cd 0d cf   CALL cf0d
 d009  60         MOV H, B
 d00a  69         MOV L, C
-d00b  22 27 f7   SHLD f727
+d00b  22 27 f7   SHLD END_OF_FILE_PTR (f727)
 
 ????:
 d00e  2a 29 f7   LHLD f729
@@ -894,7 +938,7 @@ d042  eb         XCHG
 d043  2a 2d f7   LHLD f72d
 d046  cd ea cc   CALL CMP_HL_DE (ccea)
 d049  ca ee cf   JZ cfee
-d04c  3a 25 f7   LDA f725
+d04c  3a 25 f7   LDA CURSOR_Y (f725)
 d04f  b7         ORA A
 d050  c2 59 d0   JNZ d059
 d053  cd b1 ce   CALL ceb1
@@ -902,6 +946,8 @@ d056  c3 cd cf   JMP cfcd
 ????:
 d059  cd 1f ce   CALL ce1f
 d05c  c3 cd cf   JMP cfcd
+
+????_RIGHT:
 d05f  cd aa cb   CALL cbaa
 
 ????:
@@ -942,21 +988,30 @@ d091  47         MOV B, A
 d092  0e 18      MVI C, 18
 d094  3e 01      MVI A, 01
 d096  eb         XCHG
-????:
-d097  b7         ORA A
-d098  c8         RZ
-d099  05         DCR B
-d09a  f8         RM
-d09b  04         INR B
-d09c  c5         PUSH BC
-????:
-d09d  cd 09 f8   CALL PUT_CHAR (f809)
-d0a0  05         DCR B
-d0a1  c2 9d d0   JNZ d09d
-d0a4  c1         POP BC
-d0a5  3d         DCR A
-d0a6  c8         RZ
-d0a7  c3 97 d0   JMP d097
+
+; Print char in C register A*B times
+PUT_CHAR_BLOCK:
+    d097  b7         ORA A                          ; Do not print anything if A is zero
+    d098  c8         RZ
+
+    d099  05         DCR B                          ; Do not print anything if B is zero
+    d09a  f8         RM
+    d09b  04         INR B
+    d09c  c5         PUSH BC
+
+PUT_CHAR_BLOCK_LOOP:
+    d09d  cd 09 f8   CALL PUT_CHAR (f809)           ; Print the char in C register B times
+    d0a0  05         DCR B
+    d0a1  c2 9d d0   JNZ PUT_CHAR_BLOCK_LOOP (d09d)
+
+    d0a4  c1         POP BC                         ; Decrement A
+    d0a5  3d         DCR A
+    d0a6  c8         RZ
+
+    d0a7  c3 97 d0   JMP PUT_CHAR_BLOCK (d097)      ; Repeat if A is not zero
+
+
+????_LEFT:
 d0aa  cd aa cb   CALL cbaa
 d0ad  7e         MOV A, M
 d0ae  b7         ORA A
@@ -1009,8 +1064,9 @@ d0f8  c3 de d0   JMP d0de
 d0fb  cd ce ce   CALL cece
 
 ????:
-d0fe  2a 27 f7   LHLD f727
-d101  2b         DCX HL
+    d0fe  2a 27 f7   LHLD END_OF_FILE_PTR (f727)    ; Get pointer to the last text char
+    d101  2b         DCX HL
+
 d102  cd 84 cf   CALL cf84
 d105  3a 22 f7   LDA f722
 d108  4f         MOV C, A
@@ -1024,131 +1080,204 @@ d113  cd 09 f8   CALL PUT_CHAR (f809)
 d116  c3 de d0   JMP d0de
 
 NEW_FILE:
-d119  cd ce ce   CALL cece
+    d119  cd ce ce   CALL cece                  ; ?????
 
-d11c  21 17 d3   LXI HL, NEW_FILE_PROMPT_STR (d317)
-d11f  cd 18 f8   CALL PRINT_STRING (f818)
+    d11c  21 17 d3   LXI HL, NEW_FILE_PROMPT_STR (d317) ; Ask the User whether they really want a new file
+    d11f  cd 18 f8   CALL PRINT_STRING (f818)
 
-d122  cd b4 cb   CALL GET_KBD_KEY (cbb4)
-d125  d6 59      SUI A, 59                  ; 'Y'
+    d122  cd b4 cb   CALL GET_KBD_KEY (cbb4)    ; Get an answer, and check whether it is 'Y'
+    d125  d6 59      SUI A, 59
 
-d127  c2 0c cb   JNZ EDITOR_MAIN_LOOP (cb0c)
+    d127  c2 0c cb   JNZ EDITOR_MAIN_LOOP (cb0c); Non-Y will get the editor back to the main loop
 
-d12a  21 00 30   LXI HL, 3000
-d12d  36 0d      MVI M, 0d
+    d12a  21 00 30   LXI HL, 3000               ; Add \r at the beginning of the text
+    d12d  36 0d      MVI M, 0d
 
-d12f  23         INX HL
-d130  22 27 f7   SHLD f727
+    d12f  23         INX HL                     ; Store the new End Of Text pointer
+    d130  22 27 f7   SHLD END_OF_FILE_PTR (f727)
 
-d133  36 ff      MVI M, ff
-d135  c3 fe d0   JMP d0fe
+    d133  36 ff      MVI M, ff                  ; Add end of text marker
+
+    d135  c3 fe d0   JMP d0fe                   ; ????
+
+
+; Output file to the tape
+;
+; This function outputs the current text to the tape. The format is slightly different to what
+; is used for storing programs. Perhaps this is done intentionally in order to avoid loading programs
+; as text and vice versa.
+;
+; Output format is:
+; - 0x55 bytes 0x55             - pilot tone
+; - 0x55 bytes 0x00             - another pilot tone
+; - 0x55 bytes 0x55             - pilot tone
+; - 0x55 bytes 0x00             - another pilot tone
+; - 5 bytes 0xe6                - Sync byte
+; - zero terminated string      - file name
+; - 2 bytes (low byte first)    - data size
+; - 256 bytes 0x00              - pilot tone
+; - 0xe6                        - sync byte
+; - 2 bytes (high byte first)   - data start
+; - 2 bytes (high byte first)   - data end
+; - data bytes                  - data bytes
+; - 2 bytes (low byte first)    - CRC
+OUTPUT_FILE:
+    d138  cd bf d1   CALL d1bf                  ; Input file name
+
+    d13b  13         INX DE                     ; Store file name end pointer BC
+    d13c  42         MOV B, D
+    d13d  4b         MOV C, E
+
+    d13e  2a 27 f7   LHLD END_OF_FILE_PTR (f727)    ; Load the end of data pointer to DE
+    d141  eb         XCHG
+
+    d142  21 00 d0   LXI HL, d000               ; Subtract 0x3000 (file start) to get file size
+    d145  19         DAD DE
+
+    d146  d5         PUSH DE                    ; Prepare pointers:
+    d147  e5         PUSH HL                    ; end of data, data size, and file name ptr are pushed 
+    d148  21 00 30   LXI HL, 3000               ; on the stack
+    d14b  c5         PUSH BC                    ; HL = text start; DE = text end + 1
+    d14c  13         INX DE                     ; BC = file name end
+
+    d14d  cd da d1   CALL CALCULATE_CRC (d1da)  ; Calculate CRC of the text
+
+    d150  16 04      MVI D, 04                  ; 4 iterations of pilot tones
+    
+    d152  af         XRA A                      ; Even iterations use tone 0x00
+
+OUTPUT_FILE_TONE_LOOP_1:
+    d153  1e 55      MVI E, 55                  ; Each pilot tone is 0x55 bytes long
+
+    d155  ab         XRA E                      ; Odd iterations use tone 0xff
+
+OUTPUT_FILE_TONE_LOOP_2:
+    d156  cd 0c f8   CALL OUT_BYTE (f80c)       ; Output 0x55 bytes of the pilot tone
+    d159  1d         DCR E
+    d15a  c2 56 d1   JNZ OUTPUT_FILE_TONE_LOOP_2 (d156)
+
+    d15d  15         DCR D                      ; Switch tone, and output next portion of the pilot tone
+    d15e  c2 53 d1   JNZ OUTPUT_FILE_TONE_LOOP_1 (d153)
+
+    d161  21 e0 f6   LXI HL, f6e0               ; HL - file name start
+    d164  d1         POP DE                     ; DE - file name end
+    d165  c5         PUSH BC                    ; Push CRC to stack
+
+    d166  3e e6      MVI A, e6                  ; Output 4 sync bytes 0xe6 (in fact even 5)
+    d168  06 04      MVI B, 04
+
+OUTPUT_FILE_SYNC_BYTE_LOOP:
+    d16a  cd 0c f8   CALL OUT_BYTE (f80c)
+    d16d  05         DCR B
+    d16e  c2 6a d1   JNZ OUTPUT_FILE_SYNC_BYTE_LOOP (d16a)
+
+OUTPUT_FILE_NAME_LOOP:
+    d171  cd 0c f8   CALL OUT_BYTE (f80c)       ; Output next byte of the file name
+    d174  cd ea cc   CALL CMP_HL_DE (ccea)
+
+    d177  7e         MOV A, M                   ; Advance to the next byte, until zero byte is reached
+    d178  23         INX HL
+    d179  c2 71 d1   JNZ OUTPUT_FILE_NAME_LOOP (d171)
+
+    d17c  c1         POP BC                     ; Restore CRC (BC), and data size (HL)
+    d17d  e1         POP HL
+
+    d17e  7d         MOV A, L                   ; Output data size, low byte first
+    d17f  cd 0c f8   CALL OUT_BYTE (f80c)
+    d182  7c         MOV A, H
+    d183  cd 0c f8   CALL OUT_BYTE (f80c)
+
+    d186  d1         POP DE                     ; Restore data end pointer
+
+    d187  af         XRA A                      ; Output 256 zero bytes
+    d188  6f         MOV L, A
+
+OUTPUT_FILE_TONE_LOOP_3:
+    d189  cd 0c f8   CALL OUT_BYTE (f80c)       ; Output next zero byte
+    d18c  2d         DCR L
+    d18d  c2 89 d1   JNZ OUTPUT_FILE_TONE_LOOP_3 (d189)
+
+    d190  21 00 30   LXI HL, 3000               ; Will start output data from 0x3000
+
+    d193  3e e6      MVI A, e6                  ; Output 0xe6 sync byte
+    d195  cd 0c f8   CALL OUT_BYTE (f80c)
+
+    d198  7c         MOV A, H                   ; Output data start (high byte first)
+    d199  cd 0c f8   CALL OUT_BYTE (f80c)
+    d19c  7d         MOV A, L
+    d19d  cd 0c f8   CALL OUT_BYTE (f80c)
+
+    d1a0  7a         MOV A, D                   ; Output data end (high byte first)
+    d1a1  cd 0c f8   CALL OUT_BYTE (f80c)
+    d1a4  7b         MOV A, E
+    d1a5  cd 0c f8   CALL OUT_BYTE (f80c)
+
+    d1a8  13         INX DE
+
+OUTPUT_FILE_DATA_LOOP:
+    d1a9  7e         MOV A, M                   ; Output next data byte
+    d1aa  23         INX HL
+    d1ab  cd 0c f8   CALL OUT_BYTE (f80c)
+
+    d1ae  cd ea cc   CALL CMP_HL_DE (ccea)      ; Until HL reaches DE (end of data)
+    d1b1  c2 a9 d1   JNZ OUTPUT_FILE_DATA_LOOP (d1a9)
+
+    d1b4  79         MOV A, C                   ; Output CRC (low byte first)
+    d1b5  cd 0c f8   CALL OUT_BYTE (f80c)
+    d1b8  78         MOV A, B
+    d1b9  cd 0c f8   CALL OUT_BYTE (f80c)
+
+    d1bc  c3 0c cb   JMP EDITOR_MAIN_LOOP (cb0c)    ; Finish, exit to the main loop
 
 
 
-d138  cd bf d1   CALL d1bf
-d13b  13         INX DE
-d13c  42         MOV B, D
-d13d  4b         MOV C, E
-d13e  2a 27 f7   LHLD f727
-d141  eb         XCHG
-d142  21 00 d0   LXI HL, d000
-d145  19         DAD DE
-d146  d5         PUSH DE
-d147  e5         PUSH HL
-d148  21 00 30   LXI HL, 3000
-d14b  c5         PUSH BC
-d14c  13         INX DE
-d14d  cd da d1   CALL d1da
-d150  16 04      MVI D, 04
-d152  af         XRA A
-????:
-d153  1e 55      MVI E, 55
-d155  ab         XRA E
-????:
-d156  cd 0c f8   CALL f80c
-d159  1d         DCR E
-d15a  c2 56 d1   JNZ d156
-d15d  15         DCR D
-d15e  c2 53 d1   JNZ d153
-d161  21 e0 f6   LXI HL, f6e0
-d164  d1         POP DE
-d165  c5         PUSH BC
-d166  3e e6      MVI A, e6
-d168  06 04      MVI B, 04
-????:
-d16a  cd 0c f8   CALL f80c
-d16d  05         DCR B
-d16e  c2 6a d1   JNZ d16a
-????:
-d171  cd 0c f8   CALL f80c
-d174  cd ea cc   CALL CMP_HL_DE (ccea)
-d177  7e         MOV A, M
-d178  23         INX HL
-d179  c2 71 d1   JNZ d171
-d17c  c1         POP BC
-d17d  e1         POP HL
-d17e  7d         MOV A, L
-d17f  cd 0c f8   CALL f80c
-d182  7c         MOV A, H
-d183  cd 0c f8   CALL f80c
-d186  d1         POP DE
-d187  af         XRA A
-d188  6f         MOV L, A
-????:
-d189  cd 0c f8   CALL f80c
-d18c  2d         DCR L
-d18d  c2 89 d1   JNZ d189
-d190  21 00 30   LXI HL, 3000
-d193  3e e6      MVI A, e6
-d195  cd 0c f8   CALL f80c
-d198  7c         MOV A, H
-d199  cd 0c f8   CALL f80c
-d19c  7d         MOV A, L
-d19d  cd 0c f8   CALL f80c
-d1a0  7a         MOV A, D
-d1a1  cd 0c f8   CALL f80c
-d1a4  7b         MOV A, E
-d1a5  cd 0c f8   CALL f80c
-d1a8  13         INX DE
-????:
-d1a9  7e         MOV A, M
-d1aa  23         INX HL
-d1ab  cd 0c f8   CALL f80c
-d1ae  cd ea cc   CALL CMP_HL_DE (ccea)
-d1b1  c2 a9 d1   JNZ d1a9
-d1b4  79         MOV A, C
-d1b5  cd 0c f8   CALL f80c
-d1b8  78         MOV A, B
-d1b9  cd 0c f8   CALL f80c
-d1bc  c3 0c cb   JMP EDITOR_MAIN_LOOP (cb0c)
 ????:
 d1bf  c5         PUSH BC
-d1c0  cd fd cb   CALL cbfd
-d1c3  21 1d d3   LXI HL, d31d
+d1c0  cd fd cb   CALL CLEAR_SCREEN_AND_PRINT_COMMAND_PROMPT (cbfd)
+
+d1c3  21 1d d3   LXI HL, FILE_STR (d31d)    ; Print 'FILE' string
 d1c6  cd 18 f8   CALL PRINT_STRING (f818)
-d1c9  3e 3f      MVI A, 3f
-d1cb  cd 0a cc   CALL cc0a
+
+d1c9  3e 3f      MVI A, 3f                  ; Print '?'
+d1cb  cd 0a cc   CALL PUT_CHAR_AND_SPACE (cc0a)
+
 d1ce  c1         POP BC
 d1cf  78         MOV A, B
 d1d0  32 20 f7   STA f720
+
 d1d3  cd 20 cc   CALL cc20
 d1d6  da 0c cb   JC EDITOR_MAIN_LOOP (cb0c)
 d1d9  c9         RET
-????:
-d1da  e5         PUSH HL
-d1db  01 00 00   LXI BC, 0000
-????:
-d1de  7e         MOV A, M
-d1df  81         ADD C
-d1e0  4f         MOV C, A
-d1e1  78         MOV A, B
-d1e2  ce 00      ACI A, 00
-d1e4  47         MOV B, A
-d1e5  23         INX HL
-d1e6  cd ea cc   CALL CMP_HL_DE (ccea)
-d1e9  c2 de d1   JNZ d1de
-d1ec  e1         POP HL
-d1ed  c9         RET
+
+
+; Calculate CRC by adding all bytes in the given range into 16-bit value
+; Arguments:
+; HL - start address
+; DE - next byte after end address
+; Return: CRC in BC
+CALCULATE_CRC:
+    d1da  e5         PUSH HL
+    d1db  01 00 00   LXI BC, 0000               ; Zero result accumulator
+
+CALCULATE_CRC_LOOP:
+    d1de  7e         MOV A, M                   ; Add the next data byte to the accumulator
+    d1df  81         ADD C
+    d1e0  4f         MOV C, A
+
+    d1e1  78         MOV A, B                   ; Adjust high byte if needed
+    d1e2  ce 00      ACI A, 00
+    d1e4  47         MOV B, A
+
+    d1e5  23         INX HL                     ; Advance to the next byte
+
+    d1e6  cd ea cc   CALL CMP_HL_DE (ccea)      ; Repeat until reached DE
+    d1e9  c2 de d1   JNZ CALCULATE_CRC_LOOP (d1de)
+
+    d1ec  e1         POP HL                     ; Return
+    d1ed  c9         RET
+
+
+????_INPUT:
 d1ee  06 00      MVI B, 00
 ????:
 d1f0  cd bf d1   CALL d1bf
@@ -1175,10 +1304,10 @@ d215  4f         MOV C, A
 d216  cd df d2   CALL d2df
 d219  47         MOV B, A
 d21a  c5         PUSH BC
-d21b  21 1d d3   LXI HL, d31d
+d21b  21 1d d3   LXI HL, FILE_STR (d31d)
 d21e  cd 18 f8   CALL PRINT_STRING (f818)
 d221  3e 3a      MVI A, 3a
-d223  cd 0a cc   CALL cc0a
+d223  cd 0a cc   CALL PUT_CHAR_AND_SPACE (cc0a)
 d226  21 a0 f6   LXI HL, f6a0
 d229  e5         PUSH HL
 d22a  cd 18 f8   CALL PRINT_STRING (f818)
@@ -1202,7 +1331,7 @@ d241  c5         PUSH BC
 d242  3a 20 f7   LDA f720
 d245  3d         DCR A
 d246  fa 5d d2   JM d25d
-d249  2a 27 f7   LHLD f727
+d249  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
 d24c  d1         POP DE
 d24d  e5         PUSH HL
 d24e  19         DAD DE
@@ -1263,7 +1392,7 @@ d2a9  cd df d2   CALL d2df
 d2ac  47         MOV B, A
 d2ad  e1         POP HL
 d2ae  c5         PUSH BC
-d2af  cd da d1   CALL d1da
+d2af  cd da d1   CALL CALCULATE_CRC (d1da)
 d2b2  e1         POP HL
 d2b3  7c         MOV A, H
 d2b4  b8         CMP B
@@ -1273,7 +1402,7 @@ d2b9  b9         CMP C
 d2ba  c2 d6 d2   JNZ d2d6
 d2bd  1b         DCX DE
 d2be  eb         XCHG
-d2bf  22 27 f7   SHLD f727
+d2bf  22 27 f7   SHLD END_OF_FILE_PTR (f727)
 d2c2  c3 0c cb   JMP EDITOR_MAIN_LOOP (cb0c)
 ????:
 d2c5  cd df d2   CALL d2df
@@ -1322,13 +1451,8 @@ d316  00         NOP
 NEW_FILE_PROMPT_STR:
     d317  1f 4e 45 57 3f 00         db 0x1f, "NEW?", 0x00
 
-????:
-d31d  0a         LDAX BC
-d31e  46         MOV B, M
-d31f  49         MOV C, C
-d320  4c         MOV C, H
-d321  45         MOV B, L
-d322  00         NOP
+FILE_STR:
+    d31d  0a 46 49 4c 45 00         db "\rFILE", 0x00
 
 HELLO_STR:
     d323  0a 45 44 49 54 20 2a 6d   db "\rEDIT *М"
@@ -1344,14 +1468,21 @@ HELLO_STR:
 ????:
     d342  20 20 46 52 45 45 3d 00   db "  FREE=", 0x00
 
-????:
+
+; The following is the table of command handlers
+;
+; BUG (or at least incompatibility): It is supposed to enter commands with the Ctrl key. First issue, is
+; that GET_KBD_KEY function is looking for a high bit of the Keyboard's Port C, while the Ctrl key is 
+; connected to 1st bit of that port. Another issue is that Ctrl-<char> combinations produce char codes in
+; 0x01-0x1a range, while the table below expects normal char codes (in 0x41-0x5a range)
+COMMAND_HANDLERS:
     d34a  4c c6 cb      db 'L', cbc6
     d34d  58 be cb      db 'X', cbbe
     d350  44 bb cf      db 'D', cfbb
     d353  41 d2 d0      db 'A', d0d2
     d356  54 fb d0      db 'T', d0fb
     d359  4e 19 d1      db 'N', d119
-    d35c  4f 38 d1      db 'O', d138
+    d35c  4f 38 d1      db 'O', OUTPUT_FILE (d138)
     d35f  49 ee d1      db 'I', d1ee
     d362  56 e4 d2      db 'V', d2e4
     d365  4d e9 d2      db 'M', d2e9
