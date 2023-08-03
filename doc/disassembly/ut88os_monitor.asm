@@ -2147,7 +2147,7 @@ COMMANDS_TABLE:
     ffc0  48 92 c0      db 'H', COMMAND_H_SUM_DIFF_ARG (c092)
     ffc3  54 6a ff      db 'T', COMMAND_T_TRACE_CMD_LINE (ff6a)
     ffc6  53 34 c1      db 'S', COMMAND_S_SEARCH_STRING (c134)
-    ffc9  45 00 cb      db 'E', cb00
+    ffc9  45 00 cb      db 'E', COMMAND_E_EDITOR (cb00)
     ffcc  41 20 ca      db 'A', COMMAND_A_ASSEMBLER (ca20)
     ffcf  4e c2 ca      db 'N', COMMAND_N_INTERACTIVE_ASSEMBLER (cac2)
     ffd2  40 ad ca      db '@', COMMAND_@_ASSEMBLER_2ND_PASS (caad)
