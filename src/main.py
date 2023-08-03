@@ -431,8 +431,9 @@ class UT88OSConfiguration(VideoConfiguration):
         # The UT-88 OS Monitor tape function outputs data bytes negated, compared to original Monitor0 and
         # MonitorF implementations. This is not a problem for the real hardware, as tape input function has
         # a polarity detection mechanism, but this code causes problems when running on an emulator - all data
-        # bytes must be negated to save data in positive polarity.
+        # bytes must be negated to save data in positive polarity. Do not forget to negate it back on exit.
         self._emulator.add_breakpoint(0xf98b, lambda: self._emulator._cpu.set_a(self._emulator._cpu.a ^ 0xff))
+        self._emulator.add_breakpoint(0xf9b2, lambda: self._emulator._cpu.set_a(self._emulator._cpu.a ^ 0xff))
 
         # When the monitor command is entered, and user presses Return key, it remains pressed for some time,
         # until the emulator starts key events processing. Some of the printing functions check the keyboard
