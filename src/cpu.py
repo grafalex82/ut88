@@ -666,7 +666,7 @@ class CPU:
         """ Conditional jump """
         addr = self._fetch_next_word()
         op = (self._current_inst & 0x38) >> 3
-        op_symb = ["JNZ", "JZ", "JNC", "JC", "JPO", "JPE", "JP", "JN"][op]
+        op_symb = ["JNZ", "JZ", "JNC", "JC", "JPO", "JPE", "JP", "JM"][op]
 
         self._log_3b_instruction(f"{op_symb} {addr:04x}")
 
@@ -691,7 +691,7 @@ class CPU:
         """ Conditional call """
         addr = self._fetch_next_word()
         op = (self._current_inst & 0x38) >> 3
-        op_symb = ["CNZ", "CZ", "CNC", "CC", "CPO", "CPE", "CP", "CN"][op]
+        op_symb = ["CNZ", "CZ", "CNC", "CC", "CPO", "CPE", "CP", "CM"][op]
 
         self._log_3b_instruction(f"{op_symb} {addr:04x}")
 
@@ -715,7 +715,7 @@ class CPU:
     def _ret_cond(self):
         """ Conditional return """
         op = (self._current_inst & 0x38) >> 3
-        op_symb = ["RNZ", "RZ", "RNC", "RC", "RPO", "RPE", "RP", "RN"][op]
+        op_symb = ["RNZ", "RZ", "RNC", "RC", "RPO", "RPE", "RP", "RM"][op]
 
         self._log_1b_instruction(f"{op_symb}")
 
