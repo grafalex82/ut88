@@ -388,8 +388,11 @@ class UT88OSConfiguration(VideoConfiguration):
         self._machine.add_memory(RAM(0xf000, 0xffff))
 
         # Load bootstrapped UT-88 OS images
-        self._emulator.load_memory(f"{tapes_dir}/ut88os_editor.rku")    # 0xc000-0xdfff
         self._emulator.load_memory(f"{tapes_dir}/ut88os_monitor.rku")   # 0xf800-0xffff
+        self._emulator.load_memory(f"{tapes_dir}/ut88os_monitor2.rku")  # 0xc000-0xcaff
+        self._emulator.load_memory(f"{tapes_dir}/ut88os_editor.rku")    # 0xcb00-0xd37f
+        self._emulator.load_memory(f"{tapes_dir}/ut88os_assembler.rku") # 0xd380-0xdfff
+        self._emulator.load_memory(f"{tapes_dir}/test_text.rku")        # 0x3000-0x3020
 
 
     def configure_logging(self):
@@ -397,6 +400,7 @@ class UT88OSConfiguration(VideoConfiguration):
         self.suppress_logging(0xf98b, 0xf9b2, "Out byte")
         self.suppress_logging(0xf9f4, 0xfa1d, "Put char")
         self.suppress_logging(0xf86b, 0xf90c, "Kbd input")
+        self.suppress_logging(0xcb1c, 0xcb1f, "Editor: get end of file")
 
 
     def setup_special_breakpoints(self):

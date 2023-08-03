@@ -22,8 +22,10 @@ class UT88OS(EmulatedInstanceWithKeyboard):
 
         self._machine.add_memory(RAM(0x0000, 0xffff))
 
-        self._emulator.load_memory(f"{tapes_dir}/ut88os_editor.rku")    # 0xc000-0xdfff
         self._emulator.load_memory(f"{tapes_dir}/ut88os_monitor.rku")   # 0xf800-0xffff
+        self._emulator.load_memory(f"{tapes_dir}/ut88os_monitor2.rku")  # 0xc000-0xcaff
+        self._emulator.load_memory(f"{tapes_dir}/ut88os_editor.rku")    # 0xcb00-0xd37f
+        self._emulator.load_memory(f"{tapes_dir}/ut88os_assembler.rku") # 0xd380-0xdfff
 
         # Since we do not run Monitor initialization code, we need to initialize some variables
         self.set_word(0xf75a, 0xe800)   # Cursor position
