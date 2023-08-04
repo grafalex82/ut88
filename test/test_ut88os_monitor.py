@@ -269,7 +269,7 @@ def test_wait_kbd_normal_char(ut88):
 
 def test_wait_kbd_ctrl_char(ut88):
     ut88._keyboard.emulate_ctrl_key_press('D')   # Ctrl-D
-    assert wait_kbd(ut88) == 0x04
+    assert wait_kbd(ut88) == ord('D')
 
 
 def test_wait_kbd_auto_repeat(ut88):

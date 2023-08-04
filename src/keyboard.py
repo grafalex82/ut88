@@ -250,6 +250,13 @@ class Keyboard(IODevice):
 
         # Additional char codes with Ctrl key
         self._ctrl_codes_map[pygame.K_SPACE]    = (0xbf, 0xbf, 0xfd)    # Char code 0x20, but with Ctrl
+        self._ctrl_codes_map[pygame.K_RIGHT]    = (0x7f, 0xfe, 0xfd)    # Char code 0x18, but with Ctrl
+        self._ctrl_codes_map[pygame.K_LEFT]     = (0x7f, 0xfd, 0xfd)    # Char code 0x08, but with Ctrl
+        self._ctrl_codes_map[pygame.K_UP]       = (0x7f, 0xfb, 0xfd)    # Char code 0x19, but with Ctrl
+        self._ctrl_codes_map[pygame.K_DOWN]     = (0x7f, 0xf7, 0xfd)    # Char code 0x1a, but with Ctrl
+        self._ctrl_codes_map[pygame.K_RETURN]   = (0x7f, 0xef, 0xfd)    # Char code 0x0d, but with Ctrl
+        self._ctrl_codes_map[pygame.K_DELETE]   = (0x7f, 0xdf, 0xfd)    # Char code 0x1f, but with Ctrl
+        self._ctrl_codes_map[pygame.K_HOME]     = (0x7f, 0xbf, 0xfd)    # Char code 0x0c, but with Ctrl
 
 
     def configure(self, value):
@@ -292,12 +299,12 @@ class Keyboard(IODevice):
 
     def handle_key_event(self, event):
         if event.type == pygame.KEYDOWN:
-            if event.key in self._key_codes_map:
-                self._pressed_key = self._key_codes_map[event.key]
-                return
-            
             if event.key in self._ctrl_codes_map and _ctrl_pressed():
                 self._pressed_key = self._ctrl_codes_map[event.key]
+                return
+            
+            if event.key in self._key_codes_map:
+                self._pressed_key = self._key_codes_map[event.key]
                 return
             
             ch = event.unicode.upper()

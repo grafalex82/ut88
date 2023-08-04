@@ -266,7 +266,7 @@ KBD_INPUT_1:
     f8cb  1f         RAR
     f8cc  1f         RAR                        ; Shift modificator is in C flag
 
-    f8cd  3c         INR A                      ; Set flags (C remains untouched, and set with RAR 
+    f8cd  3c         INR A                      ; Set flags (C flag remains untouched, and set with RAR 
     f8ce  3d         DCR A                      ; instruction above)
 
     f8cf  7b         MOV A, E                   ; Restore the symbol value
@@ -291,6 +291,16 @@ SCAN_KBD_SPECIAL:
 ; Process keys pressed with Ctrl modifier
 SCAN_KBD_CTRL_KEY:
     f8e2  e6 1f      ANI A, 1f                      ; Just convert the key code to 0x00-0x1f range
+
+                                                    ; Bug/Inconsistency: While this code is compatible with
+                                                    ; original UT-88 MonitorF, and produces codes in 0x00-0x1f
+                                                    ; range, other parts of UT-88 OS (including this monitor)
+                                                    ; expects normal signal codes with Ctrl bit low on
+                                                    ; additional read from Keyboard Port C (IN 05). To make
+                                                    ; other parts of the UT-88 work properly with Ctrl-smth
+                                                    ; key combinations it is reasonable to NOP the ANI 
+                                                    ; instruction above
+
     f8e4  c9         RET
 
 ; Process keys presseed with shift modifier
@@ -843,11 +853,11 @@ CLEAR_PAGE:
 ;   respected. Unfortunately the implementation is quite buggy, and symbols are visually corrupted (while
 ;   are ok in the buffer)
 ; - Home key adds 0x0c symbol to the buffer, and a space on the screen
-; - Ctrl-M (and possibly Ctrl-Home on the hardware) is moving cursor to the first position
-; - Ctrl-H (and possibly Ctrl-Left on the hardware) deletes the symbol at cursor position. Other symbols
-;   to the right from the cursor are shifted left, and added with a space at the end.
-; - Ctrl-X (and possibly Ctrl-Right on the hardware) inserts a space at cursor position. Other symbols
-;   to the right from the cursor are shifted right.
+; - Ctrl-Home is moving cursor to the first position
+; - Ctrl-Left deletes the symbol at cursor position. Other symbols to the right from the cursor are shifted
+;   left, and added with a space at the end.
+; - Ctrl-Right inserts a space at cursor position. Other symbols to the right from the cursor are shifted
+;   right.
 ; - Ctrl-Space acts as a tab key, and adds spaces until the next tab stop (each 8 chars)
 ;
 ; Unfortunately the implementation is quite raw. While it offers reach editing possibilities, left and
