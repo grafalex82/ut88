@@ -109,25 +109,32 @@ cb8e  32 23 f7   STA f723
 cb91  23         INX HL
 cb92  c3 09 f8   JMP PUT_CHAR (f809)
 
-????:
-cb95  e5         PUSH HL
-cb96  21 4a d3   LXI HL, d34a
-????:
-cb99  7e         MOV A, M
-cb9a  b7         ORA A
-cb9b  ca da cc   JZ ccda
 
-cb9e  b9         CMP C
-cb9f  23         INX HL
-cba0  5e         MOV E, M
-cba1  23         INX HL
-cba2  56         MOV D, M
-cba3  23         INX HL
-cba4  c2 99 cb   JNZ cb99
+; Find and execute command handler
+; Argument: C - command to execute
+PROCESS_COMMAND:
+    cb95  e5         PUSH HL                    ; Load command handlers table
+    cb96  21 4a d3   LXI HL, COMMAND_HANDLERS (d34a)
 
-cba7  e1         POP HL
-cba8  d5         PUSH DE
-cba9  c9         RET
+PROCESS_COMMAND_LOOP:
+    cb99  7e         MOV A, M                   ; Stop if reached end of the table
+    cb9a  b7         ORA A
+    cb9b  ca da cc   JZ PROCESS_COMMAND_ERROR (ccda)
+
+    cb9e  b9         CMP C                      ; Compare entered key with command symbol in the table
+
+    cb9f  23         INX HL                     ; Load handler address
+    cba0  5e         MOV E, M
+    cba1  23         INX HL
+    cba2  56         MOV D, M
+
+    cba3  23         INX HL                     ; Advance to the next record if symbol does not match
+    cba4  c2 99 cb   JNZ PROCESS_COMMAND_LOOP (cb99)
+
+    cba7  e1         POP HL                     ; Jump to the handler
+    cba8  d5         PUSH DE
+    cba9  c9         RET
+
 
 ????:
 cbaa  7e         MOV A, M
@@ -392,8 +399,8 @@ INPUT_TEXT_BEEP_AND_REPEAT:
     ccd7  c3 28 cc   JMP INPUT_LINE_LOOP (cc28)
 
 
-????:
-ccda  e1         POP HL
+PROCESS_COMMAND_ERROR:
+    ccda  e1         POP HL                     ; Restore stack pointer, beep, and restart main loop
 
 
 ; Output a pilot tone (0x55 times byte 0x55)
@@ -739,7 +746,9 @@ ce90  c9         RET
 ?????_UP:
 ce91  cd ce ce   CALL cece
 ce94  2a 29 f7   LHLD f729
+
 ce97  06 1e      MVI B, 1e
+
 
 ????:
 ce99  11 00 30   LXI DE, 3000
@@ -748,7 +757,8 @@ ce99  11 00 30   LXI DE, 3000
 ce9c  cd ea cc   CALL CMP_HL_DE (ccea)
 ce9f  ca fd cc   JZ ccfd
 
-cea2  2e 7e      MVI L, 7e
+cea2  2b         DCX HL                 ; <-- Wrong scan, was 2e
+cea3  7e         MOV A, M
 cea4  fe 0d      CPI A, 0d
 cea6  c2 9c ce   JNZ ce9c
 
@@ -757,6 +767,7 @@ ceaa  c2 9c ce   JNZ ce9c
 
 cead  23         INX HL
 ceae  c3 fd cc   JMP ccfd
+
 
 ????:
 ceb1  cd 80 ce   CALL ce80
@@ -1160,6 +1171,7 @@ d0fb  cd ce ce   CALL cece
     d101  2b         DCX HL
 
 d102  cd 84 cf   CALL cf84
+
 d105  3a 22 f7   LDA f722
 d108  4f         MOV C, A
 d109  06 00      MVI B, 00
@@ -1167,8 +1179,10 @@ d10b  eb         XCHG
 d10c  09         DAD BC
 d10d  23         INX HL
 d10e  22 2b f7   SHLD f72b
+
 d111  0e 1a      MVI C, 1a
 d113  cd 09 f8   CALL PUT_CHAR (f809)
+
 d116  c3 de d0   JMP d0de
 
 NEW_FILE:
@@ -1674,3 +1688,4 @@ COMMAND_HANDLERS:
     d377  18 5f d0      db 0x18, d05f
     d37a  19 91 ce      db 0x19, ce91
     d37d  1a 6b cf      db 0x1a, cf6b
+    d380  00            db 00               ; End of the table
