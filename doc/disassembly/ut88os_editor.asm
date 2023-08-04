@@ -84,7 +84,7 @@ cb6a  c9         RET
 
 ????:
     cb6b  fe 0d      CPI A, 0d                  ; Check if Return key is pressed
-    cb6d  ca db cc   JZ ccdb
+    cb6d  ca db cc   JZ PILOT_TONE (ccdb)
 
     cb70  cd aa cb   CALL cbaa
 
@@ -98,12 +98,12 @@ cb7e  c1         POP BC
 ????:
 cb7f  7e         MOV A, M
 cb80  b7         ORA A
-cb81  ca db cc   JZ ccdb
+cb81  ca db cc   JZ PILOT_TONE (ccdb)
 cb84  71         MOV M, C
 ????:
 cb85  3a 23 f7   LDA f723
 cb88  fe 3e      CPI A, 3e
-cb8a  d2 db cc   JNC ccdb
+cb8a  d2 db cc   JNC PILOT_TONE (ccdb)
 cb8d  3c         INR A
 cb8e  32 23 f7   STA f723
 cb91  23         INX HL
@@ -139,7 +139,8 @@ cbae  b6         ORA M
 cbaf  23         INX HL
 cbb0  c0         RNZ
 
-cbb1  c3 dc cc   JMP ccdc
+cbb1  c3 dc cc   JMP PILOT_TONE_1 (ccdc)
+
 
 GET_KBD_KEY:
     cbb4  cd 03 f8   CALL KBD_INPUT (f803)      ; Input char
@@ -151,11 +152,13 @@ GET_KBD_KEY:
     cbbc  79         MOV A, C                   ; Return entered char in A
     cbbd  c9         RET
 
-????:
+????_COMMAND_X:
 cbbe  e5         PUSH HL
 cbbf  2a 2b f7   LHLD f72b
 cbc2  e3         XTHL
 cbc3  c3 cb cb   JMP cbcb
+
+????_COMMAND_L:
 cbc6  e5         PUSH HL
 cbc7  21 00 30   LXI HL, 3000
 cbca  e3         XTHL
@@ -187,9 +190,11 @@ cbee  23         INX HL
 cbef  da dc cb   JC cbdc
 cbf2  0e 3f      MVI C, 3f
 cbf4  cd 09 f8   CALL PUT_CHAR (f809)
-????:
-cbf7  cd db cc   CALL ccdb
-cbfa  c3 0c cb   JMP EDITOR_MAIN_LOOP (cb0c)
+
+; Produce a error sound, and exit to the main loop
+BEEP_AND_EXIT:
+    cbf7  cd db cc   CALL PILOT_TONE (ccdb)
+    cbfa  c3 0c cb   JMP EDITOR_MAIN_LOOP (cb0c)
 
 
 CLEAR_SCREEN_AND_PRINT_COMMAND_PROMPT:
@@ -333,23 +338,31 @@ PRINT_BACKSPACE:
     ccd1  c3 09 f8   JMP PUT_CHAR (f809)
 
 ????:
-ccd4  cd db cc   CALL ccdb
+ccd4  cd db cc   CALL PILOT_TONE (ccdb)
 ccd7  c3 28 cc   JMP cc28
 ????:
 ccda  e1         POP HL
-????:
-ccdb  c5         PUSH BC
-????:
-ccdc  f5         PUSH PSW
-ccdd  3e 55      MVI A, 55
-ccdf  47         MOV B, A
-????:
-cce0  cd 0c f8   CALL OUT_BYTE (f80c)
-cce3  05         DCR B
-cce4  c2 e0 cc   JNZ cce0
-cce7  f1         POP PSW
-cce8  c1         POP BC
-cce9  c9         RET
+
+
+; Output a pilot tone (0x55 times byte 0x55)
+; ???? Beep?
+PILOT_TONE:
+    ccdb  c5         PUSH BC
+
+PILOT_TONE_1:
+    ccdc  f5         PUSH PSW                   ; Output 0x55 times byte 0x55
+    ccdd  3e 55      MVI A, 55
+    ccdf  47         MOV B, A
+
+PILOT_TONE_LOOP:
+    cce0  cd 0c f8   CALL OUT_BYTE (f80c)       ; Output a byte until counter is zero
+    cce3  05         DCR B
+    cce4  c2 e0 cc   JNZ PILOT_TONE_LOOP (cce0)
+
+    cce7  f1         POP PSW
+    cce8  c1         POP BC
+    cce9  c9         RET
+
 
 CMP_HL_DE:
     ccea  7c         MOV A, H                   ; Compare high bytes
@@ -484,6 +497,7 @@ PUT_CHAR_A:
     cd87  c9         RET
 
 
+????_COMMAND_W:
 cd88  f5         PUSH PSW
 cd89  3a 24 f7   LDA f724
 cd8c  fe 07      CPI A, 07
@@ -496,12 +510,16 @@ cd96  3e 07      MVI A, 07
 cd98  32 24 f7   STA f724
 cd9b  f1         POP PSW
 cd9c  c9         RET
+
+????_COMMAND_Y:
 cd9d  f5         PUSH PSW
 cd9e  3a 26 f7   LDA f726
 cda1  2f         CMA
 cda2  32 26 f7   STA f726
 cda5  f1         POP PSW
 cda6  c9         RET
+
+????_COMMAND_R:
 cda7  d5         PUSH DE
 cda8  e5         PUSH HL
 cda9  11 2d 20   LXI DE, 202d
@@ -515,6 +533,9 @@ cdb9  22 5c f7   SHLD f75c
 cdbc  e1         POP HL
 cdbd  d1         POP DE
 cdbe  c9         RET
+
+
+????_COMMAND_F:
 cdbf  cd fd cb   CALL CLEAR_SCREEN_AND_PRINT_COMMAND_PROMPT (cbfd)
 cdc2  21 34 d3   LXI HL, d334
 cdc5  cd 18 f8   CALL PRINT_STRING (f818)
@@ -554,7 +575,8 @@ cdfe  c3 15 f8   JMP f815
 ????:
 ce01  3a 23 f7   LDA f723
 ce04  3d         DCR A
-ce05  fa db cc   JM ccdb
+ce05  fa db cc   JM PILOT_TONE (ccdb)
+
 ce08  32 23 f7   STA f723
 ce0b  2b         DCX HL
 ce0c  c3 09 f8   JMP PUT_CHAR (f809)
@@ -570,7 +592,7 @@ PRINT_ERROR:
     ce18  eb         XCHG                       ; Print the error type
     ce19  cd 18 f8   CALL PRINT_STRING (f818)
 
-    ce1c  c3 f7 cb   JMP cbf7                   ; ?????
+    ce1c  c3 f7 cb   JMP BEEP_AND_EXIT (cbf7)   ; ?????
 
 ????:
 ce1f  cd 80 ce   CALL ce80
@@ -650,6 +672,7 @@ ce8a  2a 29 f7   LHLD f729
 ce8d  11 00 30   LXI DE, 3000
 ce90  c9         RET
 
+?????_UP:
 ce91  cd ce ce   CALL cece
 ce94  2a 29 f7   LHLD f729
 ce97  06 1e      MVI B, 1e
@@ -684,7 +707,7 @@ cec4  c3 26 ce   JMP ce26
 ????:
 cec7  3a 23 f7   LDA f723
 ceca  b7         ORA A
-cecb  c2 dc cc   JNZ ccdc
+cecb  c2 dc cc   JNZ PILOT_TONE_1 (ccdc)
 
 ????:
 cece  3a 21 f7   LDA f721
@@ -803,7 +826,8 @@ cf62  d6 0d      SUI A, 0d
 cf64  23         INX HL
 cf65  c2 61 cf   JNZ cf61
 cf68  c3 fd cc   JMP ccfd
-????:
+
+????_DOWN:
 cf6b  cd ce ce   CALL cece
 cf6e  cd 89 cf   CALL cf89
 cf71  2a 29 f7   LHLD f729
@@ -866,6 +890,7 @@ CHECK_FILE_SIZE:
     cfb8  c3 12 ce   JMP PRINT_ERROR (ce12)
 
 
+????_COMMAND_D:
 cfbb  cd c7 ce   CALL cec7
 cfbe  2a 29 f7   LHLD f729
 cfc1  22 31 f7   SHLD f731
@@ -888,7 +913,7 @@ cfe6  ca 23 d0   JZ d023
 cfe9  fe 44      CPI A, 44
 cfeb  ca f4 cf   JZ cff4
 ????:
-cfee  cd db cc   CALL ccdb
+cfee  cd db cc   CALL PILOT_TONE (ccdb)
 cff1  c3 cd cf   JMP cfcd
 ????:
 cff4  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
@@ -956,7 +981,7 @@ d065  1a         LDAX DE
 
 d066  3c         INR A
 d067  fe 3f      CPI A, 3f
-d069  d2 db cc   JNC ccdb
+d069  d2 db cc   JNC PILOT_TONE (ccdb)
 
 d06c  12         STAX DE
 d06d  e5         PUSH HL
@@ -1015,7 +1040,7 @@ PUT_CHAR_BLOCK_LOOP:
 d0aa  cd aa cb   CALL cbaa
 d0ad  7e         MOV A, M
 d0ae  b7         ORA A
-d0af  ca db cc   JZ ccdb
+d0af  ca db cc   JZ PILOT_TONE (ccdb)
 d0b2  eb         XCHG
 d0b3  21 22 f7   LXI HL, f722
 d0b6  35         DCR M
@@ -1044,6 +1069,7 @@ SEARCH_END_OF_STRING:
     d0cf  c3 cb d0   JMP SEARCH_END_OF_STRING (d0cb)
 
 
+????_COMMAND_A:
 d0d2  cd c7 ce   CALL cec7
 d0d5  cd 9e cc   CALL HOME_CURSOR (cc9e)
 d0d8  cd 34 cf   CALL cf34
@@ -1061,6 +1087,8 @@ d0f1  2a 2b f7   LHLD f72b
 d0f4  19         DAD DE
 d0f5  22 2b f7   SHLD f72b
 d0f8  c3 de d0   JMP d0de
+
+????_COMMAND_T:
 d0fb  cd ce ce   CALL cece
 
 ????:
@@ -1122,7 +1150,7 @@ NEW_FILE:
 ; - data bytes                  - data bytes
 ; - 2 bytes (low byte first)    - CRC
 OUTPUT_FILE:
-    d138  cd bf d1   CALL d1bf                  ; Input file name
+    d138  cd bf d1   CALL GET_FILE_NAME (d1bf)  ; Input file name
 
     d13b  13         INX DE                     ; Store file name end pointer BC
     d13c  42         MOV B, D
@@ -1230,24 +1258,30 @@ OUTPUT_FILE_DATA_LOOP:
     d1bc  c3 0c cb   JMP EDITOR_MAIN_LOOP (cb0c)    ; Finish, exit to the main loop
 
 
+; Input file name
+; The function prints the "FILE?" prompt and waits for the user input
+;
+; Return: 
+; File name in the 0xf6e0 buffer
+; DE - pointer to the last entered symbol in the buffer
+GET_FILE_NAME:
+    d1bf  c5         PUSH BC                    ; Clear screen and show the prompt
+    d1c0  cd fd cb   CALL CLEAR_SCREEN_AND_PRINT_COMMAND_PROMPT (cbfd)
 
-????:
-d1bf  c5         PUSH BC
-d1c0  cd fd cb   CALL CLEAR_SCREEN_AND_PRINT_COMMAND_PROMPT (cbfd)
+    d1c3  21 1d d3   LXI HL, FILE_STR (d31d)    ; Print 'FILE' string
+    d1c6  cd 18 f8   CALL PRINT_STRING (f818)
 
-d1c3  21 1d d3   LXI HL, FILE_STR (d31d)    ; Print 'FILE' string
-d1c6  cd 18 f8   CALL PRINT_STRING (f818)
+    d1c9  3e 3f      MVI A, 3f                  ; Print '?'
+    d1cb  cd 0a cc   CALL PUT_CHAR_AND_SPACE (cc0a)
 
-d1c9  3e 3f      MVI A, 3f                  ; Print '?'
-d1cb  cd 0a cc   CALL PUT_CHAR_AND_SPACE (cc0a)
+    d1ce  c1         POP BC                     ; Store the input mode in a variable
+    d1cf  78         MOV A, B                   ; BUG? Why shall it belong to this function?
+    d1d0  32 20 f7   STA INPUT_MODE (f720)
 
-d1ce  c1         POP BC
-d1cf  78         MOV A, B
-d1d0  32 20 f7   STA f720
+    d1d3  cd 20 cc   CALL cc20                  ; Get the file name, exit to main loop in case of error
+    d1d6  da 0c cb   JC EDITOR_MAIN_LOOP (cb0c)
 
-d1d3  cd 20 cc   CALL cc20
-d1d6  da 0c cb   JC EDITOR_MAIN_LOOP (cb0c)
-d1d9  c9         RET
+    d1d9  c9         RET
 
 
 ; Calculate CRC by adding all bytes in the given range into 16-bit value
@@ -1277,152 +1311,243 @@ CALCULATE_CRC_LOOP:
     d1ed  c9         RET
 
 
-????_INPUT:
-d1ee  06 00      MVI B, 00
-????:
-d1f0  cd bf d1   CALL d1bf
-d1f3  eb         XCHG
-????:
-d1f4  06 04      MVI B, 04
-d1f6  3e ff      MVI A, ff
-????:
-d1f8  cd 06 f8   CALL f806
-d1fb  fe e6      CPI A, e6
-d1fd  c2 f4 d1   JNZ d1f4
-d200  05         DCR B
-d201  3e 08      MVI A, 08
-d203  c2 f8 d1   JNZ d1f8
-d206  21 a0 f6   LXI HL, f6a0
-????:
-d209  cd df d2   CALL d2df
-d20c  77         MOV M, A
-d20d  b7         ORA A
-d20e  23         INX HL
-d20f  c2 09 d2   JNZ d209
-d212  cd df d2   CALL d2df
-d215  4f         MOV C, A
-d216  cd df d2   CALL d2df
-d219  47         MOV B, A
-d21a  c5         PUSH BC
-d21b  21 1d d3   LXI HL, FILE_STR (d31d)
-d21e  cd 18 f8   CALL PRINT_STRING (f818)
-d221  3e 3a      MVI A, 3a
-d223  cd 0a cc   CALL PUT_CHAR_AND_SPACE (cc0a)
-d226  21 a0 f6   LXI HL, f6a0
-d229  e5         PUSH HL
-d22a  cd 18 f8   CALL PRINT_STRING (f818)
-d22d  e1         POP HL
-????:
-d22e  1a         LDAX DE
-d22f  b7         ORA A
-d230  ca 3d d2   JZ d23d
-d233  be         CMP M
-d234  23         INX HL
-d235  13         INX DE
-d236  ca 2e d2   JZ d22e
-d239  c1         POP BC
-d23a  c3 f4 d1   JMP d1f4
-????:
-d23d  c1         POP BC
-d23e  78         MOV A, B
-d23f  b1         ORA C
-d240  f5         PUSH PSW
-d241  c5         PUSH BC
-d242  3a 20 f7   LDA f720
-d245  3d         DCR A
-d246  fa 5d d2   JM d25d
-d249  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
-d24c  d1         POP DE
-d24d  e5         PUSH HL
-d24e  19         DAD DE
-d24f  cd aa cf   CALL CHECK_FILE_SIZE (cfaa)
-d252  eb         XCHG
-d253  e1         POP HL
-d254  f1         POP PSW
-d255  ca d6 d2   JZ d2d6
-d258  af         XRA A
-d259  f5         PUSH PSW
-d25a  c3 86 d2   JMP d286
-????:
-d25d  3c         INR A
-d25e  21 00 30   LXI HL, 3000
-d261  eb         XCHG
-d262  e1         POP HL
-d263  19         DAD DE
-d264  f5         PUSH PSW
-d265  d5         PUSH DE
-d266  cd aa cf   CALL CHECK_FILE_SIZE (cfaa)
-d269  d1         POP DE
-d26a  eb         XCHG
-d26b  c1         POP BC
-d26c  f1         POP PSW
-d26d  c5         PUSH BC
-d26e  c2 86 d2   JNZ d286
-d271  3e ff      MVI A, ff
-d273  cd 06 f8   CALL f806
-d276  67         MOV H, A
-d277  cd df d2   CALL d2df
-d27a  6f         MOV L, A
-d27b  cd df d2   CALL d2df
-d27e  57         MOV D, A
-d27f  cd df d2   CALL d2df
-d282  5f         MOV E, A
-d283  c3 94 d2   JMP d294
-????:
-d286  3e ff      MVI A, ff
-d288  cd 06 f8   CALL f806
-d28b  cd df d2   CALL d2df
-d28e  cd df d2   CALL d2df
-d291  cd df d2   CALL d2df
-????:
-d294  13         INX DE
-d295  f1         POP PSW
-d296  e5         PUSH HL
-d297  c2 c5 d2   JNZ d2c5
-????:
-d29a  cd df d2   CALL d2df
-d29d  77         MOV M, A
-d29e  23         INX HL
-d29f  cd ea cc   CALL CMP_HL_DE (ccea)
-d2a2  c2 9a d2   JNZ d29a
-????:
-d2a5  cd df d2   CALL d2df
-d2a8  4f         MOV C, A
-d2a9  cd df d2   CALL d2df
-d2ac  47         MOV B, A
-d2ad  e1         POP HL
-d2ae  c5         PUSH BC
-d2af  cd da d1   CALL CALCULATE_CRC (d1da)
-d2b2  e1         POP HL
-d2b3  7c         MOV A, H
-d2b4  b8         CMP B
-d2b5  c2 d6 d2   JNZ d2d6
-d2b8  7d         MOV A, L
-d2b9  b9         CMP C
-d2ba  c2 d6 d2   JNZ d2d6
-d2bd  1b         DCX DE
-d2be  eb         XCHG
-d2bf  22 27 f7   SHLD END_OF_FILE_PTR (f727)
-d2c2  c3 0c cb   JMP EDITOR_MAIN_LOOP (cb0c)
-????:
-d2c5  cd df d2   CALL d2df
-d2c8  be         CMP M
-d2c9  23         INX HL
-d2ca  c2 d6 d2   JNZ d2d6
-d2cd  cd ea cc   CALL CMP_HL_DE (ccea)
-d2d0  c2 c5 d2   JNZ d2c5
-d2d3  c3 a5 d2   JMP d2a5
-????:
-d2d6  11 0c d3   LXI DE, d30c
-d2d9  cd 12 ce   CALL PRINT_ERROR (ce12)
-d2dc  c3 f7 cb   JMP cbf7
-????:
-d2df  3e 08      MVI A, 08
-d2e1  c3 06 f8   JMP f806
-d2e4  06 ff      MVI B, ff
-d2e6  c3 f0 d1   JMP d1f0
-d2e9  06 01      MVI B, 01
-d2eb  c3 f0 d1   JMP d1f0
+; Read text file from the tape
+;
+; The function serves Command I (text input), M (merge file), and V (verify). The function works according
+; to the following algorithm:
+; - Ask user for the desired file name
+; - Read the tape until 4 x 0xe6 marker bytes are found, followed by the file name. If the file name does not
+;   match the requested one, the function will wait for another file record.
+; - Data size field stored on the tape has priority over data start/end address fields
+; - Command M calculates data start/end address so that it appends tape data to the text already in the
+;   memory. Commands I and V will use 0x3000 as data start address.
+; - Commands I and M do the actual data load according to calculated addresses.
+; - Command V does not data verification, report mismatch errors if any.
+; - CRC field stored at the end of file is checked against the memory data, report mismatch errors if any.
+INPUT_FILE:
+    d1ee  06 00      MVI B, 00                  ; Set the mode 0 - normal input file from tape
+
+INPUT_FILE_1:
+    d1f0  cd bf d1   CALL GET_FILE_NAME (d1bf)  ; Input file name
+    d1f3  eb         XCHG                       ; DE buffer start, HL buffer end
+
+INPUT_FILE_WAIT_SYNC_BYTE:
+    d1f4  06 04      MVI B, 04                  ; Wait for 4 sync bytes in a raw
+    d1f6  3e ff      MVI A, ff                  ; Expect synchronization first
+
+INPUT_FILE_WAIT_SYNC_BYTE_LOOP:
+    d1f8  cd 06 f8   CALL IN_BYTE (f806)        ; Read the byte, and check if it is 0xe6 sync byte
+    d1fb  fe e6      CPI A, e6
+    d1fd  c2 f4 d1   JNZ INPUT_FILE_WAIT_SYNC_BYTE (d1f4)
+
+    d200  05         DCR B                      ; Another sync byte received, look for the next one
+    d201  3e 08      MVI A, 08
+    d203  c2 f8 d1   JNZ INPUT_FILE_WAIT_SYNC_BYTE_LOOP (d1f8)
+
+    d206  21 a0 f6   LXI HL, f6a0               ; Will compare file name on the tape with one in the buffer
+                                                ; BUG: File name is received from the tape into the same
+                                                ; buffer where user types file name from the keyboard. So
+                                                ; in fact comparison will happen to self, and file names will
+                                                ; always match.
+
+; Read the file name from the tape, anc compare it with requested one
+INPUT_FILE_NAME_LOOP:
+    d209  cd df d2   CALL IN_BYTE_NO_SYNC (d2df)
+
+    d20c  77         MOV M, A                   ; Receive next byte of the file name
+    d20d  b7         ORA A 
+
+    d20e  23         INX HL                     ; Advance to the next byte, until a zero byte is found
+    d20f  c2 09 d2   JNZ INPUT_FILE_NAME_LOOP (d209)
+
+    d212  cd df d2   CALL IN_BYTE_NO_SYNC (d2df); Input data size
+    d215  4f         MOV C, A
+    d216  cd df d2   CALL IN_BYTE_NO_SYNC (d2df)
+    d219  47         MOV B, A
+
+    d21a  c5         PUSH BC                    ; Print "FILE" string
+    d21b  21 1d d3   LXI HL, FILE_STR (d31d)
+    d21e  cd 18 f8   CALL PRINT_STRING (f818)
+
+    d221  3e 3a      MVI A, 3a                  ; Print ':'
+    d223  cd 0a cc   CALL PUT_CHAR_AND_SPACE (cc0a)
+
+    d226  21 a0 f6   LXI HL, f6a0               ; Print received file name
+    d229  e5         PUSH HL
+    d22a  cd 18 f8   CALL PRINT_STRING (f818)
+    d22d  e1         POP HL
+
+INPUT_FILE_NAME_COMPARE_LOOP:
+    d22e  1a         LDAX DE                    ; Stop name comparison when terminating zero is found
+    d22f  b7         ORA A
+    d230  ca 3d d2   JZ INPUT_FILE_2 (d23d)
+
+    d233  be         CMP M                      ; Compare next byte of the file name
+    d234  23         INX HL
+    d235  13         INX DE
+    d236  ca 2e d2   JZ INPUT_FILE_NAME_COMPARE_LOOP (d22e)
+
+    d239  c1         POP BC                     ; If the file name was not matched - look for another file
+    d23a  c3 f4 d1   JMP INPUT_FILE_WAIT_SYNC_BYTE (d1f4)
+
+; This part calculates data start/end address for Command M (Merge)
+INPUT_FILE_2:
+    d23d  c1         POP BC                     ; Restore file size. Check it is zero
+    d23e  78         MOV A, B
+    d23f  b1         ORA C
+
+    d240  f5         PUSH PSW
+    d241  c5         PUSH BC
+
+    d242  3a 20 f7   LDA INPUT_MODE (f720)      ; Code below is executed for Command M only, otherwise skip
+    d245  3d         DCR A             
+    d246  fa 5d d2   JM INPUT_FILE_3 (d25d)
+
+    d249  2a 27 f7   LHLD END_OF_FILE_PTR (f727); end of current file += loaded file size
+    d24c  d1         POP DE
+    d24d  e5         PUSH HL
+    d24e  19         DAD DE
+
+    d24f  cd aa cf   CALL CHECK_FILE_SIZE (cfaa); Check the new file size does not exceed limits
+
+    d252  eb         XCHG                       ; Print error if loaded file size is zero
+    d253  e1         POP HL
+    d254  f1         POP PSW
+    d255  ca d6 d2   JZ INPUT_FILE_ERROR (d2d6)
+
+    d258  af         XRA A                      ; Rest of the function act as Command I (normal file input)
+    d259  f5         PUSH PSW
+
+    d25a  c3 86 d2   JMP INPUT_FILE_4 (d286)
+
+; This part calculates start/end address depending on data size field stored on the tape, or (if it zero)
+; on data start/end address stored on the tape.
+INPUT_FILE_3:
+    d25d  3c         INR A                      ; Get 0 for command I, 0xff for Ccommand V
+
+    d25e  21 00 30   LXI HL, 3000               ; Calculate end of data address (0x3000+file size)
+    d261  eb         XCHG
+    d262  e1         POP HL
+    d263  19         DAD DE
+
+    d264  f5         PUSH PSW                   ; Check if the file fits into the memory
+    d265  d5         PUSH DE
+    d266  cd aa cf   CALL CHECK_FILE_SIZE (cfaa)
+    d269  d1         POP DE
+
+    d26a  eb         XCHG                       ; Restore and check the data size
+    d26b  c1         POP BC
+    d26c  f1         POP PSW
+    d26d  c5         PUSH BC
+
+    d26e  c2 86 d2   JNZ INPUT_FILE_4 (d286)    ; If file size is not zero - use it for calculating end addr
+
+    d271  3e ff      MVI A, ff                  ; If file size value is zero try to guess it from data start
+    d273  cd 06 f8   CALL IN_BYTE (f806)        ; and data end fields. Load data start field first
+    d276  67         MOV H, A
+    d277  cd df d2   CALL IN_BYTE_NO_SYNC (d2df)
+    d27a  6f         MOV L, A
+
+    d27b  cd df d2   CALL IN_BYTE_NO_SYNC (d2df); Then load data end field
+    d27e  57         MOV D, A
+    d27f  cd df d2   CALL IN_BYTE_NO_SYNC (d2df)
+    d282  5f         MOV E, A
+
+    d283  c3 94 d2   JMP INPUT_FILE_5 (d294)    ; Continue with loading the file data
+
+INPUT_FILE_4:
+    d286  3e ff      MVI A, ff                  ; Data size field is non-zero. Ignore data start/end fields
+    d288  cd 06 f8   CALL IN_BYTE (f806)
+    d28b  cd df d2   CALL IN_BYTE_NO_SYNC (d2df)
+    d28e  cd df d2   CALL IN_BYTE_NO_SYNC (d2df)
+    d291  cd df d2   CALL IN_BYTE_NO_SYNC (d2df)
+
+INPUT_FILE_5:
+    d294  13         INX DE                     ; Set DE 1 byte after data end
+
+    d295  f1         POP PSW                    ; Restore input mode. Command I will actually load data
+    d296  e5         PUSH HL                    ; from tape.
+    d297  c2 c5 d2   JNZ d2c5                   ; Command V (validation) will be processed elsewhere
+
+; This part actually loads the data from tape to the memory
+INPUT_FILE_DATA_LOOP:
+    d29a  cd df d2   CALL IN_BYTE_NO_SYNC (d2df)    ; Read next data byte
+    d29d  77         MOV M, A
+    d29e  23         INX HL
+
+    d29f  cd ea cc   CALL CMP_HL_DE (ccea)          ; Repeat until end of data is reached
+    d2a2  c2 9a d2   JNZ INPUT_FILE_DATA_LOOP (d29a)
+
+; This is the final stage of the algorithm - comparing the calculated CRC on the data in memory
+; with the CRC value stored on the tape. Report an error in case of mismatch
+INPUT_FILE_CHECK_CRC:
+    d2a5  cd df d2   CALL IN_BYTE_NO_SYNC (d2df)    ; Read CRC value
+    d2a8  4f         MOV C, A
+    d2a9  cd df d2   CALL IN_BYTE_NO_SYNC (d2df)
+    d2ac  47         MOV B, A
+
+    d2ad  e1         POP HL                     ; Calculate actual data CRC
+    d2ae  c5         PUSH BC
+    d2af  cd da d1   CALL CALCULATE_CRC (d1da)
+    d2b2  e1         POP HL
+
+    d2b3  7c         MOV A, H                   ; Compare calculated and read CRC. Report error in case of
+    d2b4  b8         CMP B                      ; mismatch
+    d2b5  c2 d6 d2   JNZ INPUT_FILE_ERROR (d2d6)
+    d2b8  7d         MOV A, L
+    d2b9  b9         CMP C
+    d2ba  c2 d6 d2   JNZ INPUT_FILE_ERROR (d2d6)
+
+    d2bd  1b         DCX DE                     ; Update end of file pointer
+    d2be  eb         XCHG
+    d2bf  22 27 f7   SHLD END_OF_FILE_PTR (f727)
+
+    d2c2  c3 0c cb   JMP EDITOR_MAIN_LOOP (cb0c); Return to the main loop
+
+; This part serves Command V (Verify) and compares data on the tape with data in memory
+INPUT_FILE_DATA_COMPARE_LOOP:
+    d2c5  cd df d2   CALL IN_BYTE_NO_SYNC (d2df)    ; Compare next data byte
+    d2c8  be         CMP M
+
+    d2c9  23         INX HL                         ; Advance to the next byte
+
+    d2ca  c2 d6 d2   JNZ INPUT_FILE_ERROR (d2d6)    ; Report error in case of mismatch
+
+    d2cd  cd ea cc   CALL CMP_HL_DE (ccea)          ; Repeat until end of data reached
+    d2d0  c2 c5 d2   JNZ INPUT_FILE_DATA_COMPARE_LOOP (d2c5)
+
+    d2d3  c3 a5 d2   JMP INPUT_FILE_CHECK_CRC (d2a5); Proceed with the next step (CRC match)
+
+
+; Report "I/O ERROR", beep, and exit to main loop
+INPUT_FILE_ERROR:
+    d2d6  11 0c d3   LXI DE, IO_DEVICE_STR (d30c)   ; Print error string
+    d2d9  cd 12 ce   CALL PRINT_ERROR (ce12)
+
+    d2dc  c3 f7 cb   JMP BEEP_AND_EXIT (cbf7)
+
+; Input a byte, assuming sync has been already happened
+IN_BYTE_NO_SYNC:
+    d2df  3e 08      MVI A, 08
+    d2e1  c3 06 f8   JMP IN_BYTE (f806)
+
+; Command Ctrl-V: Verify file on tape with text in memory
+;
+; The command works almost the same way as Input File command, except for data from the tape is
+; not loaded to the memory, but just compared with the data that is in memory already. In case of
+; mismatch an error will be shown.
+VERIFY_FILE:
+    d2e4  06 ff      MVI B, ff                  ; Input Mode 0xff - verify
+    d2e6  c3 f0 d1   JMP INPUT_FILE_1 (d1f0)
+
+
+; Command Ctrl-M: Merge file (append text file from the tape at the end of existing text)
+;
+; This command is another variation of the Input File function. It also reads the file from the tape,
+; but start and end address is calculated so that file is loaded right after existing text.
+MERGE_FILE:
+    d2e9  06 01      MVI B, 01                  ; Input Mode 0x01 - Merge
+    d2eb  c3 f0 d1   JMP INPUT_FILE_1 (d1f0)
 
 ERROR_STR:
     d2ee  0a 45 52 52 4f 52 3a 00   db "\rERROR:", 0x00
@@ -1435,18 +1560,9 @@ LONG_FILE_STR:
     d302  4c 4f 4e 47 20 46 49 4c   db "LONG FIL"
     d30a  45 00                     db "E", 0x00
 
-????:
-d30c  49         MOV C, C
-d30d  2f         CMA
-d30e  4f         MOV C, A
-d30f  20         db 20
-d310  44         MOV B, H
-d311  45         MOV B, L
-d312  56         MOV D, M
-d313  49         MOV C, C
-d314  43         MOV B, E
-d315  45         MOV B, L
-d316  00         NOP
+IO_DEVICE_STR:
+    d30c  49 2f 4f 20 44 45 56 49   db "I/O DEVI"
+    d314  43 45 00                  db "CE", 0x00
 
 NEW_FILE_PROMPT_STR:
     d317  1f 4e 45 57 3f 00         db 0x1f, "NEW?", 0x00
@@ -1476,20 +1592,20 @@ HELLO_STR:
 ; connected to 1st bit of that port. Another issue is that Ctrl-<char> combinations produce char codes in
 ; 0x01-0x1a range, while the table below expects normal char codes (in 0x41-0x5a range)
 COMMAND_HANDLERS:
-    d34a  4c c6 cb      db 'L', cbc6
-    d34d  58 be cb      db 'X', cbbe
-    d350  44 bb cf      db 'D', cfbb
-    d353  41 d2 d0      db 'A', d0d2
-    d356  54 fb d0      db 'T', d0fb
-    d359  4e 19 d1      db 'N', d119
+    d34a  4c c6 cb      db 'L', ????_COMMAND_L (cbc6)
+    d34d  58 be cb      db 'X', ????_COMMAND_X (cbbe)
+    d350  44 bb cf      db 'D', ????_COMMAND_D (cfbb)
+    d353  41 d2 d0      db 'A', ????_COMMAND_A (d0d2)
+    d356  54 fb d0      db 'T', ????_COMMAND_T (d0fb)
+    d359  4e 19 d1      db 'N', NEW_FILE (d119)
     d35c  4f 38 d1      db 'O', OUTPUT_FILE (d138)
-    d35f  49 ee d1      db 'I', d1ee
-    d362  56 e4 d2      db 'V', d2e4
-    d365  4d e9 d2      db 'M', d2e9
-    d368  57 88 cd      db 'W', cd88
-    d36b  52 a7 cd      db 'R', cda7
-    d36e  46 bf cd      db 'F', cdbf
-    d371  59 9d cd      db 'Y', cd9d
+    d35f  49 ee d1      db 'I', INPUT_FILE (d1ee)
+    d362  56 e4 d2      db 'V', VERIFY_FILE (d2e4)
+    d365  4d e9 d2      db 'M', MERGE_FILE (d2e9)
+    d368  57 88 cd      db 'W', ????_COMMAND_W (cd88)
+    d36b  52 a7 cd      db 'R', ????_COMMAND_R (cda7)
+    d36e  46 bf cd      db 'F', ????_COMMAND_F (cdbf)
+    d371  59 9d cd      db 'Y', ????_COMMAND_Y (cd9d)
     d374  08 aa d0      db 0x08, d0aa
     d377  18 5f d0      db 0x18, d05f
     d37a  19 91 ce      db 0x19, ce91
