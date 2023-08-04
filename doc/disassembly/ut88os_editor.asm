@@ -7,7 +7,7 @@
 ; - f721    - 
 ; - f722    - 
 ; - f723    - 
-; - f724    - 
+; - f724    - Tab size - 1
 ; - f725    - Cursor Y position (counting from top-left corner)
 ; - f726    - 
 ; - f727    - end of file pointer (points to the next symbol after the last text char)
@@ -50,8 +50,8 @@ EDITOR_MAIN_LOOP:
     cb37  77         MOV M, A
     cb38  23         INX HL
 
-    cb39  3e 03      MVI A, 03                  ; ????
-    cb3b  32 24 f7   STA f724
+    cb39  3e 03      MVI A, 03                  ; Set the default tab size
+    cb3b  32 24 f7   STA TAB_SIZE (f724)
 
 ????:
     cb3e  01 3e cb   LXI BC, cb3e               ; Character processing will return back here
@@ -141,7 +141,8 @@ cbb0  c0         RNZ
 
 cbb1  c3 dc cc   JMP PILOT_TONE_1 (ccdc)
 
-
+; Wait for a key press
+; Return input key in A, Z flag is set if Ctrl key is pressed as well
 GET_KBD_KEY:
     cbb4  cd 03 f8   CALL KBD_INPUT (f803)      ; Input char
     cbb7  4f         MOV C, A
@@ -164,7 +165,7 @@ cbc7  21 00 30   LXI HL, 3000
 cbca  e3         XTHL
 ????:
 cbcb  cd fd cb   CALL CLEAR_SCREEN_AND_PRINT_COMMAND_PROMPT (cbfd)
-cbce  cd 20 cc   CALL cc20
+cbce  cd 20 cc   CALL INPUT_LINE (cc20)
 cbd1  dc 6f ce   CC CLEAR_BUFFER (ce6f)
 cbd4  44         MOV B, H
 cbd5  4d         MOV C, L
@@ -231,74 +232,112 @@ HOME_SCREEN_CURSOR:
     cc1d  c3 09 f8   JMP PUT_CHAR (f809)
 
 
-????:
-cc20  cd 6f ce   CALL CLEAR_BUFFER (ce6f)
-cc23  62         MOV H, D
-cc24  6b         MOV L, E
-cc25  32 23 f7   STA f723
+; Input text line from keyboard to the line buffer
+;
+; The function waits for the keyboard input, and stores entered keys in the buffer. The function also 
+; handles left/backspace keys to move cursor left and remove last entered symbol. The right arrow key
+; moves cursor right, and reveal previously erased symbol (if any). It also supports Ctrl-space key 
+; combination that acts as a tab key (moves cursor right to the next tab stop).
+;
+; Return key stops the input, and exits. Clear screen also stops the input, and sets C flag, so that 
+; the caller may exit the current command or function.
+INPUT_LINE:
+    cc20  cd 6f ce   CALL CLEAR_BUFFER (ce6f)   ; Clear the buffer
 
-????:
-cc28  cd ca cc   CALL PRINT_HASH_CURSOR (ccca)
-cc2b  cd b4 cb   CALL GET_KBD_KEY (cbb4)
-cc2e  c2 68 cc   JNZ cc68
+    cc23  62         MOV H, D                   ; HL will point to the current char in the buffer
+    cc24  6b         MOV L, E
 
-cc31  fe 20      CPI A, 20
-cc33  c2 d4 cc   JNZ ccd4
+    cc25  32 23 f7   STA CHAR_COUNTER (f723)    ; Zero chars counter
 
-cc36  3a 24 f7   LDA f724
-cc39  2f         CMA
-cc3a  4f         MOV C, A
-cc3b  3a 23 f7   LDA f723
-cc3e  47         MOV B, A
-cc3f  a1         ANA C
-cc40  91         SUB C
-cc41  fe 40      CPI A, 40
-cc43  d2 d4 cc   JNC ccd4
-cc46  90         SUB B
-cc47  47         MOV B, A
-????:
-cc48  4e         MOV C, M
-cc49  79         MOV A, C
-cc4a  b7         ORA A
-cc4b  c2 51 cc   JNZ cc51
-cc4e  0e 20      MVI C, 20
-cc50  71         MOV M, C
-????:
-cc51  3a 23 f7   LDA f723
-cc54  3c         INR A
-cc55  fe 3f      CPI A, 3f
-cc57  d2 d4 cc   JNC ccd4
-cc5a  32 23 f7   STA f723
-cc5d  23         INX HL
-cc5e  cd 09 f8   CALL PUT_CHAR (f809)
-cc61  05         DCR B
-cc62  c2 48 cc   JNZ cc48
-cc65  c3 28 cc   JMP cc28
-????:
-cc68  b7         ORA A
-cc69  ca d4 cc   JZ ccd4
-cc6c  fe 0c      CPI A, 0c
-cc6e  ca d4 cc   JZ ccd4
-cc71  fe 1f      CPI A, 1f
-cc73  ca a8 cc   JZ cca8
-cc76  4f         MOV C, A
-cc77  fe 08      CPI A, 08
-cc79  ca b1 cc   JZ ccb1
-cc7c  fe 18      CPI A, 18
-cc7e  ca ac cc   JZ ccac
-cc81  fe 19      CPI A, 19
-cc83  ca d4 cc   JZ ccd4
-cc86  fe 1a      CPI A, 1a
-cc88  ca d4 cc   JZ ccd4
-cc8b  d6 0d      SUI A, 0d
-cc8d  c2 ab cc   JNZ ccab
-cc90  77         MOV M, A
-cc91  3a 23 f7   LDA f723
-cc94  3c         INR A
-cc95  32 22 f7   STA f722
-cc98  eb         XCHG
-cc99  0e 0a      MVI C, 0a
-cc9b  cd 09 f8   CALL PUT_CHAR (f809)
+INPUT_LINE_LOOP:
+    cc28  cd ca cc   CALL PRINT_HASH_CURSOR (ccca)  ; Print cursor
+
+    cc2b  cd b4 cb   CALL GET_KBD_KEY (cbb4)    ; Wait for a key press 
+    cc2e  c2 68 cc   JNZ INPUT_LINE_PROCESS_CHAR (cc68)
+
+    cc31  fe 20      CPI A, 20                  ; No Ctrl-<something> is allowed, except for Ctrl-space
+    cc33  c2 d4 cc   JNZ INPUT_TEXT_BEEP_AND_REPEAT (ccd4)
+
+    cc36  3a 24 f7   LDA TAB_SIZE (f724)        ; Load the tab size
+    cc39  2f         CMA
+    cc3a  4f         MOV C, A
+
+    cc3b  3a 23 f7   LDA CHAR_COUNTER (f723)    ; Calculate nearest tab stop
+    cc3e  47         MOV B, A
+    cc3f  a1         ANA C
+    cc40  91         SUB C
+
+    cc41  fe 40      CPI A, 40                  ; Report error if value exceeds buffer size
+    cc43  d2 d4 cc   JNC INPUT_TEXT_BEEP_AND_REPEAT (ccd4)
+
+    cc46  90         SUB B                      ; Move cursor right for the required number of chars
+    cc47  47         MOV B, A
+
+; Move cursor right B times, reveal characters from the buffer if they are already
+INPUT_LINE_MOVE_RIGHT:
+    cc48  4e         MOV C, M                   ; Check if there is non-zero character in the buffer already
+    cc49  79         MOV A, C
+    cc4a  b7         ORA A
+    cc4b  c2 51 cc   JNZ INPUT_LINE_MOVE_RIGHT_1 (cc51)
+
+    cc4e  0e 20      MVI C, 20                  ; Otherwise use space char
+    cc50  71         MOV M, C
+
+INPUT_LINE_MOVE_RIGHT_1:
+    cc51  3a 23 f7   LDA CHAR_COUNTER (f723)    ; Increase the buffer chars counter
+    cc54  3c         INR A
+
+    cc55  fe 3f      CPI A, 3f                  ; Limit the buffer with 0x3f chars, report an error when
+    cc57  d2 d4 cc   JNC INPUT_TEXT_BEEP_AND_REPEAT (ccd4)  ; the buffer is full
+
+    cc5a  32 23 f7   STA CHAR_COUNTER (f723)    ; Store the new counter value
+
+    cc5d  23         INX HL                     ; Advance buffer pointer
+
+    cc5e  cd 09 f8   CALL PUT_CHAR (f809)       ; Print the char (reveal one existing already in the buffer)
+
+    cc61  05         DCR B                      ; Repeat B times
+    cc62  c2 48 cc   JNZ INPUT_LINE_MOVE_RIGHT (cc48)
+
+    cc65  c3 28 cc   JMP INPUT_LINE_LOOP (cc28) ; Ready for next character input
+
+
+INPUT_LINE_PROCESS_CHAR:
+    cc68  b7         ORA A                      ; No or unknown key - beep an error
+    cc69  ca d4 cc   JZ INPUT_TEXT_BEEP_AND_REPEAT (ccd4)
+
+    cc6c  fe 0c      CPI A, 0c                  ; Home key is incorrect as well
+    cc6e  ca d4 cc   JZ INPUT_TEXT_BEEP_AND_REPEAT (ccd4)
+
+    cc71  fe 1f      CPI A, 1f                  ; Check if clear screen key is pressed
+    cc73  ca a8 cc   JZ INPUT_LINE_EXIT (cca8)
+
+    cc76  4f         MOV C, A                   ; Temporary store the symbol in C register
+
+    cc77  fe 08      CPI A, 08                  ; Check if left arrow/backspace is pressed
+    cc79  ca b1 cc   JZ INPUT_LINE_BACKSPACE (ccb1)
+
+    cc7c  fe 18      CPI A, 18                  ; Check if right arrow is pressed
+    cc7e  ca ac cc   JZ INPUT_LINE_RIGHT (ccac)
+
+    cc81  fe 19      CPI A, 19                  ; Up and Down arrows are invalid keys
+    cc83  ca d4 cc   JZ INPUT_TEXT_BEEP_AND_REPEAT (ccd4)
+    cc86  fe 1a      CPI A, 1a
+    cc88  ca d4 cc   JZ INPUT_TEXT_BEEP_AND_REPEAT (ccd4)
+
+    cc8b  d6 0d      SUI A, 0d                  ; Check if Return key is pressed
+    cc8d  c2 ab cc   JNZ INPUT_LINE_SUBMIT_CHAR (ccab)
+
+    cc90  77         MOV M, A                   ; Store zero char in the buffer
+
+    cc91  3a 23 f7   LDA CHAR_COUNTER (f723)    ; Store number of entered chars in 0xf722
+    cc94  3c         INR A
+    cc95  32 22 f7   STA f722
+
+    cc98  eb         XCHG                       ; Print the entered char
+    cc99  0e 0a      MVI C, 0a                  ; Then advance to the new line and exit
+    cc9b  cd 09 f8   CALL PUT_CHAR (f809)
+
 
 ; Move cursor to the beginning of the current line
 HOME_CURSOR:
@@ -307,29 +346,39 @@ HOME_CURSOR:
     cca3  0e 19      MVI C, 19                  ; Step one row up
     cca5  c3 09 f8   JMP PUT_CHAR (f809)
 
-????:
-cca8  eb         XCHG
-cca9  37         STC
-ccaa  c9         RET
-????:
-ccab  71         MOV M, C
-????:
-ccac  06 01      MVI B, 01
-ccae  c3 48 cc   JMP cc48
-????:
-ccb1  3a 23 f7   LDA f723
-ccb4  3d         DCR A
-ccb5  fa d4 cc   JM ccd4
-ccb8  32 23 f7   STA f723
-ccbb  3e 20      MVI A, 20
-ccbd  cd 81 cd   CALL PUT_CHAR_A (cd81)
-ccc0  2b         DCX HL
-ccc1  cd 09 f8   CALL PUT_CHAR (f809)
-ccc4  cd 09 f8   CALL PUT_CHAR (f809)
-ccc7  c3 28 cc   JMP cc28
+INPUT_LINE_EXIT:
+    cca8  eb         XCHG                       ; Raise C flag and exit
+    cca9  37         STC
+    ccaa  c9         RET
 
+INPUT_LINE_SUBMIT_CHAR:
+    ccab  71         MOV M, C                   ; Store the char in the buffer, and advance cursor
+
+INPUT_LINE_RIGHT:
+    ccac  06 01      MVI B, 01                  ; Move cursor right for 1 character
+    ccae  c3 48 cc   JMP INPUT_LINE_MOVE_RIGHT (cc48)
+
+INPUT_LINE_BACKSPACE:
+    ccb1  3a 23 f7   LDA CHAR_COUNTER (f723)    ; Check if there is room to go
+    ccb4  3d         DCR A
+    ccb5  fa d4 cc   JM INPUT_TEXT_BEEP_AND_REPEAT (ccd4)   ; Report error if we are at the beginning of line
+
+    ccb8  32 23 f7   STA CHAR_COUNTER (f723)    ; Store new position
+
+    ccbb  3e 20      MVI A, 20                  ; Clear the symbol at cursor
+    ccbd  cd 81 cd   CALL PUT_CHAR_A (cd81)
+
+    ccc0  2b         DCX HL                     ; Decrement buffer pointer
+
+    ccc1  cd 09 f8   CALL PUT_CHAR (f809)       ; Move cursor 2 chars left
+    ccc4  cd 09 f8   CALL PUT_CHAR (f809)
+
+    ccc7  c3 28 cc   JMP INPUT_LINE_LOOP (cc28) ; Wait for the next symbol
+
+
+; Print '#' symbol, then move cursor left
 PRINT_HASH_CURSOR:
-    ccca  0e 23      MVI C, 23                  ; Print '#' symbol, then move cursor left
+    ccca  0e 23      MVI C, 23                  ; Print '#' symbol
     cccc  cd 09 f8   CALL PUT_CHAR (f809)
 
 ; Print 'move left' symbol
@@ -337,9 +386,12 @@ PRINT_BACKSPACE:
     cccf  0e 08      MVI C, 08                  ; Print 'move left' symbol
     ccd1  c3 09 f8   JMP PUT_CHAR (f809)
 
-????:
-ccd4  cd db cc   CALL PILOT_TONE (ccdb)
-ccd7  c3 28 cc   JMP cc28
+; Produce a beep sound, and repeat waiting a new key
+INPUT_TEXT_BEEP_AND_REPEAT:
+    ccd4  cd db cc   CALL PILOT_TONE (ccdb)
+    ccd7  c3 28 cc   JMP INPUT_LINE_LOOP (cc28)
+
+
 ????:
 ccda  e1         POP HL
 
@@ -499,7 +551,7 @@ PUT_CHAR_A:
 
 ????_COMMAND_W:
 cd88  f5         PUSH PSW
-cd89  3a 24 f7   LDA f724
+cd89  3a 24 f7   LDA TAB_SIZE (f724)
 cd8c  fe 07      CPI A, 07
 cd8e  c2 96 cd   JNZ cd96
 cd91  3e 03      MVI A, 03
@@ -507,7 +559,7 @@ cd93  c3 98 cd   JMP cd98
 ????:
 cd96  3e 07      MVI A, 07
 ????:
-cd98  32 24 f7   STA f724
+cd98  32 24 f7   STA TAB_SIZE (f724)
 cd9b  f1         POP PSW
 cd9c  c9         RET
 
@@ -643,6 +695,9 @@ ce66  ca fd cc   JZ ccfd
 ce69  cd 51 ce   CALL ce51
 ce6c  c3 fd cc   JMP ccfd
 
+
+; Clear the data buffer at 0xf6e0 for 0x3f bytes
+; Return: DE - buffer address
 CLEAR_BUFFER:
     ce6f  c5         PUSH BC                    ; Will clean 0x3f bytes
     ce70  06 3f      MVI B, 3f
@@ -1077,7 +1132,7 @@ d0db  cd 5c cd   CALL cd5c
 ????:
 d0de  af         XRA A
 d0df  32 21 f7   STA f721
-d0e2  cd 20 cc   CALL cc20
+d0e2  cd 20 cc   CALL INPUT_LINE (cc20)
 d0e5  da 0e d0   JC d00e
 d0e8  cd ce ce   CALL cece
 d0eb  3a 22 f7   LDA f722
@@ -1278,7 +1333,7 @@ GET_FILE_NAME:
     d1cf  78         MOV A, B                   ; BUG? Why shall it belong to this function?
     d1d0  32 20 f7   STA INPUT_MODE (f720)
 
-    d1d3  cd 20 cc   CALL cc20                  ; Get the file name, exit to main loop in case of error
+    d1d3  cd 20 cc   CALL INPUT_LINE (cc20)     ; Get the file name, exit to main loop in case of error
     d1d6  da 0c cb   JC EDITOR_MAIN_LOOP (cb0c)
 
     d1d9  c9         RET
