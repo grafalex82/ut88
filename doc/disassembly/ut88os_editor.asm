@@ -549,19 +549,28 @@ PUT_CHAR_A:
     cd87  c9         RET
 
 
-????_COMMAND_W:
-cd88  f5         PUSH PSW
-cd89  3a 24 f7   LDA TAB_SIZE (f724)
-cd8c  fe 07      CPI A, 07
-cd8e  c2 96 cd   JNZ cd96
-cd91  3e 03      MVI A, 03
-cd93  c3 98 cd   JMP cd98
-????:
-cd96  3e 07      MVI A, 07
-????:
-cd98  32 24 f7   STA TAB_SIZE (f724)
-cd9b  f1         POP PSW
-cd9c  c9         RET
+; Command W: Toggle tab size
+;
+; The function toggles tab size between 4 and 8 chars
+TOGGLE_TAB_SIZE:
+    cd88  f5         PUSH PSW                   ; Check if the tab size is 7
+    cd89  3a 24 f7   LDA TAB_SIZE (f724)
+    cd8c  fe 07      CPI A, 07
+    cd8e  c2 96 cd   JNZ TOGGLE_TAB_SIZE_1 (cd96)
+
+    cd91  3e 03      MVI A, 03                  ; Set it to 3
+    cd93  c3 98 cd   JMP TOGGLE_TAB_SIZE_2 (cd98)
+
+TOGGLE_TAB_SIZE_1:
+    cd96  3e 07      MVI A, 07                  ; If it was 3 - set it to 7
+
+TOGGLE_TAB_SIZE_2:
+    cd98  32 24 f7   STA TAB_SIZE (f724)        ; Store the new value
+
+    cd9b  f1         POP PSW
+    cd9c  c9         RET
+
+
 
 ????_COMMAND_Y:
 cd9d  f5         PUSH PSW
@@ -1657,7 +1666,7 @@ COMMAND_HANDLERS:
     d35f  49 ee d1      db 'I', INPUT_FILE (d1ee)
     d362  56 e4 d2      db 'V', VERIFY_FILE (d2e4)
     d365  4d e9 d2      db 'M', MERGE_FILE (d2e9)
-    d368  57 88 cd      db 'W', ????_COMMAND_W (cd88)
+    d368  57 88 cd      db 'W', TOGGLE_TAB_SIZE (cd88)
     d36b  52 a7 cd      db 'R', ????_COMMAND_R (cda7)
     d36e  46 bf cd      db 'F', ????_COMMAND_F (cdbf)
     d371  59 9d cd      db 'Y', ????_COMMAND_Y (cd9d)
