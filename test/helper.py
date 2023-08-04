@@ -116,27 +116,28 @@ class EmulatedInstanceWithKeyboard(EmulatedInstance):
                     ctrl_key = True
                     continue
 
+                ctrl_str = "Ctrl-" if ctrl_key else ""
                 if ch == '\r' or ch == '\n':
-                    print(f"Emulating Return")
-                    kbd.emulate_special_key_press(pygame.K_RETURN)
+                    print(f"Emulating {ctrl_str}Return")
+                    kbd.emulate_special_key_press(pygame.K_RETURN, ctrl_key)
                 elif ch == '\x0c':
-                    print(f"Emulating Home")
-                    kbd.emulate_special_key_press(pygame.K_HOME)
+                    print(f"Emulating {ctrl_str}Home")
+                    kbd.emulate_special_key_press(pygame.K_HOME, ctrl_key)
                 elif ch == '\x1f':
-                    print(f"Emulating Clear Screen")
-                    kbd.emulate_special_key_press(pygame.K_DELETE)
+                    print(f"Emulating {ctrl_str}Clear Screen")
+                    kbd.emulate_special_key_press(pygame.K_DELETE, ctrl_key)
                 elif ch == '\x08':
-                    print(f"Emulating Left")
-                    kbd.emulate_special_key_press(pygame.K_LEFT)
+                    print(f"Emulating {ctrl_str}Left")
+                    kbd.emulate_special_key_press(pygame.K_LEFT, ctrl_key)
                 elif ch == '\x18':
-                    print(f"Emulating Right")
-                    kbd.emulate_special_key_press(pygame.K_RIGHT)
+                    print(f"Emulating {ctrl_str}Right")
+                    kbd.emulate_special_key_press(pygame.K_RIGHT, ctrl_key)
                 elif ch == '\x19':
-                    print(f"Emulating Up")
-                    kbd.emulate_special_key_press(pygame.K_UP)
+                    print(f"Emulating {ctrl_str}Up")
+                    kbd.emulate_special_key_press(pygame.K_UP, ctrl_key)
                 elif ch == '\x1a':
-                    print(f"Emulating Down")
-                    kbd.emulate_special_key_press(pygame.K_DOWN)
+                    print(f"Emulating {ctrl_str}Down")
+                    kbd.emulate_special_key_press(pygame.K_DOWN, ctrl_key)
                 elif ctrl_key and (chd >= 0x41 and chd <= 0x5f or chd == 0x20):
                     print(f"Emulating Ctrl-{ch}")
                     kbd.emulate_ctrl_key_press(ch)

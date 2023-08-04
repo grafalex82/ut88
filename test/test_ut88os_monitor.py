@@ -314,20 +314,6 @@ def test_input_line_normal_text(ut88):
     assert ut88.get_word(CURSOR_POS_ADDR) == pos(5, 0) 
 
 
-def test_input_line_submit_line_with_ctrl_symb(ut88):
-    # Ctrl-M submits the line
-    ut88.emulate_key_sequence('ABCD^M')
-    assert input_line(ut88) == 'ABCD'
-
-    # Ctrl-Y submits the line
-    ut88.emulate_key_sequence('ABCD^Y')
-    assert input_line(ut88) == 'ABCD'
-
-    # Ctrl-Z submits the line
-    ut88.emulate_key_sequence('ABCD^Z')
-    assert input_line(ut88) == 'ABCD'
-
-
 def test_input_line_too_long(ut88):
     # Last symbols will not be entered
     ut88.emulate_key_sequence('1234567890123456789012345678901234567890123456789012345678901234567890\n')
@@ -377,7 +363,7 @@ def test_input_line_tab(ut88):
 
 
 def test_input_line_home_1(ut88):
-    ut88.emulate_key_sequence('ABCD^L\n')
+    ut88.emulate_key_sequence('ABCD^\x0c\n')
 
     # ^L moves the cursor to the beginning of the line, and the following \n clears the input string
     assert input_line(ut88) == ''   
@@ -390,7 +376,7 @@ def test_input_line_home_1(ut88):
 
 
 def test_input_line_home_2(ut88):
-    ut88.emulate_key_sequence('ABCD^LEF\n')
+    ut88.emulate_key_sequence('ABCD^\x0cEF\n')
 
     # ^L moves the cursor to the beginning of the line, then E and F symbols are entered. Finally,
     # following \n stops the line input

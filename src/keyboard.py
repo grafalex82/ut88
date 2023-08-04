@@ -325,11 +325,13 @@ class Keyboard(IODevice):
             self._pressed_key = self._key_map[ch]
 
 
-    def emulate_special_key_press(self, key):
+    def emulate_special_key_press(self, key, ctrl=False):
         if key == None:
             self._pressed_key = (0xff, 0xff, 0xff)
 
-        if key in self._key_codes_map:
+        if ctrl and key in self._ctrl_codes_map:
+            self._pressed_key = self._ctrl_codes_map[key]
+        elif key in self._key_codes_map:
             self._pressed_key = self._key_codes_map[key]
 
 
