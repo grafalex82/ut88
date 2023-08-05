@@ -5,14 +5,14 @@
 ; - f6df    - ???
 ; - f6e0    - 0x3f bytes of buffer ????
 ; - f721    - 
-; - f722    - 
-; - f723    - 
+; - f722    - Current line length
+; - f723    - Cursor X position, counting from left side. 0xff if not initialized yet.
 ; - f724    - Tab size - 1
 ; - f725    - Cursor Y position (counting from top-left corner)
 ; - f726    - 
 ; - f727    - end of file pointer (points to the next symbol after the last text char)
 ; - f729    - ????
-; - f72b    - ????
+; - f72b    - Pointer to the beginning of the current line
 
 COMMAND_E_EDITOR:
     cb00  0e 1f      MVI C, 1f                  ; Clear screen
@@ -30,7 +30,7 @@ EDITOR_MAIN_LOOP:
 
     cb13  21 00 30   LXI HL, 3000               ; ???? text start, and current cursor position?????
     cb16  22 29 f7   SHLD f729
-    cb19  22 2b f7   SHLD f72b
+    cb19  22 2b f7   SHLD CUR_LINE_PTR (f72b)
 
     cb1c  cd 9b cf   CALL GET_END_OF_FILE (cf9b); ???? get end of file pointer
     cb1f  22 27 f7   SHLD END_OF_FILE_PTR (f727)
@@ -38,12 +38,12 @@ EDITOR_MAIN_LOOP:
     cb22  cd 6f ce   CALL CLEAR_BUFFER (ce6f)
 
     cb25  eb         XCHG                       ; ????? Store 0x00
-    cb26  32 22 f7   STA f722
+    cb26  32 22 f7   STA CUR_LINE_LEN (f722)
     cb29  32 26 f7   STA f726
 
     cb2c  3d         DCR A                      ; ???? Store 0xff
     cb2d  32 21 f7   STA f721
-    cb30  32 23 f7   STA f723
+    cb30  32 23 f7   STA CURSOR_X (f723)
     cb33  32 25 f7   STA CURSOR_Y (f725)
 
     cb36  2b         DCX HL                     ; ???? Store 0xff to f6df
@@ -61,16 +61,16 @@ EDITOR_MAIN_LOOP:
     cb45  ca 95 cb   JZ cb95
 
     cb48  fe 08      CPI A, 08                  ; Check if left arrow is pressed
-    cb4a  ca 01 ce   JZ ce01
+    cb4a  ca 01 ce   JZ LEFT_ARROW (ce01)
 
     cb4d  fe 18      CPI A, 18                  ; Check if right arrow is pressed
-    cb4f  ca 85 cb   JZ cb85
+    cb4f  ca 85 cb   JZ RIGHT_ARROW (cb85)
 
     cb52  fe 19      CPI A, 19                  ; Check if up arrow is pressed
-    cb54  ca 1f ce   JZ ce1f
+    cb54  ca 1f ce   JZ UP_ARROW (ce1f)
 
     cb57  fe 1a      CPI A, 1a                  ; Check if down arrow is pressed
-    cb59  ca 34 cf   JZ cf34
+    cb59  ca 34 cf   JZ DOWN_ARROW (cf34)
 
     cb5c  fe 0c      CPI A, 0c                  ; Check if home key is pressed
     cb5e  ca b1 ce   JZ ceb1
@@ -78,7 +78,7 @@ EDITOR_MAIN_LOOP:
     cb61  fe 1f      CPI A, 1f                  ; Check if clear screen key is pressed
     cb63  c2 6b cb   JNZ cb6b
 
-cb66  cd ce ce   CALL cece
+cb66  cd ce ce   CALL FLUSH_STRING_BUF (cece)
 cb69  c1         POP BC
 cb6a  c9         RET
 
@@ -86,7 +86,7 @@ cb6a  c9         RET
     cb6b  fe 0d      CPI A, 0d                  ; Check if Return key is pressed
     cb6d  ca db cc   JZ PILOT_TONE (ccdb)
 
-    cb70  cd aa cb   CALL cbaa
+    cb70  cd aa cb   CALL CHECK_SYMBOL_AT_CURSOR (cbaa)
 
 cb73  3a 26 f7   LDA f726
 cb76  b7         ORA A
@@ -100,14 +100,21 @@ cb7f  7e         MOV A, M
 cb80  b7         ORA A
 cb81  ca db cc   JZ PILOT_TONE (ccdb)
 cb84  71         MOV M, C
-????:
-cb85  3a 23 f7   LDA f723
-cb88  fe 3e      CPI A, 3e
-cb8a  d2 db cc   JNC PILOT_TONE (ccdb)
-cb8d  3c         INR A
-cb8e  32 23 f7   STA f723
-cb91  23         INX HL
-cb92  c3 09 f8   JMP PUT_CHAR (f809)
+
+
+; Move cursor 1 position to the right
+RIGHT_ARROW:
+    cb85  3a 23 f7   LDA CURSOR_X (f723)        ; Load cursor position
+
+    cb88  fe 3e      CPI A, 3e                  ; Moving beyond right screen boundary is not allowed
+    cb8a  d2 db cc   JNC PILOT_TONE (ccdb)
+
+    cb8d  3c         INR A                      ; Increment cursor position
+    cb8e  32 23 f7   STA CURSOR_X (f723)
+
+    cb91  23         INX HL                     ; Increment text pointer as well
+
+    cb92  c3 09 f8   JMP PUT_CHAR (f809)        ; Actually move the cursor
 
 
 ; Find and execute command handler
@@ -136,17 +143,20 @@ PROCESS_COMMAND_LOOP:
     cba9  c9         RET
 
 
-????:
-cbaa  7e         MOV A, M
-cbab  b7         ORA A
-cbac  c0         RNZ
+; Check symbol at [HL]
+; The symbol must be non-zero, or at least previous symbol must be non zero. Otherwise beep an error
+CHECK_SYMBOL_AT_CURSOR:
+    cbaa  7e         MOV A, M                   ; Check that symbol under cursor is not zero
+    cbab  b7         ORA A
+    cbac  c0         RNZ
 
-cbad  2b         DCX HL
-cbae  b6         ORA M
-cbaf  23         INX HL
-cbb0  c0         RNZ
+    cbad  2b         DCX HL                     ; If it is - check previous symbol
+    cbae  b6         ORA M
+    cbaf  23         INX HL
+    cbb0  c0         RNZ
 
-cbb1  c3 dc cc   JMP PILOT_TONE_1 (ccdc)
+    cbb1  c3 dc cc   JMP PILOT_TONE_1 (ccdc)    ; Otherwise we are in error condition - make a beep
+
 
 ; Wait for a key press
 ; Return input key in A, Z flag is set if Ctrl key is pressed as well
@@ -162,7 +172,7 @@ GET_KBD_KEY:
 
 ????_COMMAND_X:
 cbbe  e5         PUSH HL
-cbbf  2a 2b f7   LHLD f72b
+cbbf  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
 cbc2  e3         XTHL
 cbc3  c3 cb cb   JMP cbcb
 
@@ -207,7 +217,7 @@ BEEP_AND_EXIT:
 
 CLEAR_SCREEN_AND_PRINT_COMMAND_PROMPT:
     cbfd  f5         PUSH PSW                   ; ????
-    cbfe  cd ce ce   CALL cece
+    cbfe  cd ce ce   CALL FLUSH_STRING_BUF (cece)
     cc01  f1         POP PSW
 
     cc02  0e 1f      MVI C, 1f                  ; Clear screen
@@ -254,7 +264,7 @@ INPUT_LINE:
     cc23  62         MOV H, D                   ; HL will point to the current char in the buffer
     cc24  6b         MOV L, E
 
-    cc25  32 23 f7   STA CHAR_COUNTER (f723)    ; Zero chars counter
+    cc25  32 23 f7   STA CURSOR_X (f723)    ; Zero chars counter
 
 INPUT_LINE_LOOP:
     cc28  cd ca cc   CALL PRINT_HASH_CURSOR (ccca)  ; Print cursor
@@ -269,7 +279,7 @@ INPUT_LINE_LOOP:
     cc39  2f         CMA
     cc3a  4f         MOV C, A
 
-    cc3b  3a 23 f7   LDA CHAR_COUNTER (f723)    ; Calculate nearest tab stop
+    cc3b  3a 23 f7   LDA CURSOR_X (f723)    ; Calculate nearest tab stop
     cc3e  47         MOV B, A
     cc3f  a1         ANA C
     cc40  91         SUB C
@@ -291,13 +301,13 @@ INPUT_LINE_MOVE_RIGHT:
     cc50  71         MOV M, C
 
 INPUT_LINE_MOVE_RIGHT_1:
-    cc51  3a 23 f7   LDA CHAR_COUNTER (f723)    ; Increase the buffer chars counter
+    cc51  3a 23 f7   LDA CURSOR_X (f723)    ; Increase the buffer chars counter
     cc54  3c         INR A
 
     cc55  fe 3f      CPI A, 3f                  ; Limit the buffer with 0x3f chars, report an error when
     cc57  d2 d4 cc   JNC INPUT_TEXT_BEEP_AND_REPEAT (ccd4)  ; the buffer is full
 
-    cc5a  32 23 f7   STA CHAR_COUNTER (f723)    ; Store the new counter value
+    cc5a  32 23 f7   STA CURSOR_X (f723)    ; Store the new counter value
 
     cc5d  23         INX HL                     ; Advance buffer pointer
 
@@ -337,9 +347,9 @@ INPUT_LINE_PROCESS_CHAR:
 
     cc90  77         MOV M, A                   ; Store zero char in the buffer
 
-    cc91  3a 23 f7   LDA CHAR_COUNTER (f723)    ; Store number of entered chars in 0xf722
+    cc91  3a 23 f7   LDA CURSOR_X (f723)        ; Store number of entered chars in 0xf722 ????
     cc94  3c         INR A
-    cc95  32 22 f7   STA f722
+    cc95  32 22 f7   STA CUR_LINE_LEN (f722)
 
     cc98  eb         XCHG                       ; Print the entered char
     cc99  0e 0a      MVI C, 0a                  ; Then advance to the new line and exit
@@ -366,11 +376,11 @@ INPUT_LINE_RIGHT:
     ccae  c3 48 cc   JMP INPUT_LINE_MOVE_RIGHT (cc48)
 
 INPUT_LINE_BACKSPACE:
-    ccb1  3a 23 f7   LDA CHAR_COUNTER (f723)    ; Check if there is room to go
+    ccb1  3a 23 f7   LDA CURSOR_X (f723)        ; Check if there is room to go
     ccb4  3d         DCR A
     ccb5  fa d4 cc   JM INPUT_TEXT_BEEP_AND_REPEAT (ccd4)   ; Report error if we are at the beginning of line
 
-    ccb8  32 23 f7   STA CHAR_COUNTER (f723)    ; Store new position
+    ccb8  32 23 f7   STA CURSOR_X (f723)        ; Store new position
 
     ccbb  3e 20      MVI A, 20                  ; Clear the symbol at cursor
     ccbd  cd 81 cd   CALL PUT_CHAR_A (cd81)
@@ -443,26 +453,28 @@ ccf9  2b         DCX HL
 ????:
 ccfa  cd 53 ce   CALL ce53
 
+; ?????
 ????:
 ccfd  cd 1b cc   CALL HOME_SCREEN_CURSOR (cc1b)
 
 cd00  22 29 f7   SHLD f729
 
 cd03  af         XRA A
-cd04  32 23 f7   STA f723
+cd04  32 23 f7   STA CURSOR_X (f723)
 
-cd07  06 1f      MVI B, 1f
-
-????:
-cd09  0e 3f      MVI C, 3f
-cd0b  cd 6f ce   CALL CLEAR_BUFFER (ce6f)
+    cd07  06 1f      MVI B, 1f                  ; Print 31 line on the page
+                                                ; BUG: UT-88 has only 28 lines on the screen
 
 ????:
-cd0e  7e         MOV A, M
-cd0f  fe 0d      CPI A, 0d
-cd11  c2 74 cd   JNZ cd74
+    cd09  0e 3f      MVI C, 3f                  ; Will print no more 63 chars on the line (64th char is '*')
+    cd0b  cd 6f ce   CALL CLEAR_BUFFER (ce6f)
 
-    cd14  3e 2a      MVI A, 2a                  ; Print '*' prompt
+????:
+    cd0e  7e         MOV A, M                   ; Load the next char.
+    cd0f  fe 0d      CPI A, 0d                  ; If this is not return char - print it normally
+    cd11  c2 74 cd   JNZ cd74
+
+    cd14  3e 2a      MVI A, 2a                  ; Print '*' indicating end of line
     cd16  cd 81 cd   CALL PUT_CHAR_A (cd81)
 
     cd19  c5         PUSH BC                    ; Clear rest of the line with spaces
@@ -479,30 +491,30 @@ cd11  c2 74 cd   JNZ cd74
     cd26  b7         ORA A                      ; Check if it is >=0x80
     cd27  fa 32 cd   JM cd32
 
-    cd2a  05         DCR B                      ; ????
+    cd2a  05         DCR B                      ; Will print B lines on the page
     cd2b  ca 33 cd   JZ cd33
 
-    cd2e  23         INX HL                     ; ????
+    cd2e  23         INX HL                     ; Advance to the next text char, and repeat for the next line
     cd2f  c3 09 cd   JMP cd09
 
 
 ????:
-    cd32  05         DCR B                      ; ????
+    cd32  05         DCR B                      ; Increase line counter
 
 ????:
     cd33  3e 08      MVI A, 08                  ; Move 2 characters back
     cd35  cd 81 cd   CALL PUT_CHAR_A (cd81)
     cd38  cd 81 cd   CALL PUT_CHAR_A (cd81)
 
-    cd3b  3e 3f      MVI A, 3f                  ; ????? C = 0x3f - C
-    cd3d  91         SUB C                      ; ???? Update X coordinate????
+    cd3b  3e 3f      MVI A, 3f                  ; C = 0x3f - C
+    cd3d  91         SUB C                      ; Update X coordinate variable ????
     cd3e  4f         MOV C, A
 
     cd3f  32 21 f7   STA f721                   ; ????
-    cd42  32 22 f7   STA f722
+    cd42  32 22 f7   STA CUR_LINE_LEN (f722)
 
     cd45  3e 1e      MVI A, 1e                  ; ???? Update Y coordinate????
-    cd47  90         SUB B
+    cd47  90         SUB B                      ; BUG: UT-88 display has only 28 lines, not 32
     cd48  32 25 f7   STA CURSOR_Y (f725)
 
     cd4b  79         MOV A, C                   ; Change sign of C (X coordinate ????)
@@ -512,11 +524,11 @@ cd11  c2 74 cd   JNZ cd74
     cd4e  ca 55 cd   JZ cd55                    ; Skip next operation if C is zero
 
     cd51  4f         MOV C, A                   ; HL -= X coordinate ???
-    cd52  06 ff      MVI B, ff
+    cd52  06 ff      MVI B, ff                  ; HL now points to the beginning of the last printed line
     cd54  09         DAD BC
 
 ????:
-    cd55  22 2b f7   SHLD f72b                  ; ????
+    cd55  22 2b f7   SHLD CUR_LINE_PTR (f72b)   ; ???? Save next page start address
 
     cd58  11 e0 f6   LXI DE, f6e0               ; Load start buffer address
     cd5b  eb         XCHG
@@ -525,7 +537,7 @@ cd11  c2 74 cd   JNZ cd74
     cd5c  3a 25 f7   LDA CURSOR_Y (f725)        ; Calculate how many lines below the cursor
     cd5f  f5         PUSH PSW
     cd60  47         MOV B, A
-    cd61  3e 1f      MVI A, 1f
+    cd61  3e 1f      MVI A, 1f                  ; BUG: UT-88 display has only 28 lines, not 32
     cd63  90         SUB B
 
     cd64  01 20 40   LXI BC, 4020               ; Clear those lines
@@ -538,15 +550,19 @@ cd11  c2 74 cd   JNZ cd74
     cd6e  01 1a 01   LXI BC, 011a
     cd71  c3 97 d0   JMP PUT_CHAR_BLOCK (d097)
 
-????:
-cd74  0d         DCR C
-cd75  12         STAX DE
-cd76  ca 0f ce   JZ ce0f
 
-cd79  cd 81 cd   CALL PUT_CHAR_A (cd81)
-cd7c  23         INX HL
-cd7d  13         INX DE
-cd7e  c3 0e cd   JMP cd0e
+????:
+    cd74  0d         DCR C                      ; Store next char if it fits the buffer
+    cd75  12         STAX DE                    ; Print 'String too long' error otherwise
+    cd76  ca 0f ce   JZ PRINT_LONG_STR_ERROR (ce0f)
+
+    cd79  cd 81 cd   CALL PUT_CHAR_A (cd81)     ; Also print character on the screen
+
+    cd7c  23         INX HL                     ; Advance to the next char
+    cd7d  13         INX DE
+    cd7e  c3 0e cd   JMP cd0e
+
+
 
 PUT_CHAR_A:
     cd81  c5         PUSH BC
@@ -640,16 +656,23 @@ cdf9  7c         MOV A, H
 cdfa  cd 15 f8   CALL f815
 cdfd  7d         MOV A, L
 cdfe  c3 15 f8   JMP f815
-????:
-ce01  3a 23 f7   LDA f723
-ce04  3d         DCR A
-ce05  fa db cc   JM PILOT_TONE (ccdb)
 
-ce08  32 23 f7   STA f723
-ce0b  2b         DCX HL
-ce0c  c3 09 f8   JMP PUT_CHAR (f809)
-????:
-ce0f  11 f6 d2   LXI DE, LONG_STRING_STR (d2f6)
+; Move cursor 1 position left
+LEFT_ARROW:
+    ce01  3a 23 f7   LDA CURSOR_X (f723)        ; Decrement cursor position
+    ce04  3d         DCR A
+
+    ce05  fa db cc   JM PILOT_TONE (ccdb)       ; Moving beyond left screen boundary is not allowed
+
+    ce08  32 23 f7   STA CURSOR_X (f723)        ; Store new cursor position
+
+    ce0b  2b         DCX HL                     ; Move text pointer as well
+
+    ce0c  c3 09 f8   JMP PUT_CHAR (f809)        ; Actually move the cursor
+
+; Print String too long error
+PRINT_LONG_STR_ERROR:
+    ce0f  11 f6 d2   LXI DE, LONG_STRING_STR (d2f6)
 
 ; Print error
 ; DE - pointer to error type
@@ -662,14 +685,14 @@ PRINT_ERROR:
 
     ce1c  c3 f7 cb   JMP BEEP_AND_EXIT (cbf7)   ; ?????
 
-????:
+UP_ARROW:
 ce1f  cd 80 ce   CALL ce80
 ce22  fa b4 ce   JM ceb4
 
-ce25  2a 2b f7   LHLD f72b
+ce25  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
 ce28  cd 51 ce   CALL ce51
 ????:
-ce2b  22 2b f7   SHLD f72b
+ce2b  22 2b f7   SHLD CUR_LINE_PTR (f72b)
 ce2e  cd 6f ce   CALL CLEAR_BUFFER (ce6f)
 ce31  d5         PUSH DE
 ce32  06 00      MVI B, 00
@@ -685,13 +708,15 @@ ce3e  c3 34 ce   JMP ce34
 ????:
 ce41  78         MOV A, B
 ce42  32 21 f7   STA f721
-ce45  32 22 f7   STA f722
+ce45  32 22 f7   STA CUR_LINE_LEN (f722)
 ce48  e1         POP HL
-ce49  3a 23 f7   LDA f723
+ce49  3a 23 f7   LDA CURSOR_X (f723)
 ce4c  5f         MOV E, A
 ce4d  16 00      MVI D, 00
 ce4f  19         DAD DE
 ce50  c9         RET
+
+
 ????:
 ce51  2b         DCX HL
 ce52  2b         DCX HL
@@ -705,9 +730,12 @@ ce5d  c5         PUSH BC
 ce5e  23         INX HL
 ce5f  c8         RZ
 ce60  c3 51 ce   JMP ce51
+
+; ?????
 ????:
 ce63  cd ea cc   CALL CMP_HL_DE (ccea)
 ce66  ca fd cc   JZ ccfd
+
 ce69  cd 51 ce   CALL ce51
 ce6c  c3 fd cc   JMP ccfd
 
@@ -734,17 +762,23 @@ CLEAR_BUFFER_LOOP:
     ce7e  c1         POP BC
     ce7f  c9         RET
 
+
 ????:
-ce80  cd 09 f8   CALL PUT_CHAR (f809)
-ce83  cd ce ce   CALL cece
-ce86  21 25 f7   LXI HL, CURSOR_Y (f725)
-ce89  35         DCR M
-ce8a  2a 29 f7   LHLD f729
-ce8d  11 00 30   LXI DE, 3000
-ce90  c9         RET
+    ce80  cd 09 f8   CALL PUT_CHAR (f809)       ; Print the char ???? cursor movement???
+
+    ce83  cd ce ce   CALL FLUSH_STRING_BUF (cece)   ; ????
+
+    ce86  21 25 f7   LXI HL, CURSOR_Y (f725)    ; Decrement cursor Y position
+    ce89  35         DCR M
+
+    ce8a  2a 29 f7   LHLD f729                  ; ???? Load some values
+    ce8d  11 00 30   LXI DE, 3000
+
+    ce90  c9         RET
+
 
 ?????_UP:
-ce91  cd ce ce   CALL cece
+ce91  cd ce ce   CALL FLUSH_STRING_BUF (cece)
 ce94  2a 29 f7   LHLD f729
 
 ce97  06 1e      MVI B, 1e
@@ -771,91 +805,137 @@ ceae  c3 fd cc   JMP ccfd
 
 ????:
 ceb1  cd 80 ce   CALL ce80
+
 ????:
 ceb4  fc 63 ce   CM ce63
+
 ceb7  af         XRA A
-ceb8  32 23 f7   STA f723
+ceb8  32 23 f7   STA CURSOR_X (f723)
 cebb  32 25 f7   STA CURSOR_Y (f725)
 cebe  cd 1b cc   CALL HOME_SCREEN_CURSOR (cc1b)
 cec1  2a 29 f7   LHLD f729
-cec4  c3 26 ce   JMP ce26
+cec4  c3 2b ce   JMP ce2b
+
 ????:
-cec7  3a 23 f7   LDA f723
+cec7  3a 23 f7   LDA CURSOR_X (f723)
 ceca  b7         ORA A
 cecb  c2 dc cc   JNZ PILOT_TONE_1 (ccdc)
 
-????:
-cece  3a 21 f7   LDA f721
-ced1  b7         ORA A
-ced2  f8         RM
 
-ced3  4f         MOV C, A
-ced4  06 00      MVI B, 00
-ced6  2a 2b f7   LHLD f72b
-ced9  e5         PUSH HL
-ceda  09         DAD BC
+; Flush currently edited line from buffer to text
+;
+; Since the line may become shorter or longer compared to the original one, the function shifts the rest
+; of the text left or right in order to fit the buffer text perfectly. Eventually text from the buffer is
+; flushed to the main text area.
+FLUSH_STRING_BUF:
+    cece  3a 21 f7   LDA f721                   ; Check if X cursor position has meaningful value (do nothing
+    ced1  b7         ORA A                      ; if line editing has not been yet started)
+    ced2  f8         RM
 
-cedb  c2 df ce   JNZ cedf
+    ced3  4f         MOV C, A                   ; HL = Current line start address + line length
+    ced4  06 00      MVI B, 00                  ; (end of the current line)
+    ced6  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
+    ced9  e5         PUSH HL
+    ceda  09         DAD BC
 
-cede  2b         DCX HL
+    cedb  c2 df ce   JNZ FLUSH_STRING_BUF_1 (cedf)  ; HL is expected to point to the last char of the string
 
-????:
-cedf  3a 22 f7   LDA f722
-cee2  91         SUB C
+    cede  2b         DCX HL                     ; If string is empty move HL to the last char of prev string
 
-cee3  5f         MOV E, A
-cee4  16 00      MVI D, 00
+FLUSH_STRING_BUF_1:
+    cedf  3a 22 f7   LDA CUR_LINE_LEN (f722)    ; Calculate difference between old and new line length
+    cee2  91         SUB C
 
-cee6  fc fe ce   CM cefe
-cee9  c4 18 cf   CNZ cf18
-ceec  d1         POP DE
+    cee3  5f         MOV E, A                   ; Put difference to DE
+    cee4  16 00      MVI D, 00                  ; DE = new line len - orig line len
 
-ceed  21 e0 f6   LXI HL, f6e0
+    cee6  fc fe ce   CM SHIFT_TEXT_LEFT (cefe)  ; If difference is negative - shift remainder of file left
 
-????:
-cef0  7e         MOV A, M
-cef1  b7         ORA A
-cef2  c2 f7 ce   JNZ cef7
-cef5  3e 0d      MVI A, 0d
-????:
-cef7  12         STAX DE
-cef8  c8         RZ
-cef9  23         INX HL
-cefa  13         INX DE
-cefb  c3 f0 ce   JMP cef0
+    cee9  c4 18 cf   CNZ SHIFT_TEXT_RIGHT (cf18); If difference is positive - shift remainder of file right
 
-????:
-cefe  15         DCR D
-ceff  e5         PUSH HL
-cf00  19         DAD DE
-cf01  44         MOV B, H
-cf02  4d         MOV C, L
-cf03  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
-cf06  e5         PUSH HL
-cf07  19         DAD DE
-cf08  22 27 f7   SHLD END_OF_FILE_PTR (f727)
-cf0b  d1         POP DE
-cf0c  e1         POP HL
-????:
-cf0d  7e         MOV A, M
-cf0e  02         STAX BC
-cf0f  cd ea cc   CALL CMP_HL_DE (ccea)
-cf12  c8         RZ
-cf13  23         INX HL
-cf14  03         INX BC
-cf15  c3 0d cf   JMP cf0d
-????:
-cf18  23         INX HL
-cf19  e5         PUSH HL
-cf1a  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
-cf1d  e5         PUSH HL
-cf1e  19         DAD DE
-cf1f  cd aa cf   CALL CHECK_FILE_SIZE (cfaa)
-cf22  44         MOV B, H
-cf23  4d         MOV C, L
-cf24  22 27 f7   SHLD END_OF_FILE_PTR (f727)
-cf27  e1         POP HL
-cf28  d1         POP DE
+    ceec  d1         POP DE                     ; Copy line from the buffer to the text area
+    ceed  21 e0 f6   LXI HL, f6e0
+
+FLUSH_STRING_BUF_LOOP:
+    cef0  7e         MOV A, M                   ; Load the next symbol. 
+    cef1  b7         ORA A
+    cef2  c2 f7 ce   JNZ FLUSH_STRING_BUF_2 (cef7)
+
+    cef5  3e 0d      MVI A, 0d                  ; If the symbol is zero - replace it with \r
+
+FLUSH_STRING_BUF_2:
+    cef7  12         STAX DE                    ; Store the symbol
+
+    cef8  c8         RZ                         ; Stop at zero symbol
+
+    cef9  23         INX HL                     ; Advance to the next byte
+    cefa  13         INX DE
+    cefb  c3 f0 ce   JMP FLUSH_STRING_BUF_LOOP (cef0)
+
+
+; Shift text left
+;
+; The function cuts a portion of file, and shifts remainder of file after the cut point left.
+;
+; Arguments:
+; E - difference between old and new file size (negative)
+; D - 0x00
+; HL - pointer to the cut point (will cut left to the cut point)
+SHIFT_TEXT_LEFT:
+    cefe  15         DCR D                      ; E is negative difference, make D negative as well (0xff)
+
+    ceff  e5         PUSH HL                    ; Calculate new line end (HL -= line len diff)              
+    cf00  19         DAD DE
+
+    cf01  44         MOV B, H                   ; Move to BC
+    cf02  4d         MOV C, L
+
+    cf03  2a 27 f7   LHLD END_OF_FILE_PTR (f727); Apply difference to end of file pointer
+    cf06  e5         PUSH HL
+    cf07  19         DAD DE
+    cf08  22 27 f7   SHLD END_OF_FILE_PTR (f727)
+
+    cf0b  d1         POP DE                     ; HL - src ptr, BC - dst ptr
+    cf0c  e1         POP HL                     ; DE - old end of file
+
+CUT_TEXT_LOOP:
+    cf0d  7e         MOV A, M                   ; Copy [HL] to [BC]
+    cf0e  02         STAX BC
+
+    cf0f  cd ea cc   CALL CMP_HL_DE (ccea)      ; Repeat until HL reaches DE
+    cf12  c8         RZ
+
+    cf13  23         INX HL                     ; Advance to the next byte
+    cf14  03         INX BC
+    cf15  c3 0d cf   JMP CUT_TEXT_LOOP (cf0d)
+
+; Shift text right
+;
+; The function inserts a space in the middle of a file, and shifts remainder of file after the insertion
+; point right
+;
+; Arguments:
+; E - difference between old and new file size (positive)
+; D - 0x00
+; HL - pointer to the end of previous string (insertion point - 1)
+SHIFT_TEXT_RIGHT:
+    cf18  23         INX HL                     ; HL points to the end of previous string. Skip \r symbol
+    cf19  e5         PUSH HL                    ; and advance to the beginning of the new line
+
+    cf1a  2a 27 f7   LHLD END_OF_FILE_PTR (f727); Load end of data pointer
+    cf1d  e5         PUSH HL
+
+    cf1e  19         DAD DE                     ; Calculate new end of data pointer (apply difference)
+
+    cf1f  cd aa cf   CALL CHECK_FILE_SIZE (cfaa); Check if the new file size does not exceed limits
+
+    cf22  44         MOV B, H                   ; Store new end of file
+    cf23  4d         MOV C, L
+    cf24  22 27 f7   SHLD END_OF_FILE_PTR (f727)
+
+    cf27  e1         POP HL                     ; start/end pointers of the range to copy
+    cf28  d1         POP DE
+
 
 ; Shift string right (copy string from last to first symbol)
 ; DE - start of source string
@@ -872,23 +952,30 @@ SHIFT_STR_RIGHT:
     cf30  0b         DCX BC
     cf31  c3 29 cf   JMP SHIFT_STR_RIGHT (cf29)
 
-????:
-cf34  3a 25 f7   LDA CURSOR_Y (f725)
-cf37  b7         ORA A
-cf38  fa 0e d0   JM d00e
 
-cf3b  0e 1a      MVI C, 1a
-cf3d  cd 09 f8   CALL PUT_CHAR (f809)
-cf40  cd ce ce   CALL cece
-cf43  cd 89 cf   CALL cf89
+; Process down arrow key press
+DOWN_ARROW:
+    cf34  3a 25 f7   LDA CURSOR_Y (f725)        ; ????
+    cf37  b7         ORA A
+    cf38  fa 0e d0   JM d00e
+
+    cf3b  0e 1a      MVI C, 1a                  ; Move cursor down
+    cf3d  cd 09 f8   CALL PUT_CHAR (f809)
+
+    cf40  cd ce ce   CALL FLUSH_STRING_BUF (cece)   ; Flush the buffer, if the line was changed
+
+cf43  cd 89 cf   CALL GET_NEXT_LINE_ADDR (cf89)
+
 cf46  21 25 f7   LXI HL, CURSOR_Y (f725)
 cf49  34         INR M
 cf4a  7e         MOV A, M
-cf4b  fe 1f      CPI A, 1f
-cf4d  f2 5e cf   JP cf5e
-cf50  3a 22 f7   LDA f722
+
+    cf4b  fe 1f      CPI A, 1f                  ; ?????
+    cf4d  f2 5e cf   JP cf5e                    ; BUG: UT-88 has only 28 lines, not 32
+
+cf50  3a 22 f7   LDA CUR_LINE_LEN (f722)
 cf53  4f         MOV C, A
-cf54  2a 2b f7   LHLD f72b
+cf54  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
 cf57  06 00      MVI B, 00
 cf59  09         DAD BC
 cf5a  23         INX HL
@@ -903,8 +990,8 @@ cf65  c2 61 cf   JNZ cf61
 cf68  c3 fd cc   JMP ccfd
 
 ????_DOWN:
-cf6b  cd ce ce   CALL cece
-cf6e  cd 89 cf   CALL cf89
+cf6b  cd ce ce   CALL FLUSH_STRING_BUF (cece)
+cf6e  cd 89 cf   CALL GET_NEXT_LINE_ADDR (cf89)
 cf71  2a 29 f7   LHLD f729
 cf74  06 1f      MVI B, 1f
 ????:
@@ -922,18 +1009,24 @@ cf81  c2 7c cf   JNZ cf7c
 cf84  06 02      MVI B, 02
 cf86  c3 99 ce   JMP ce99
 
-????:
-cf89  2a 2b f7   LHLD f72b
-cf8c  3a 22 f7   LDA f722
-cf8f  4f         MOV C, A
-cf90  06 00      MVI B, 00
-cf92  09         DAD BC
-cf93  23         INX HL
-cf94  7e         MOV A, M
-cf95  b7         ORA A
-cf96  f0         RP
-cf97  c1         POP BC
-cf98  c3 fe d0   JMP d0fe
+; ?????
+GET_NEXT_LINE_ADDR:
+    cf89  2a 2b f7   LHLD CUR_LINE_PTR (f72b)   ; Get current line text ptr
+    cf8c  3a 22 f7   LDA CUR_LINE_LEN (f722)    ; Get current line length
+
+    cf8f  4f         MOV C, A                   ; Add the 2 values
+    cf90  06 00      MVI B, 00
+    cf92  09         DAD BC
+
+    cf93  23         INX HL                     ; Advance to the next symbol (beginning of the next line)
+
+    cf94  7e         MOV A, M                   ; Nothing to do if there is a valid text there, return
+    cf95  b7         ORA A
+    cf96  f0         RP
+
+    cf97  c1         POP BC                     ; ??? Ignore return address
+
+    cf98  c3 fe d0   JMP d0fe                   ; ???? Shift the text ????
 
 
 GET_END_OF_FILE:
@@ -969,7 +1062,7 @@ CHECK_FILE_SIZE:
 cfbb  cd c7 ce   CALL cec7
 cfbe  2a 29 f7   LHLD f729
 cfc1  22 31 f7   SHLD f731
-cfc4  2a 2b f7   LHLD f72b
+cfc4  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
 cfc7  22 2d f7   SHLD f72d
 cfca  cd ca cc   CALL PRINT_HASH_CURSOR (ccca)
 ????:
@@ -998,7 +1091,7 @@ cffb  22 29 f7   SHLD f729
 cffe  2a 2d f7   LHLD f72d
 d001  44         MOV B, H
 d002  4d         MOV C, L
-d003  2a 2b f7   LHLD f72b
+d003  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
 d006  cd 0d cf   CALL cf0d
 d009  60         MOV H, B
 d00a  69         MOV L, C
@@ -1022,8 +1115,8 @@ d029  cd 6b cf   CALL cf6b
 d02c  c3 1d d0   JMP d01d
 ????:
 d02f  e5         PUSH HL
-d030  2a 2b f7   LHLD f72b
-d033  3a 22 f7   LDA f722
+d030  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
+d033  3a 22 f7   LDA CUR_LINE_LEN (f722)
 d036  5f         MOV E, A
 d037  16 00      MVI D, 00
 d039  19         DAD DE
@@ -1033,7 +1126,7 @@ d03c  3c         INR A
 d03d  e1         POP HL
 d03e  c9         RET
 ????:
-d03f  2a 2b f7   LHLD f72b
+d03f  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
 d042  eb         XCHG
 d043  2a 2d f7   LHLD f72d
 d046  cd ea cc   CALL CMP_HL_DE (ccea)
@@ -1043,15 +1136,16 @@ d04f  b7         ORA A
 d050  c2 59 d0   JNZ d059
 d053  cd b1 ce   CALL ceb1
 d056  c3 cd cf   JMP cfcd
+
 ????:
-d059  cd 1f ce   CALL ce1f
+d059  cd 1f ce   CALL UP_ARROW (ce1f)
 d05c  c3 cd cf   JMP cfcd
 
 ????_RIGHT:
-d05f  cd aa cb   CALL cbaa
+d05f  cd aa cb   CALL CHECK_SYMBOL_AT_CURSOR (cbaa)
 
 ????:
-d062  11 22 f7   LXI DE, f722
+d062  11 22 f7   LXI DE, CUR_LINE_LEN (f722)
 d065  1a         LDAX DE
 
 d066  3c         INR A
@@ -1083,7 +1177,7 @@ d085  cd 09 f8   CALL PUT_CHAR (f809)
 
 d088  cd cf cc   CALL PRINT_BACKSPACE (cccf)
 d08b  cd 9e cc   CALL HOME_CURSOR (cc9e)
-d08e  3a 23 f7   LDA f723
+d08e  3a 23 f7   LDA CURSOR_X (f723)
 d091  47         MOV B, A
 d092  0e 18      MVI C, 18
 d094  3e 01      MVI A, 01
@@ -1091,33 +1185,35 @@ d096  eb         XCHG
 
 ; Print char in C register A*B times
 PUT_CHAR_BLOCK:
-    d097  b7         ORA A                          ; Do not print anything if A is zero
+    d097  b7         ORA A                      ; Do not print anything if A is zero
     d098  c8         RZ
 
-    d099  05         DCR B                          ; Do not print anything if B is zero
+    d099  05         DCR B                      ; Do not print anything if B is zero
     d09a  f8         RM
     d09b  04         INR B
     d09c  c5         PUSH BC
 
 PUT_CHAR_BLOCK_LOOP:
-    d09d  cd 09 f8   CALL PUT_CHAR (f809)           ; Print the char in C register B times
+    d09d  cd 09 f8   CALL PUT_CHAR (f809)       ; Print the char in C register B times
     d0a0  05         DCR B
     d0a1  c2 9d d0   JNZ PUT_CHAR_BLOCK_LOOP (d09d)
 
-    d0a4  c1         POP BC                         ; Decrement A
+    d0a4  c1         POP BC                     ; Decrement A
     d0a5  3d         DCR A
     d0a6  c8         RZ
 
-    d0a7  c3 97 d0   JMP PUT_CHAR_BLOCK (d097)      ; Repeat if A is not zero
+    d0a7  c3 97 d0   JMP PUT_CHAR_BLOCK (d097)  ; Repeat if A is not zero
 
 
-????_LEFT:
-d0aa  cd aa cb   CALL cbaa
-d0ad  7e         MOV A, M
-d0ae  b7         ORA A
-d0af  ca db cc   JZ PILOT_TONE (ccdb)
+; Ctrl-Left key combination deletes symbol at cursor, shifting the rest of the line left 1 char
+CTRL_LEFT:
+    d0aa  cd aa cb   CALL CHECK_SYMBOL_AT_CURSOR (cbaa) ; Deleting at the end of text is not allowed
+    d0ad  7e         MOV A, M
+    d0ae  b7         ORA A
+    d0af  ca db cc   JZ PILOT_TONE (ccdb)
+
 d0b2  eb         XCHG
-d0b3  21 22 f7   LXI HL, f722
+d0b3  21 22 f7   LXI HL, CUR_LINE_LEN (f722)
 d0b6  35         DCR M
 d0b7  eb         XCHG
 d0b8  e5         PUSH HL
@@ -1154,17 +1250,17 @@ d0de  af         XRA A
 d0df  32 21 f7   STA f721
 d0e2  cd 20 cc   CALL INPUT_LINE (cc20)
 d0e5  da 0e d0   JC d00e
-d0e8  cd ce ce   CALL cece
-d0eb  3a 22 f7   LDA f722
+d0e8  cd ce ce   CALL FLUSH_STRING_BUF (cece)
+d0eb  3a 22 f7   LDA CUR_LINE_LEN (f722)
 d0ee  5f         MOV E, A
 d0ef  16 00      MVI D, 00
-d0f1  2a 2b f7   LHLD f72b
+d0f1  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
 d0f4  19         DAD DE
-d0f5  22 2b f7   SHLD f72b
+d0f5  22 2b f7   SHLD CUR_LINE_PTR (f72b)
 d0f8  c3 de d0   JMP d0de
 
 ????_COMMAND_T:
-d0fb  cd ce ce   CALL cece
+d0fb  cd ce ce   CALL FLUSH_STRING_BUF (cece)
 
 ????:
     d0fe  2a 27 f7   LHLD END_OF_FILE_PTR (f727)    ; Get pointer to the last text char
@@ -1172,21 +1268,22 @@ d0fb  cd ce ce   CALL cece
 
 d102  cd 84 cf   CALL cf84
 
-d105  3a 22 f7   LDA f722
+d105  3a 22 f7   LDA CUR_LINE_LEN (f722)
 d108  4f         MOV C, A
 d109  06 00      MVI B, 00
 d10b  eb         XCHG
 d10c  09         DAD BC
 d10d  23         INX HL
-d10e  22 2b f7   SHLD f72b
+d10e  22 2b f7   SHLD CUR_LINE_PTR (f72b)
 
 d111  0e 1a      MVI C, 1a
 d113  cd 09 f8   CALL PUT_CHAR (f809)
 
 d116  c3 de d0   JMP d0de
 
+
 NEW_FILE:
-    d119  cd ce ce   CALL cece                  ; ?????
+    d119  cd ce ce   CALL FLUSH_STRING_BUF (cece)   ; Flush current changes
 
     d11c  21 17 d3   LXI HL, NEW_FILE_PROMPT_STR (d317) ; Ask the User whether they really want a new file
     d11f  cd 18 f8   CALL PRINT_STRING (f818)
@@ -1684,7 +1781,7 @@ COMMAND_HANDLERS:
     d36b  52 a7 cd      db 'R', ????_COMMAND_R (cda7)
     d36e  46 bf cd      db 'F', ????_COMMAND_F (cdbf)
     d371  59 9d cd      db 'Y', ????_COMMAND_Y (cd9d)
-    d374  08 aa d0      db 0x08, d0aa
+    d374  08 aa d0      db 0x08, CTRL_LEFT (d0aa)
     d377  18 5f d0      db 0x18, d05f
     d37a  19 91 ce      db 0x19, ce91
     d37d  1a 6b cf      db 0x1a, cf6b
