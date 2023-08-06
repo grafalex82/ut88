@@ -93,7 +93,7 @@ cb76  b7         ORA A
 cb77  c2 7f cb   JNZ cb7f
 
 cb7a  c5         PUSH BC
-cb7b  cd 62 d0   CALL d062
+cb7b  cd 62 d0   CALL INSERT_SYMB_1 (d062)
 cb7e  c1         POP BC
 ????:
 cb7f  7e         MOV A, M
@@ -1211,7 +1211,7 @@ cffe  2a 2d f7   LHLD f72d
 d001  44         MOV B, H
 d002  4d         MOV C, L
 d003  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
-d006  cd 0d cf   CALL cf0d
+d006  cd 0d cf   CALL CUT_TEXT_LOOP (cf0d)
 d009  60         MOV H, B
 d00a  69         MOV L, C
 d00b  22 27 f7   SHLD END_OF_FILE_PTR (f727)
@@ -1262,47 +1262,52 @@ d056  c3 cd cf   JMP cfcd
 d059  cd 1f ce   CALL UP_ARROW (ce1f)
 d05c  c3 cd cf   JMP cfcd
 
-????_RIGHT:
-d05f  cd aa cb   CALL CHECK_SYMBOL_AT_CURSOR (cbaa)
+; Insert a symbol at cursor position (Ctrl-Right). Shift the remaining part of the string right.
+; HL - pointer to the cursor position in the line buffer
+INSERT_SYMB:
+    d05f  cd aa cb   CALL CHECK_SYMBOL_AT_CURSOR (cbaa) ; Check if we can insert symbol at cursor
 
-????:
-d062  11 22 f7   LXI DE, CUR_LINE_LEN (f722)
-d065  1a         LDAX DE
+INSERT_SYMB_1:
+    d062  11 22 f7   LXI DE, CUR_LINE_LEN (f722)    ; Load current line length value
+    d065  1a         LDAX DE
 
-d066  3c         INR A
-d067  fe 3f      CPI A, 3f
-d069  d2 db cc   JNC PILOT_TONE (ccdb)
+    d066  3c         INR A                          ; Increment line length and verify there is enough room for
+    d067  fe 3f      CPI A, 3f                      ; inserted symbol
+    d069  d2 db cc   JNC PILOT_TONE (ccdb)
 
-d06c  12         STAX DE
-d06d  e5         PUSH HL
+    d06c  12         STAX DE                        ; Store new line length
+    d06d  e5         PUSH HL
 
-d06e  cd cb d0   CALL SEARCH_END_OF_STRING (d0cb)
-d071  23         INX HL
-d072  44         MOV B, H
-d073  4d         MOV C, L
+    d06e  cd cb d0   CALL SEARCH_END_OF_STRING (d0cb)   ; Search for the end of string in the buffer
 
-d074  d1         POP DE
-d075  2b         DCX HL
+    d071  23         INX HL                         ; Advance end of string for 1 symbol, and store address in BC
+    d072  44         MOV B, H
+    d073  4d         MOV C, L
 
-d076  cd 29 cf   CALL SHIFT_STR_RIGHT (cf29)
-d079  36 20      MVI M, 20
+    d074  d1         POP DE                         ; DE - pointer to the insertion point in the line buffer
+    d075  2b         DCX HL                         ; HL - last char in the buffer before insertion
 
-????:
-d07b  cd 18 f8   CALL PRINT_STRING (f818)
+    d076  cd 29 cf   CALL SHIFT_STR_RIGHT (cf29)    ; Shift DE-HL part of the string 1 char right
 
-d07e  0e 2a      MVI C, 2a                  ; Print '*'
-d080  cd 09 f8   CALL PUT_CHAR (f809)
+    d079  36 20      MVI M, 20                      ; Insert a space
 
-d083  0e 20      MVI C, 20                  ; Print space
-d085  cd 09 f8   CALL PUT_CHAR (f809)
+; Redraw screen from the current cursor position and till the end of the string
+REDRAW_STRING:
+    d07b  cd 18 f8   CALL PRINT_STRING (f818)       ; Print line buffer from the edit point
 
-d088  cd cf cc   CALL PRINT_BACKSPACE (cccf)
-d08b  cd 9e cc   CALL HOME_CURSOR (cc9e)
-d08e  3a 23 f7   LDA CURSOR_X (f723)
-d091  47         MOV B, A
-d092  0e 18      MVI C, 18
-d094  3e 01      MVI A, 01
-d096  eb         XCHG
+    d07e  0e 2a      MVI C, 2a                      ; Print '*'
+    d080  cd 09 f8   CALL PUT_CHAR (f809)
+
+    d083  0e 20      MVI C, 20                      ; Print space after line end, stay on the same position
+    d085  cd 09 f8   CALL PUT_CHAR (f809)
+    d088  cd cf cc   CALL PRINT_BACKSPACE (cccf)
+
+    d08b  cd 9e cc   CALL HOME_CURSOR (cc9e)        ; Move cursor to the beginning of the line, then move cursor
+    d08e  3a 23 f7   LDA CURSOR_X (f723)            ; right to the X cursor position (MonitorF does not provide
+    d091  47         MOV B, A                       ; direct cursor movement functions)
+    d092  0e 18      MVI C, 18
+    d094  3e 01      MVI A, 01
+    d096  eb         XCHG
 
 ; Print char in C register A*B times
 PUT_CHAR_BLOCK:
@@ -1328,28 +1333,36 @@ PUT_CHAR_BLOCK_LOOP:
 
 ; Delete symbol at cursor (Ctrl-Left), shifting the rest of the line left 1 char
 DELETE_SYMB:
-    d0aa  cd aa cb   CALL CHECK_SYMBOL_AT_CURSOR (cbaa) ; Deleting at the end of text is not allowed
+    d0aa  cd aa cb   CALL CHECK_SYMBOL_AT_CURSOR (cbaa) ; Deleting at the end of text or at line end is not allowed
     d0ad  7e         MOV A, M
     d0ae  b7         ORA A
     d0af  ca db cc   JZ PILOT_TONE (ccdb)
 
-d0b2  eb         XCHG
-d0b3  21 22 f7   LXI HL, CUR_LINE_LEN (f722)
-d0b6  35         DCR M
-d0b7  eb         XCHG
-d0b8  e5         PUSH HL
-d0b9  e5         PUSH HL
-d0ba  e5         PUSH HL
-d0bb  cd cb d0   CALL SEARCH_END_OF_STRING (d0cb)
-d0be  eb         XCHG
-d0bf  c1         POP BC
-d0c0  e1         POP HL
-d0c1  23         INX HL
-d0c2  cd 0d cf   CALL cf0d
-d0c5  d1         POP DE
-d0c6  62         MOV H, D
-d0c7  6b         MOV L, E
-d0c8  c3 7b d0   JMP d07b
+    d0b2  eb         XCHG                           ; DE - pointer to the edit point in the line buffer
+
+    d0b3  21 22 f7   LXI HL, CUR_LINE_LEN (f722)    ; Decrement line length
+    d0b6  35         DCR M
+
+    d0b7  eb         XCHG                           ; Save cut point address
+    d0b8  e5         PUSH HL
+    d0b9  e5         PUSH HL
+    d0ba  e5         PUSH HL
+
+    d0bb  cd cb d0   CALL SEARCH_END_OF_STRING (d0cb)   ; Get the real length of the data in line buffer
+
+    d0be  eb         XCHG                           ; BC - edit point
+    d0bf  c1         POP BC                         ; HL - edit point + 1
+    d0c0  e1         POP HL                         ; DE - end of the line
+    d0c1  23         INX HL
+
+    d0c2  cd 0d cf   CALL CUT_TEXT_LOOP (cf0d)      ; Shift HL-DE range 1 char left
+
+    d0c5  d1         POP DE                         ; Restore edit point address in HL
+    d0c6  62         MOV H, D
+    d0c7  6b         MOV L, E
+
+    d0c8  c3 7b d0   JMP REDRAW_STRING (d07b)       ; And redraw the string after the edit point
+
 
 ; Search for a zero character
 SEARCH_END_OF_STRING:
@@ -1904,7 +1917,7 @@ COMMAND_HANDLERS:
     d36e  46 bf cd      db 'F', ????_COMMAND_F (cdbf)
     d371  59 9d cd      db 'Y', ????_COMMAND_Y (cd9d)
     d374  08 aa d0      db 0x08, DELETE_SYMB (d0aa)
-    d377  18 5f d0      db 0x18, d05f
+    d377  18 5f d0      db 0x18, INSERT_SYMB (d05f)
     d37a  19 91 ce      db 0x19, PAGE_UP (ce91)
     d37d  1a 6b cf      db 0x1a, PAGE_DOWN (cf6b)
     d380  00            db 00               ; End of the table
