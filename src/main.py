@@ -42,6 +42,9 @@ def save_pki():
     return filedialog.asksaveasfilename(filetypes=filetypes, defaultextension="pki")
 
 
+def beep():
+    print("\a")     # Make a ding sound
+
 def breakpoint():
     logging.disable(logging.NOTSET)
 
@@ -440,6 +443,14 @@ class UT88OSConfiguration(VideoConfiguration):
         # for a keypress, and abandon the command execution. Emulate keyboard release after the command is
         # entered, but not yet processed. This is an emulation issue, rather than Monitor code bug.
         self._emulator.add_breakpoint(0xf84b, lambda: self._keyboard.emulate_key_press(None))
+
+        # UT-88 OS monitor and editor programs indicate incorrect user input with a sound. Tape recorder must
+        # be connected to the computer to hear the beep tone. Since the emulator does not produce any sound on
+        # tape recorder port, it is handy to detect these functions and produce a standard system ding sound
+        # instead.
+        self._emulator.add_breakpoint(0xfb8f, lambda: beep())   # Monitor INPUT_ERROR function
+        self._emulator.add_breakpoint(0xccdb, lambda: beep())   # Editor BEEP function
+
 
 
 def main():
