@@ -895,10 +895,10 @@ HOME_KEY_1:
     cec4  c3 2b ce   JMP LOAD_LINE (ce2b)
 
 
-????:
-cec7  3a 23 f7   LDA CURSOR_X (f723)
-ceca  b7         ORA A
-cecb  c2 dc cc   JNZ BEEP_1 (ccdc)
+CHECK_CURSOR_AT_LINE_START:
+    cec7  3a 23 f7   LDA CURSOR_X (f723)            ; Check if the cursor is located at the line start
+    ceca  b7         ORA A                          ; Otherwise make a beep sound
+    cecb  c2 dc cc   JNZ BEEP_1 (ccdc)
 
 
 ; Flush currently edited line from buffer to text
@@ -1182,44 +1182,71 @@ CHECK_FILE_SIZE:
     cfb8  c3 12 ce   JMP PRINT_ERROR (ce12)
 
 
-????_COMMAND_D:
-cfbb  cd c7 ce   CALL cec7
-cfbe  2a 29 f7   LHLD PAGE_START_ADDR (f729)
-cfc1  22 31 f7   SHLD f731
-cfc4  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
-cfc7  22 2d f7   SHLD f72d
-cfca  cd ca cc   CALL PRINT_HASH_CURSOR (ccca)
-????:
-cfcd  cd b4 cb   CALL GET_KBD_KEY (cbb4)
-cfd0  ca e4 cf   JZ cfe4
-cfd3  d6 19      SUI A, 19
-cfd5  ca 3f d0   JZ d03f
-cfd8  3d         DCR A
-cfd9  ca 14 d0   JZ d014
-cfdc  fe 05      CPI A, 05
-cfde  ca 0e d0   JZ REDRAW_SCREEN (d00e)
-cfe1  c3 ee cf   JMP cfee
-????:
-cfe4  fe 1a      CPI A, 1a
-cfe6  ca 23 d0   JZ d023
-cfe9  fe 44      CPI A, 44
-cfeb  ca f4 cf   JZ cff4
-????:
-cfee  cd db cc   CALL BEEP (ccdb)
-cff1  c3 cd cf   JMP cfcd
-????:
-cff4  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
-cff7  eb         XCHG
-cff8  2a 31 f7   LHLD f731
-cffb  22 29 f7   SHLD PAGE_START_ADDR (f729)
-cffe  2a 2d f7   LHLD f72d
-d001  44         MOV B, H
-d002  4d         MOV C, L
-d003  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
-d006  cd 0d cf   CALL CUT_TEXT_LOOP (cf0d)
-d009  60         MOV H, B
-d00a  69         MOV L, C
-d00b  22 27 f7   SHLD END_OF_FILE_PTR (f727)
+; Delete lines (Ctrl-D)
+;
+; The function suppose to select a piece of text to delete as follows:
+; - Select a start of the range to delete (works only at start of the line to delete). Start of the selection
+;   is marked with # symbol
+; - Select end of the range with Up/Down/Ctrl-Up/Ctrl-Down keys. It is not possible to select end of range
+;   above the range start. 
+; - Ctrl-D deletes the selected range
+; - Clear screen key exits the range selection process
+DELETE_LINES:
+    cfbb  cd c7 ce   CALL CHECK_CURSOR_AT_LINE_START (cec7) ; Line deletion is possible only if cursor is at line start
+
+    cfbe  2a 29 f7   LHLD PAGE_START_ADDR (f729)    ; Save the page start address
+    cfc1  22 31 f7   SHLD SAVE_PAGE_START (f731)
+
+    cfc4  2a 2b f7   LHLD CUR_LINE_PTR (f72b)       ; Save also current line address
+    cfc7  22 2d f7   SHLD SAVE_CUR_LINE (f72d)
+
+    cfca  cd ca cc   CALL PRINT_HASH_CURSOR (ccca)  ; Print # has symbol indicating range start
+
+DELETE_LINES_LOOP:
+    cfcd  cd b4 cb   CALL GET_KBD_KEY (cbb4)        ; Wait for a key press
+    cfd0  ca e4 cf   JZ DELETE_LINES_CTRL (cfe4)    ; Process keys with Ctrl key pressed elsewhere
+
+    cfd3  d6 19      SUI A, 19                      ; Handle up arrow
+    cfd5  ca 3f d0   JZ DELETE_LINES_UP_KEY (d03f)
+
+    cfd8  3d         DCR A                          ; Handle down arrow
+    cfd9  ca 14 d0   JZ DELETE_LINES_DOWN_KEY (d014)
+
+    cfdc  fe 05      CPI A, 05                      ; Clear screen key exits deletion mode
+    cfde  ca 0e d0   JZ REDRAW_SCREEN (d00e)
+
+    cfe1  c3 ee cf   JMP DELETE_LINES_INPUT_ERROR (cfee)    ; Other keys are invalid
+
+DELETE_LINES_CTRL:
+    cfe4  fe 1a      CPI A, 1a                      ; Handle Ctrl-Down
+    cfe6  ca 23 d0   JZ DELETE_LINES_PAGE_DOWN (d023)
+
+    cfe9  fe 44      CPI A, 44                      ; Second Ctrl-D finishes range selection mode, and performs
+    cfeb  ca f4 cf   JZ DO_DELETE_LINES (cff4)      ; actual line deletion
+
+DELETE_LINES_INPUT_ERROR:
+    cfee  cd db cc   CALL BEEP (ccdb)               ; Make beep sound, and restart the loop
+    cff1  c3 cd cf   JMP DELETE_LINES_LOOP (cfcd)
+
+DO_DELETE_LINES:
+    cff4  2a 27 f7   LHLD END_OF_FILE_PTR (f727)    ; DE - end of file
+    cff7  eb         XCHG
+
+    cff8  2a 31 f7   LHLD SAVE_PAGE_START (f731)    ; Restore page start address (in case if scroll was performed)
+    cffb  22 29 f7   SHLD PAGE_START_ADDR (f729)
+
+    cffe  2a 2d f7   LHLD SAVE_CUR_LINE (f72d)      ; BC - start of range to delete
+    d001  44         MOV B, H
+    d002  4d         MOV C, L
+
+    d003  2a 2b f7   LHLD CUR_LINE_PTR (f72b)       ; HL - end of range to delete
+
+    d006  cd 0d cf   CALL CUT_TEXT_LOOP (cf0d)      ; Perform data deletion (BC-HL range)
+
+    d009  60         MOV H, B                       ; Store new end of file pointer
+    d00a  69         MOV L, C
+    d00b  22 27 f7   SHLD END_OF_FILE_PTR (f727)
+
 
 ; Re-draw current screen, starting from the same page start address
 REDRAW_SCREEN:
@@ -1227,45 +1254,66 @@ REDRAW_SCREEN:
     d011  c3 fd cc   JMP DRAW_SCREEN (ccfd)         ; And run screen drawing procedure
 
 
-????:
-d014  cd 2f d0   CALL d02f
-d017  ca ee cf   JZ cfee
-d01a  cd 34 cf   CALL cf34
-????:
-d01d  cd 9e cc   CALL HOME_CURSOR (cc9e)
-d020  c3 cd cf   JMP cfcd
-????:
-d023  cd 2f d0   CALL d02f
-d026  ca ee cf   JZ cfee
-d029  cd 6b cf   CALL PAGE_DOWN (cf6b)
-d02c  c3 1d d0   JMP d01d
-????:
-d02f  e5         PUSH HL
-d030  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
-d033  3a 22 f7   LDA CUR_LINE_LEN (f722)
-d036  5f         MOV E, A
-d037  16 00      MVI D, 00
-d039  19         DAD DE
-d03a  23         INX HL
-d03b  7e         MOV A, M
-d03c  3c         INR A
-d03d  e1         POP HL
-d03e  c9         RET
-????:
-d03f  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
-d042  eb         XCHG
-d043  2a 2d f7   LHLD f72d
-d046  cd ea cc   CALL CMP_HL_DE (ccea)
-d049  ca ee cf   JZ cfee
-d04c  3a 25 f7   LDA CURSOR_Y (f725)
-d04f  b7         ORA A
-d050  c2 59 d0   JNZ d059
-d053  cd b1 ce   CALL HOME_KEY (ceb1)
-d056  c3 cd cf   JMP cfcd
+DELETE_LINES_DOWN_KEY:
+    d014  cd 2f d0   CALL DELETE_LINE_CHECK_EOF (d02f)  ; Moving down beyond end of file is not allowed
+    d017  ca ee cf   JZ DELETE_LINES_INPUT_ERROR (cfee)
 
-????:
-d059  cd 1f ce   CALL UP_ARROW (ce1f)
-d05c  c3 cd cf   JMP cfcd
+    d01a  cd 34 cf   CALL DOWN_ARROW (cf34)         ; Perform regular moving cursor down
+
+DELETE_LINES_CURSOR_MOVED:
+    d01d  cd 9e cc   CALL HOME_CURSOR (cc9e)        ; Move cursor to the beginning of the line
+
+    d020  c3 cd cf   JMP DELETE_LINES_LOOP (cfcd)   ; And wait for a new key press
+
+
+DELETE_LINES_PAGE_DOWN:
+    d023  cd 2f d0   CALL DELETE_LINE_CHECK_EOF (d02f)  ; Moving down beyond end of file is not allowe
+    d026  ca ee cf   JZ DELETE_LINES_INPUT_ERROR (cfee)
+
+    d029  cd 6b cf   CALL PAGE_DOWN (cf6b)          ; Perform page down
+
+    d02c  c3 1d d0   JMP DELETE_LINES_CURSOR_MOVED (d01d)   ; Finish movement to the new position
+
+
+DELETE_LINE_CHECK_EOF:
+    d02f  e5         PUSH HL                        ; Calculate current line end
+    d030  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
+    d033  3a 22 f7   LDA CUR_LINE_LEN (f722)
+    d036  5f         MOV E, A
+    d037  16 00      MVI D, 00
+    d039  19         DAD DE
+
+    d03a  23         INX HL                         ; Advance to the next line
+
+    d03b  7e         MOV A, M                       ; Set Z flag if end of text is reached ????
+    d03c  3c         INR A
+
+    d03d  e1         POP HL
+    d03e  c9         RET
+
+
+DELETE_LINES_UP_KEY:
+    d03f  2a 2b f7   LHLD CUR_LINE_PTR (f72b)       ; DE - current line pointer
+    d042  eb         XCHG
+
+    d043  2a 2d f7   LHLD SAVE_CUR_LINE (f72d)      ; HL - original line pointer
+
+    d046  cd ea cc   CALL CMP_HL_DE (ccea)          ; Moving to the original position is invalid (why?)
+    d049  ca ee cf   JZ DELETE_LINES_INPUT_ERROR (cfee)
+
+    d04c  3a 25 f7   LDA CURSOR_Y (f725)            ; Moving beyond topmost line may require scroll
+    d04f  b7         ORA A
+    d050  c2 59 d0   JNZ DELETE_LINES_UP_KEY_1 (d059)
+
+    d053  cd b1 ce   CALL HOME_KEY (ceb1)           ; Perform scrolling up
+
+    d056  c3 cd cf   JMP DELETE_LINES_LOOP (cfcd)   ; And wait for the next key
+
+DELETE_LINES_UP_KEY_1:
+    d059  cd 1f ce   CALL UP_ARROW (ce1f)           ; Perform moving up normally, if not on the topmost line
+
+    d05c  c3 cd cf   JMP DELETE_LINES_LOOP (cfcd)   ; And wait for the next key
+
 
 ; Insert a symbol at cursor position (Ctrl-Right). Shift the remaining part of the string right.
 ; HL - pointer to the cursor position in the line buffer
@@ -1380,9 +1428,9 @@ SEARCH_END_OF_STRING:
 
 
 ????_COMMAND_A:
-d0d2  cd c7 ce   CALL cec7
+d0d2  cd c7 ce   CALL CHECK_CURSOR_AT_LINE_START (cec7)
 d0d5  cd 9e cc   CALL HOME_CURSOR (cc9e)
-d0d8  cd 34 cf   CALL cf34
+d0d8  cd 34 cf   CALL DOWN_ARROW (cf34)
 d0db  cd 5c cd   CALL DRAW_SCREEN_FINISH_2 (cd5c)
 ????:
 d0de  af         XRA A
@@ -1909,7 +1957,7 @@ HELLO_STR:
 COMMAND_HANDLERS:
     d34a  4c c6 cb      db 'L', ????_COMMAND_L (cbc6)
     d34d  58 be cb      db 'X', ????_COMMAND_X (cbbe)
-    d350  44 bb cf      db 'D', ????_COMMAND_D (cfbb)
+    d350  44 bb cf      db 'D', DELETE_LINES (cfbb)
     d353  41 d2 d0      db 'A', ????_COMMAND_A (d0d2)
     d356  54 fb d0      db 'T', ????_COMMAND_T (d0fb)
     d359  4e 19 d1      db 'N', NEW_FILE (d119)
