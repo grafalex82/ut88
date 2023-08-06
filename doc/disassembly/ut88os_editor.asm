@@ -640,59 +640,83 @@ TOGGLE_INSERT:
     cda6  c9         RET
 
 
-????_COMMAND_R:
-cda7  d5         PUSH DE
-cda8  e5         PUSH HL
-cda9  11 2d 20   LXI DE, 202d
-cdac  2a 5c f7   LHLD f75c
-cdaf  cd ea cc   CALL CMP_HL_DE (ccea)
-cdb2  c2 b8 cd   JNZ cdb8
-cdb5  11 14 10   LXI DE, 1014
-????:
-cdb8  eb         XCHG
-cdb9  22 5c f7   SHLD f75c
-cdbc  e1         POP HL
-cdbd  d1         POP DE
-cdbe  c9         RET
+; Command R: Toggle tape speed delays with shorter ones
+; 
+; The function replaces standard monitor tape delay values (0xf75c) with shorter ones. Second call 
+; restores standard values
+TOGGLE_TAPE_SPEED:
+    cda7  d5         PUSH DE
+    cda8  e5         PUSH HL
+
+    cda9  11 2d 20   LXI DE, 202d               ; Load current tape delay values 
+    cdac  2a 5c f7   LHLD IN_BIT_DELAY (f75c)
+
+    cdaf  cd ea cc   CALL CMP_HL_DE (ccea)      ; Compare delay with default ones (0x20, 0x2d)
+    cdb2  c2 b8 cd   JNZ TOGGLE_TAPE_SPEED_1 (cdb8)
+
+    cdb5  11 14 10   LXI DE, 1014               ; Standard delays are changed with shorter ones (0x10, and 0x14)
+
+TOGGLE_TAPE_SPEED_1:
+    cdb8  eb         XCHG                       ; Save standard delay values
+    cdb9  22 5c f7   SHLD IN_BIT_DELAY (f75c)
+
+    cdbc  e1         POP HL
+    cdbd  d1         POP DE
+    cdbe  c9         RET
 
 
-????_COMMAND_F:
-cdbf  cd fd cb   CALL CLEAR_SCREEN_AND_PRINT_COMMAND_PROMPT (cbfd)
-cdc2  21 34 d3   LXI HL, d334
-cdc5  cd 18 f8   CALL PRINT_STRING (f818)
-cdc8  e5         PUSH HL
-cdc9  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
-cdcc  cd f9 cd   CALL cdf9
-cdcf  eb         XCHG
-cdd0  e1         POP HL
-cdd1  cd 18 f8   CALL PRINT_STRING (f818)
-cdd4  e5         PUSH HL
-cdd5  21 00 30   LXI HL, 3000
-cdd8  eb         XCHG
-cdd9  e5         PUSH HL
-cdda  cd f2 cd   CALL cdf2
-cddd  23         INX HL
-cdde  cd f9 cd   CALL cdf9
-cde1  d1         POP DE
-cde2  e1         POP HL
-cde3  cd 18 f8   CALL PRINT_STRING (f818)
-cde6  21 ff 9f   LXI HL, 9fff
-cde9  cd f2 cd   CALL cdf2
-cdec  cd f9 cd   CALL cdf9
-cdef  c3 0c cb   JMP EDITOR_MAIN_LOOP (cb0c)
-????:
-cdf2  7d         MOV A, L
-cdf3  93         SUB E
-cdf4  6f         MOV L, A
-cdf5  7c         MOV A, H
-cdf6  9a         SBB D
-cdf7  67         MOV H, A
-cdf8  c9         RET
-????:
-cdf9  7c         MOV A, H
-cdfa  cd 15 f8   CALL f815
-cdfd  7d         MOV A, L
-cdfe  c3 15 f8   JMP f815
+; Print memory usage stats
+; The function prints text size and free RAM amount
+TEXT_STATS:
+    cdbf  cd fd cb   CALL CLEAR_SCREEN_AND_PRINT_COMMAND_PROMPT (cbfd)  ; Display stats on the clear screen
+
+    cdc2  21 34 d3   LXI HL, STATS_STR (d334)   ; Display "END=" string
+    cdc5  cd 18 f8   CALL PRINT_STRING (f818)
+
+    cdc8  e5         PUSH HL                    ; Print end of file pointer value
+    cdc9  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
+    cdcc  cd f9 cd   CALL PRINT_WORD_HEX (cdf9)
+
+    cdcf  eb         XCHG                       ; Print "USED=" string
+    cdd0  e1         POP HL
+    cdd1  cd 18 f8   CALL PRINT_STRING (f818)
+
+    cdd4  e5         PUSH HL                    ; Used bytes = end of file - 0x3000 + 1
+    cdd5  21 00 30   LXI HL, 3000
+    cdd8  eb         XCHG
+    cdd9  e5         PUSH HL
+    cdda  cd f2 cd   CALL SUB_HL_DE (cdf2)
+    cddd  23         INX HL
+
+    cdde  cd f9 cd   CALL PRINT_WORD_HEX (cdf9) ; Print usage value
+
+    cde1  d1         POP DE                     ; Print "FREE=" string
+    cde2  e1         POP HL
+    cde3  cd 18 f8   CALL PRINT_STRING (f818)
+
+    cde6  21 ff 9f   LXI HL, 9fff               ; Print 0x9fff - end of file ptr
+    cde9  cd f2 cd   CALL SUB_HL_DE (cdf2)
+    cdec  cd f9 cd   CALL PRINT_WORD_HEX (cdf9)
+
+    cdef  c3 0c cb   JMP EDITOR_MAIN_LOOP (cb0c)    ; Exit
+
+; Calculate HL-DE difference, result in HL
+SUB_HL_DE:
+    cdf2  7d         MOV A, L
+    cdf3  93         SUB E
+    cdf4  6f         MOV L, A
+    cdf5  7c         MOV A, H
+    cdf6  9a         SBB D
+    cdf7  67         MOV H, A
+    cdf8  c9         RET
+
+; Print 16-bit value in HL as hex
+PRINT_WORD_HEX:
+    cdf9  7c         MOV A, H
+    cdfa  cd 15 f8   CALL MONITOR_PRINT_BYTE_HEX (f815)
+    cdfd  7d         MOV A, L
+    cdfe  c3 15 f8   JMP MONITOR_PRINT_BYTE_HEX (f815)
+
 
 ; Move cursor 1 position left
 LEFT_ARROW:
@@ -1961,7 +1985,7 @@ HELLO_STR:
     d32b  69 6b 72 6f 6e 2a 0a 2a   db "ИКРОН*\r*"
     d333  00                        db 0x00
 
-????:
+STATS_STR:
     d334  0a 45 4e 44 3d 00         db "\rEND=", 0x00
     
 ????:
@@ -1989,8 +2013,8 @@ COMMAND_HANDLERS:
     d362  56 e4 d2      db 'V', VERIFY_FILE (d2e4)
     d365  4d e9 d2      db 'M', MERGE_FILE (d2e9)
     d368  57 88 cd      db 'W', TOGGLE_TAB_SIZE (cd88)
-    d36b  52 a7 cd      db 'R', ????_COMMAND_R (cda7)
-    d36e  46 bf cd      db 'F', ????_COMMAND_F (cdbf)
+    d36b  52 a7 cd      db 'R', TOGGLE_TAPE_SPEED (cda7)
+    d36e  46 bf cd      db 'F', TEXT_STATS (cdbf)
     d371  59 9d cd      db 'Y', TOGGLE_INSERT (cd9d)
     d374  08 aa d0      db 0x08, DELETE_SYMB (d0aa)
     d377  18 5f d0      db 0x18, INSERT_SYMB (d05f)
