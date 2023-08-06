@@ -172,44 +172,64 @@ GET_KBD_KEY:
     cbbc  79         MOV A, C                   ; Return entered char in A
     cbbd  c9         RET
 
-????_COMMAND_X:
-cbbe  e5         PUSH HL
-cbbf  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
-cbc2  e3         XTHL
-cbc3  c3 cb cb   JMP cbcb
+; Search for a substring in the text starting the current line
+; The function prompt the user for a string to search, if string found, the text is scrolled to the line where
+; text is found.
+SEARCH_FROM_CURRENT:
+    cbbe  e5         PUSH HL                    ; Load current line pointer to DE
+    cbbf  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
+    cbc2  e3         XTHL
 
-????_COMMAND_L:
-cbc6  e5         PUSH HL
-cbc7  21 00 30   LXI HL, 3000
-cbca  e3         XTHL
-????:
-cbcb  cd fd cb   CALL CLEAR_SCREEN_AND_PRINT_COMMAND_PROMPT (cbfd)
-cbce  cd 20 cc   CALL INPUT_LINE (cc20)
-cbd1  dc 6f ce   CC CLEAR_BUFFER (ce6f)
-cbd4  44         MOV B, H
-cbd5  4d         MOV C, L
-cbd6  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
-cbd9  eb         XCHG
-cbda  e1         POP HL
-cbdb  e5         PUSH HL
-????:
-cbdc  c5         PUSH BC
-cbdd  e5         PUSH HL
-????:
-cbde  0a         LDAX BC
-cbdf  b7         ORA A
-cbe0  ca f0 cc   JZ ccf0
-cbe3  be         CMP M
-cbe4  23         INX HL
-cbe5  03         INX BC
-cbe6  ca de cb   JZ cbde
-cbe9  cd ea cc   CALL CMP_HL_DE (ccea)
-cbec  e1         POP HL
-cbed  c1         POP BC
-cbee  23         INX HL
-cbef  da dc cb   JC cbdc
-cbf2  0e 3f      MVI C, 3f
-cbf4  cd 09 f8   CALL PUT_CHAR (f809)
+    cbc3  c3 cb cb   JMP DO_SEARCH (cbcb)
+
+; Same as SEARCH_FROM_CURRENT, but search from the beginning
+SEARCH_FROM_BEGINING:
+    cbc6  e5         PUSH HL                    ; Load the text start to DE
+    cbc7  21 00 30   LXI HL, 3000
+    cbca  e3         XTHL
+
+DO_SEARCH:
+    cbcb  cd fd cb   CALL CLEAR_SCREEN_AND_PRINT_COMMAND_PROMPT (cbfd)  ; Switch to the line prompt mode
+
+    cbce  cd 20 cc   CALL INPUT_LINE (cc20)     ; Input the substring to search
+    cbd1  dc 6f ce   CC CLEAR_BUFFER (ce6f)     ; If no data entered, clear the line buffer
+
+    cbd4  44         MOV B, H                   ; BC = buffer start
+    cbd5  4d         MOV C, L
+
+    cbd6  2a 27 f7   LHLD END_OF_FILE_PTR (f727); DE = end of file pointer
+    cbd9  eb         XCHG
+
+    cbda  e1         POP HL                     ; HL = search range start
+    cbdb  e5         PUSH HL
+
+DO_SEARCH_NEXT_CHAR:
+    cbdc  c5         PUSH BC
+    cbdd  e5         PUSH HL
+
+DO_SEARCH_COMPARE_LOOP:
+    cbde  0a         LDAX BC                    ; Load the next byte from the line buffer
+
+    cbdf  b7         ORA A                      ; Stop matching if reached end of the buffer
+    cbe0  ca f0 cc   JZ ccf0
+
+    cbe3  be         CMP M                      ; Compare the buffer char with the text one
+
+    cbe4  23         INX HL                     ; Repeat for the next char
+    cbe5  03         INX BC
+    cbe6  ca de cb   JZ DO_SEARCH_COMPARE_LOOP (cbde)
+
+    cbe9  cd ea cc   CALL CMP_HL_DE (ccea)      ; In case of mismatch, check that we reached end of text
+
+    cbec  e1         POP HL                     ; Advance to the next text char
+    cbed  c1         POP BC                     ; Restore the buffer address
+    cbee  23         INX HL
+
+    cbef  da dc cb   JC DO_SEARCH_NEXT_CHAR (cbdc)  ; Repeat if end of text has not been reached yet
+
+    cbf2  0e 3f      MVI C, 3f                  ; If no matches - print '?', beep, and exit
+    cbf4  cd 09 f8   CALL PUT_CHAR (f809)
+
 
 ; Produce a error sound, and exit to the main loop
 BEEP_AND_EXIT:
@@ -443,16 +463,19 @@ CMP_HL_DE:
     ccee  bb         CMP E
     ccef  c9         RET
 
-????:
-ccf0  c1         POP BC
-ccf1  c1         POP BC
-ccf2  d1         POP DE
-ccf3  7e         MOV A, M
-ccf4  fe 0d      CPI A, 0d
-ccf6  c2 fa cc   JNZ ccfa
-ccf9  2b         DCX HL
-????:
-ccfa  cd 53 ce   CALL SEARCH_CUR_LINE_START (ce53)
+; Handle search function found the substring
+SEARCH_MATCHED:
+    ccf0  c1         POP BC                     ; Restore pointers
+    ccf1  c1         POP BC
+    ccf2  d1         POP DE
+
+    ccf3  7e         MOV A, M                   ; Skip \r if any
+    ccf4  fe 0d      CPI A, 0d
+    ccf6  c2 fa cc   JNZ SEARCH_MATCHED_1 (ccfa)
+    ccf9  2b         DCX HL
+
+SEARCH_MATCHED_1:
+    ccfa  cd 53 ce   CALL SEARCH_CUR_LINE_START (ce53)  ; Get current line address, and draw screen starting this line
 
 ; Draw Screen
 ; 
@@ -1955,8 +1978,8 @@ HELLO_STR:
 ; connected to 1st bit of that port. Another issue is that Ctrl-<char> combinations produce char codes in
 ; 0x01-0x1a range, while the table below expects normal char codes (in 0x41-0x5a range)
 COMMAND_HANDLERS:
-    d34a  4c c6 cb      db 'L', ????_COMMAND_L (cbc6)
-    d34d  58 be cb      db 'X', ????_COMMAND_X (cbbe)
+    d34a  4c c6 cb      db 'L', SEARCH_FROM_BEGINING (cbc6)
+    d34d  58 be cb      db 'X', SEARCH_FROM_CURRENT (cbbe)
     d350  44 bb cf      db 'D', DELETE_LINES (cfbb)
     d353  41 d2 d0      db 'A', ????_COMMAND_A (d0d2)
     d356  54 fb d0      db 'T', ????_COMMAND_T (d0fb)
