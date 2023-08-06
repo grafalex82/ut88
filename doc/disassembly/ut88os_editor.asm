@@ -1,15 +1,15 @@
- General description TBD
+ ; General description TBD
 
 ;
 ; Variables:
-; - f6df    - ???
+; - f6df    - 0xff, a limiting character for line buffer underrun
 ; - f6e0    - 0x3f bytes of buffer ????
 ; - f721    - 
 ; - f722    - Current line length
 ; - f723    - Cursor X position, counting from left side. 0xff if not initialized yet.
 ; - f724    - Tab size - 1
 ; - f725    - Cursor Y position (counting from top-left corner)
-; - f726    - 
+; - f726    - 0x00 - insertion mode, 0xff - overwrite mode
 ; - f727    - end of file pointer (points to the next symbol after the last text char)
 ; - f729    - address of the first line visible on the screen
 ; - f72b    - Pointer to the beginning of the current line
@@ -39,26 +39,26 @@ EDITOR_MAIN_LOOP:
 
     cb25  eb         XCHG                       ; ????? Store 0x00
     cb26  32 22 f7   STA CUR_LINE_LEN (f722)
-    cb29  32 26 f7   STA f726
+    cb29  32 26 f7   STA INSERT_MODE (f726)
 
     cb2c  3d         DCR A                      ; ???? Store 0xff
     cb2d  32 21 f7   STA f721
     cb30  32 23 f7   STA CURSOR_X (f723)
     cb33  32 25 f7   STA CURSOR_Y (f725)
 
-    cb36  2b         DCX HL                     ; ???? Store 0xff to f6df
-    cb37  77         MOV M, A
+    cb36  2b         DCX HL                     ; Store 0xff to f6df (some functions intentionally do read prior
+    cb37  77         MOV M, A                   ; the line buffer, and 0xff indicate no data there)
     cb38  23         INX HL
 
     cb39  3e 03      MVI A, 03                  ; Set the default tab size
     cb3b  32 24 f7   STA TAB_SIZE (f724)
 
-????:
-    cb3e  01 3e cb   LXI BC, cb3e               ; Character processing will return back here
+EDITOR_MAIN_CHAR_LOOP:
+    cb3e  01 3e cb   LXI BC, EDITOR_MAIN_CHAR_LOOP (cb3e)   ; Character processing will return back here
     cb41  c5         PUSH BC
 
-    cb42  cd b4 cb   CALL GET_KBD_KEY (cbb4)
-    cb45  ca 95 cb   JZ cb95
+    cb42  cd b4 cb   CALL GET_KBD_KEY (cbb4)    ; Control character will be processed elsewhere
+    cb45  ca 95 cb   JZ PROCESS_COMMAND (cb95)
 
     cb48  fe 08      CPI A, 08                  ; Check if left arrow is pressed
     cb4a  ca 01 ce   JZ LEFT_ARROW (ce01)
@@ -76,30 +76,32 @@ EDITOR_MAIN_LOOP:
     cb5e  ca b1 ce   JZ HOME_KEY (ceb1)
 
     cb61  fe 1f      CPI A, 1f                  ; Check if clear screen key is pressed
-    cb63  c2 6b cb   JNZ cb6b
+    cb63  c2 6b cb   JNZ EDITOR_MAIN_PROCESS_CHAR (cb6b)
 
-cb66  cd ce ce   CALL FLUSH_STRING_BUF (cece)
-cb69  c1         POP BC
-cb6a  c9         RET
+    cb66  cd ce ce   CALL FLUSH_STRING_BUF (cece)   ; Clear screen key will exit to monitor
+    cb69  c1         POP BC
+    cb6a  c9         RET
 
-????:
+EDITOR_MAIN_PROCESS_CHAR:
     cb6b  fe 0d      CPI A, 0d                  ; Check if Return key is pressed
-    cb6d  ca db cc   JZ PILOT_TONE (ccdb)
+    cb6d  ca db cc   JZ BEEP (ccdb)
 
-    cb70  cd aa cb   CALL CHECK_SYMBOL_AT_CURSOR (cbaa)
+    cb70  cd aa cb   CALL CHECK_SYMBOL_AT_CURSOR (cbaa) ; ?????
 
-cb73  3a 26 f7   LDA f726
-cb76  b7         ORA A
-cb77  c2 7f cb   JNZ cb7f
+    cb73  3a 26 f7   LDA INSERT_MODE (f726)     ; Are we in insertion or overwrite mode?
+    cb76  b7         ORA A
+    cb77  c2 7f cb   JNZ EDITOR_MAIN_PROCESS_CHAR_1 (cb7f)
 
-cb7a  c5         PUSH BC
-cb7b  cd 62 d0   CALL INSERT_SYMB_1 (d062)
-cb7e  c1         POP BC
-????:
-cb7f  7e         MOV A, M
-cb80  b7         ORA A
-cb81  ca db cc   JZ PILOT_TONE (ccdb)
-cb84  71         MOV M, C
+    cb7a  c5         PUSH BC                    ; Insert a symbol at cursor
+    cb7b  cd 62 d0   CALL INSERT_SYMB_1 (d062)
+    cb7e  c1         POP BC
+
+EDITOR_MAIN_PROCESS_CHAR_1:
+    cb7f  7e         MOV A, M                   ; Do not allow entering symbols at the end of the line buffer
+    cb80  b7         ORA A
+    cb81  ca db cc   JZ BEEP (ccdb)
+
+    cb84  71         MOV M, C                   ; Store the entered symbol, then advance cursor right
 
 
 ; Move cursor 1 position to the right
@@ -107,7 +109,7 @@ RIGHT_ARROW:
     cb85  3a 23 f7   LDA CURSOR_X (f723)        ; Load cursor position
 
     cb88  fe 3e      CPI A, 3e                  ; Moving beyond right screen boundary is not allowed
-    cb8a  d2 db cc   JNC PILOT_TONE (ccdb)
+    cb8a  d2 db cc   JNC BEEP (ccdb)
 
     cb8d  3c         INR A                      ; Increment cursor position
     cb8e  32 23 f7   STA CURSOR_X (f723)
@@ -155,7 +157,7 @@ CHECK_SYMBOL_AT_CURSOR:
     cbaf  23         INX HL
     cbb0  c0         RNZ
 
-    cbb1  c3 dc cc   JMP PILOT_TONE_1 (ccdc)    ; Otherwise we are in error condition - make a beep
+    cbb1  c3 dc cc   JMP BEEP_1 (ccdc)    ; Otherwise we are in error condition - make a beep
 
 
 ; Wait for a key press
@@ -211,7 +213,7 @@ cbf4  cd 09 f8   CALL PUT_CHAR (f809)
 
 ; Produce a error sound, and exit to the main loop
 BEEP_AND_EXIT:
-    cbf7  cd db cc   CALL PILOT_TONE (ccdb)
+    cbf7  cd db cc   CALL BEEP (ccdb)
     cbfa  c3 0c cb   JMP EDITOR_MAIN_LOOP (cb0c)
 
 
@@ -405,7 +407,7 @@ PRINT_BACKSPACE:
 
 ; Produce a beep sound, and repeat waiting a new key
 INPUT_TEXT_BEEP_AND_REPEAT:
-    ccd4  cd db cc   CALL PILOT_TONE (ccdb)
+    ccd4  cd db cc   CALL BEEP (ccdb)
     ccd7  c3 28 cc   JMP INPUT_LINE_LOOP (cc28)
 
 
@@ -413,20 +415,19 @@ PROCESS_COMMAND_ERROR:
     ccda  e1         POP HL                     ; Restore stack pointer, beep, and restart main loop
 
 
-; Output a pilot tone (0x55 times byte 0x55)
-; ???? Beep?
-PILOT_TONE:
+; Make a beep sound, indicating an error
+BEEP:
     ccdb  c5         PUSH BC
 
-PILOT_TONE_1:
+BEEP_1:
     ccdc  f5         PUSH PSW                   ; Output 0x55 times byte 0x55
     ccdd  3e 55      MVI A, 55
     ccdf  47         MOV B, A
 
-PILOT_TONE_LOOP:
+BEEP_LOOP:
     cce0  cd 0c f8   CALL OUT_BYTE (f80c)       ; Output a byte until counter is zero
     cce3  05         DCR B
-    cce4  c2 e0 cc   JNZ PILOT_TONE_LOOP (cce0)
+    cce4  c2 e0 cc   JNZ BEEP_LOOP (cce0)
 
     cce7  f1         POP PSW
     cce8  c1         POP BC
@@ -603,14 +604,18 @@ TOGGLE_TAB_SIZE_2:
     cd9c  c9         RET
 
 
+; Toggle insert/overwrite mode
+; In insert mode each new symbol will be inserted at cursor position, and rest of the string will be shifted
+; right. In overwrite mode symbol at cursor will be overwritten. 
+TOGGLE_INSERT:
+    cd9d  f5         PUSH PSW                   ; Toggle the mode
+    cd9e  3a 26 f7   LDA INSERT_MODE (f726)
+    cda1  2f         CMA
+    cda2  32 26 f7   STA INSERT_MODE (f726)
+    cda5  f1         POP PSW
 
-????_COMMAND_Y:
-cd9d  f5         PUSH PSW
-cd9e  3a 26 f7   LDA f726
-cda1  2f         CMA
-cda2  32 26 f7   STA f726
-cda5  f1         POP PSW
-cda6  c9         RET
+    cda6  c9         RET
+
 
 ????_COMMAND_R:
 cda7  d5         PUSH DE
@@ -671,7 +676,7 @@ LEFT_ARROW:
     ce01  3a 23 f7   LDA CURSOR_X (f723)        ; Decrement cursor position
     ce04  3d         DCR A
 
-    ce05  fa db cc   JM PILOT_TONE (ccdb)       ; Moving beyond left screen boundary is not allowed
+    ce05  fa db cc   JM BEEP (ccdb)       ; Moving beyond left screen boundary is not allowed
 
     ce08  32 23 f7   STA CURSOR_X (f723)        ; Store new cursor position
 
@@ -893,7 +898,7 @@ HOME_KEY_1:
 ????:
 cec7  3a 23 f7   LDA CURSOR_X (f723)
 ceca  b7         ORA A
-cecb  c2 dc cc   JNZ PILOT_TONE_1 (ccdc)
+cecb  c2 dc cc   JNZ BEEP_1 (ccdc)
 
 
 ; Flush currently edited line from buffer to text
@@ -1200,7 +1205,7 @@ cfe6  ca 23 d0   JZ d023
 cfe9  fe 44      CPI A, 44
 cfeb  ca f4 cf   JZ cff4
 ????:
-cfee  cd db cc   CALL PILOT_TONE (ccdb)
+cfee  cd db cc   CALL BEEP (ccdb)
 cff1  c3 cd cf   JMP cfcd
 ????:
 cff4  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
@@ -1273,7 +1278,7 @@ INSERT_SYMB_1:
 
     d066  3c         INR A                          ; Increment line length and verify there is enough room for
     d067  fe 3f      CPI A, 3f                      ; inserted symbol
-    d069  d2 db cc   JNC PILOT_TONE (ccdb)
+    d069  d2 db cc   JNC BEEP (ccdb)
 
     d06c  12         STAX DE                        ; Store new line length
     d06d  e5         PUSH HL
@@ -1336,7 +1341,7 @@ DELETE_SYMB:
     d0aa  cd aa cb   CALL CHECK_SYMBOL_AT_CURSOR (cbaa) ; Deleting at the end of text or at line end is not allowed
     d0ad  7e         MOV A, M
     d0ae  b7         ORA A
-    d0af  ca db cc   JZ PILOT_TONE (ccdb)
+    d0af  ca db cc   JZ BEEP (ccdb)
 
     d0b2  eb         XCHG                           ; DE - pointer to the edit point in the line buffer
 
@@ -1915,7 +1920,7 @@ COMMAND_HANDLERS:
     d368  57 88 cd      db 'W', TOGGLE_TAB_SIZE (cd88)
     d36b  52 a7 cd      db 'R', ????_COMMAND_R (cda7)
     d36e  46 bf cd      db 'F', ????_COMMAND_F (cdbf)
-    d371  59 9d cd      db 'Y', ????_COMMAND_Y (cd9d)
+    d371  59 9d cd      db 'Y', TOGGLE_INSERT (cd9d)
     d374  08 aa d0      db 0x08, DELETE_SYMB (d0aa)
     d377  18 5f d0      db 0x18, INSERT_SYMB (d05f)
     d37a  19 91 ce      db 0x19, PAGE_UP (ce91)
