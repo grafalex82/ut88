@@ -1,4 +1,4 @@
-; General description TBD
+ General description TBD
 
 ;
 ; Variables:
@@ -11,7 +11,7 @@
 ; - f725    - Cursor Y position (counting from top-left corner)
 ; - f726    - 
 ; - f727    - end of file pointer (points to the next symbol after the last text char)
-; - f729    - ????
+; - f729    - address of the first line visible on the screen
 ; - f72b    - Pointer to the beginning of the current line
 
 COMMAND_E_EDITOR:
@@ -29,7 +29,7 @@ EDITOR_MAIN_LOOP:
     cb10  cd 12 cc   CALL PRINT_HELLO_PROMPT (cc12) ; Print prompt
 
     cb13  21 00 30   LXI HL, 3000               ; ???? text start, and current cursor position?????
-    cb16  22 29 f7   SHLD f729
+    cb16  22 29 f7   SHLD PAGE_START_ADDR (f729)
     cb19  22 2b f7   SHLD CUR_LINE_PTR (f72b)
 
     cb1c  cd 9b cf   CALL GET_END_OF_FILE (cf9b); ???? get end of file pointer
@@ -73,7 +73,7 @@ EDITOR_MAIN_LOOP:
     cb59  ca 34 cf   JZ DOWN_ARROW (cf34)
 
     cb5c  fe 0c      CPI A, 0c                  ; Check if home key is pressed
-    cb5e  ca b1 ce   JZ ceb1
+    cb5e  ca b1 ce   JZ HOME_KEY (ceb1)
 
     cb61  fe 1f      CPI A, 1f                  ; Check if clear screen key is pressed
     cb63  c2 6b cb   JNZ cb6b
@@ -432,7 +432,7 @@ PILOT_TONE_LOOP:
     cce8  c1         POP BC
     cce9  c9         RET
 
-
+; Compare HL and DE, set corresponding flags (Z or C)
 CMP_HL_DE:
     ccea  7c         MOV A, H                   ; Compare high bytes
     cceb  ba         CMP D
@@ -451,28 +451,37 @@ ccf4  fe 0d      CPI A, 0d
 ccf6  c2 fa cc   JNZ ccfa
 ccf9  2b         DCX HL
 ????:
-ccfa  cd 53 ce   CALL ce53
+ccfa  cd 53 ce   CALL SEARCH_CUR_LINE_START (ce53)
 
-; ?????
-????:
-ccfd  cd 1b cc   CALL HOME_SCREEN_CURSOR (cc1b)
+; Draw Screen
+; 
+; The function fills entire screen with the text data, starting from line pointed in HL. Each line if filled
+; with the corresponding line text. Short lines are padded with spaces, so that all characters in the line 
+; are eventually printed. The function draws '*' at the end of each line for visibility.
+;
+; The function also loads the last printed line to the line buffer, and sets up all corresponding variables.
+; Cursor is set to the first position on the last line.
+;
+; HL - pointer to the first line to draw
+DRAW_SCREEN:
+    ccfd  cd 1b cc   CALL HOME_SCREEN_CURSOR (cc1b) ; Start with top-left corner
 
-cd00  22 29 f7   SHLD f729
+    cd00  22 29 f7   SHLD PAGE_START_ADDR (f729); Store new page start address
 
-cd03  af         XRA A
-cd04  32 23 f7   STA CURSOR_X (f723)
+    cd03  af         XRA A                      ; Clear also X cursor position
+    cd04  32 23 f7   STA CURSOR_X (f723)
 
     cd07  06 1f      MVI B, 1f                  ; Print 31 line on the page
                                                 ; BUG: UT-88 has only 28 lines on the screen
 
-????:
+DRAW_SCREEN_LINE_LOOP:
     cd09  0e 3f      MVI C, 3f                  ; Will print no more 63 chars on the line (64th char is '*')
     cd0b  cd 6f ce   CALL CLEAR_BUFFER (ce6f)
 
-????:
+DRAW_SCREEN_CHAR_LOOP:
     cd0e  7e         MOV A, M                   ; Load the next char.
-    cd0f  fe 0d      CPI A, 0d                  ; If this is not return char - print it normally
-    cd11  c2 74 cd   JNZ cd74
+    cd0f  fe 0d      CPI A, 0d                  ; If this is not \r char - print it normally
+    cd11  c2 74 cd   JNZ DRAW_SCREEN_SUBMIT_CHAR (cd74)
 
     cd14  3e 2a      MVI A, 2a                  ; Print '*' indicating end of line
     cd16  cd 81 cd   CALL PUT_CHAR_A (cd81)
@@ -489,53 +498,53 @@ cd04  32 23 f7   STA CURSOR_X (f723)
     cd25  2b         DCX HL
 
     cd26  b7         ORA A                      ; Check if it is >=0x80
-    cd27  fa 32 cd   JM cd32
+    cd27  fa 32 cd   JM DRAW_SCREEN_EOF_REACHED (cd32)
 
     cd2a  05         DCR B                      ; Will print B lines on the page
-    cd2b  ca 33 cd   JZ cd33
+    cd2b  ca 33 cd   JZ DRAW_SCREEN_FINISH (cd33)
 
     cd2e  23         INX HL                     ; Advance to the next text char, and repeat for the next line
-    cd2f  c3 09 cd   JMP cd09
+    cd2f  c3 09 cd   JMP DRAW_SCREEN_LINE_LOOP (cd09)
 
 
-????:
+DRAW_SCREEN_EOF_REACHED:
     cd32  05         DCR B                      ; Increase line counter
 
-????:
+DRAW_SCREEN_FINISH:
     cd33  3e 08      MVI A, 08                  ; Move 2 characters back
     cd35  cd 81 cd   CALL PUT_CHAR_A (cd81)
     cd38  cd 81 cd   CALL PUT_CHAR_A (cd81)
 
-    cd3b  3e 3f      MVI A, 3f                  ; C = 0x3f - C
-    cd3d  91         SUB C                      ; Update X coordinate variable ????
+    cd3b  3e 3f      MVI A, 3f                  ; Calculate length of the string (len = 0x3f - C)
+    cd3d  91         SUB C
     cd3e  4f         MOV C, A
 
-    cd3f  32 21 f7   STA f721                   ; ????
+    cd3f  32 21 f7   STA f721                   ; Store calculated string length
     cd42  32 22 f7   STA CUR_LINE_LEN (f722)
 
-    cd45  3e 1e      MVI A, 1e                  ; ???? Update Y coordinate????
+    cd45  3e 1e      MVI A, 1e                  ; Calculate Y coordinate (Y = 0x1e - B)
     cd47  90         SUB B                      ; BUG: UT-88 display has only 28 lines, not 32
     cd48  32 25 f7   STA CURSOR_Y (f725)
 
-    cd4b  79         MOV A, C                   ; Change sign of C (X coordinate ????)
+    cd4b  79         MOV A, C                   ; Change sign of X coordinate
     cd4c  2f         CMA
     cd4d  3c         INR A
 
-    cd4e  ca 55 cd   JZ cd55                    ; Skip next operation if C is zero
+    cd4e  ca 55 cd   JZ DRAW_SCREEN_FINISH_1 (cd55) ; Skip next operation if string len is zero
 
-    cd51  4f         MOV C, A                   ; HL -= X coordinate ???
-    cd52  06 ff      MVI B, ff                  ; HL now points to the beginning of the last printed line
-    cd54  09         DAD BC
+    cd51  4f         MOV C, A                   ; HL points to the last printed character on the last string
+    cd52  06 ff      MVI B, ff                  ; Subtract X coordinate, so that HL now points to the 
+    cd54  09         DAD BC                     ; beginning of the last printed line
 
-????:
-    cd55  22 2b f7   SHLD CUR_LINE_PTR (f72b)   ; ???? Save next page start address
+DRAW_SCREEN_FINISH_1:
+    cd55  22 2b f7   SHLD CUR_LINE_PTR (f72b)   ; Save current line pointer
 
     cd58  11 e0 f6   LXI DE, f6e0               ; Load start buffer address
     cd5b  eb         XCHG
 
-????:
-    cd5c  3a 25 f7   LDA CURSOR_Y (f725)        ; Calculate how many lines below the cursor
-    cd5f  f5         PUSH PSW
+DRAW_SCREEN_FINISH_2:
+    cd5c  3a 25 f7   LDA CURSOR_Y (f725)        ; It may happen that text ends earlier than the last line of
+    cd5f  f5         PUSH PSW                   ; the screen. Calculate how many lines below the cursor
     cd60  47         MOV B, A
     cd61  3e 1f      MVI A, 1f                  ; BUG: UT-88 display has only 28 lines, not 32
     cd63  90         SUB B
@@ -543,15 +552,14 @@ cd04  32 23 f7   STA CURSOR_X (f723)
     cd64  01 20 40   LXI BC, 4020               ; Clear those lines
     cd67  cd 97 d0   CALL PUT_CHAR_BLOCK (d097)
 
-    cd6a  cd 16 cc   CALL HOME_SCREEN_CURSOR (cc1b) ; Move cursor to the top-left position
-                                                    ; BUG: Wrong Scan, shall be cc1b, not cc16
+    cd6a  cd 1b cc   CALL HOME_SCREEN_CURSOR (cc1b) ; Move cursor to the top-left position
 
     cd6d  f1         POP PSW                    ; Move cursor Y positions down
     cd6e  01 1a 01   LXI BC, 011a
     cd71  c3 97 d0   JMP PUT_CHAR_BLOCK (d097)
 
 
-????:
+DRAW_SCREEN_SUBMIT_CHAR:
     cd74  0d         DCR C                      ; Store next char if it fits the buffer
     cd75  12         STAX DE                    ; Print 'String too long' error otherwise
     cd76  ca 0f ce   JZ PRINT_LONG_STR_ERROR (ce0f)
@@ -560,10 +568,11 @@ cd04  32 23 f7   STA CURSOR_X (f723)
 
     cd7c  23         INX HL                     ; Advance to the next char
     cd7d  13         INX DE
-    cd7e  c3 0e cd   JMP cd0e
+    cd7e  c3 0e cd   JMP DRAW_SCREEN_CHAR_LOOP (cd0e)
 
 
-
+; Put char on the screen
+; Same as Monitor's PUT_CHAR function, but accepts symbol in A. Save BC value.
 PUT_CHAR_A:
     cd81  c5         PUSH BC
     cd82  4f         MOV C, A
@@ -685,59 +694,95 @@ PRINT_ERROR:
 
     ce1c  c3 f7 cb   JMP BEEP_AND_EXIT (cbf7)   ; ?????
 
+
+; Move cursor one line up, scroll one line up if necessary
 UP_ARROW:
-ce1f  cd 80 ce   CALL ce80
-ce22  fa b4 ce   JM ceb4
+    ce1f  cd 80 ce   CALL PREPARE_MOVE_UP (ce80); Flush line buffer, Check cursor position
 
-ce25  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
-ce28  cd 51 ce   CALL ce51
-????:
-ce2b  22 2b f7   SHLD CUR_LINE_PTR (f72b)
-ce2e  cd 6f ce   CALL CLEAR_BUFFER (ce6f)
-ce31  d5         PUSH DE
-ce32  06 00      MVI B, 00
-????:
-ce34  7e         MOV A, M
-ce35  fe 0d      CPI A, 0d
-ce37  ca 41 ce   JZ ce41
-ce3a  12         STAX DE
-ce3b  04         INR B
-ce3c  23         INX HL
-ce3d  13         INX DE
-ce3e  c3 34 ce   JMP ce34
-????:
-ce41  78         MOV A, B
-ce42  32 21 f7   STA f721
-ce45  32 22 f7   STA CUR_LINE_LEN (f722)
-ce48  e1         POP HL
-ce49  3a 23 f7   LDA CURSOR_X (f723)
-ce4c  5f         MOV E, A
-ce4d  16 00      MVI D, 00
-ce4f  19         DAD DE
-ce50  c9         RET
+    ce22  fa b4 ce   JM HOME_KEY_1 (ceb4)       ; Handle cursor up beyond the top (home cursor, scroll one line up)
+
+    ce25  2a 2b f7   LHLD CUR_LINE_PTR (f72b)   ; Search previous line start
+    ce28  cd 51 ce   CALL SEARCH_PREV_LINE (ce51)
 
 
-????:
-ce51  2b         DCX HL
-ce52  2b         DCX HL
-????:
-ce53  c1         POP BC
-ce54  cd ea cc   CALL CMP_HL_DE (ccea)
-ce57  ca fd cc   JZ ccfd
-ce5a  7e         MOV A, M
-ce5b  fe 0d      CPI A, 0d
-ce5d  c5         PUSH BC
-ce5e  23         INX HL
-ce5f  c8         RZ
-ce60  c3 51 ce   JMP ce51
+; Load new line pointed by HL
+;
+; The function loads current line to the line buffer. Line length variables updated accordingly.
+LOAD_LINE:
+    ce2b  22 2b f7   SHLD CUR_LINE_PTR (f72b)   ; Store the new line start pointer
 
-; ?????
-????:
-ce63  cd ea cc   CALL CMP_HL_DE (ccea)
-ce66  ca fd cc   JZ ccfd
+    ce2e  cd 6f ce   CALL CLEAR_BUFFER (ce6f)   ; Prepare the buffer for the next line
 
-ce69  cd 51 ce   CALL ce51
-ce6c  c3 fd cc   JMP ccfd
+    ce31  d5         PUSH DE
+    ce32  06 00      MVI B, 00                  ; Count chars in the buffer in B
+
+LOAD_LINE_LOOP:
+    ce34  7e         MOV A, M                   ; Load the next char of text
+
+    ce35  fe 0d      CPI A, 0d                  ; Stop copying when \r reached
+    ce37  ca 41 ce   JZ LOAD_LINE_FINISH (ce41)
+
+    ce3a  12         STAX DE                    ; Copy the char
+
+    ce3b  04         INR B                      ; Advance to the next char
+    ce3c  23         INX HL
+    ce3d  13         INX DE
+    ce3e  c3 34 ce   JMP LOAD_LINE_LOOP (ce34)
+
+LOAD_LINE_FINISH:
+    ce41  78         MOV A, B                   ; Store new line length
+    ce42  32 21 f7   STA f721                   ; ????
+    ce45  32 22 f7   STA CUR_LINE_LEN (f722)
+
+    ce48  e1         POP HL                     ; Load the cursor X position in DE
+    ce49  3a 23 f7   LDA CURSOR_X (f723)
+    ce4c  5f         MOV E, A
+    ce4d  16 00      MVI D, 00
+
+    ce4f  19         DAD DE                     ; Advance cursor to the same X position in the buffer
+    ce50  c9         RET                        ; BUG? Buffer may have less data
+
+
+; Search for a beginning of the previous line
+; Note: If start of text reached the caller function will exit, and the screen will be redrawn.
+
+; Argument:
+; HL - beginning of the current string
+;
+; Return:
+; HL - pointer to the beginning of previous string
+SEARCH_PREV_LINE:
+    ce51  2b         DCX HL                     ; HL points to a line start. Decrement pointer so that it looks
+    ce52  2b         DCX HL                     ; to the last char of the previous line
+
+; Search for a beginning of the current line
+SEARCH_CUR_LINE_START:
+    ce53  c1         POP BC                     ; Temporary save return address
+
+    ce54  cd ea cc   CALL CMP_HL_DE (ccea)      ; If we reached start of text - just redraw and exit (from caller
+    ce57  ca fd cc   JZ DRAW_SCREEN (ccfd)      ; function as well)
+
+    ce5a  7e         MOV A, M                   ; Stop if reached end of line
+    ce5b  fe 0d      CPI A, 0d
+
+    ce5d  c5         PUSH BC                    ; Otherwise advance to the next symbol (despite increment we 
+    ce5e  23         INX HL                     ; will move backwards in fact)
+    ce5f  c8         RZ
+
+    ce60  c3 51 ce   JMP SEARCH_PREV_LINE (ce51)
+
+
+; Perform scroll 1 line up if not yet at the beginning of the text
+;
+; Arguments:
+; HL - current page address
+; DE - 0x3000 text start address
+SCROLL_UP_IF_POSSIBLE:
+    ce63  cd ea cc   CALL CMP_HL_DE (ccea)      ; If we are at the text start - just redraw
+    ce66  ca fd cc   JZ DRAW_SCREEN (ccfd)
+
+    ce69  cd 51 ce   CALL SEARCH_PREV_LINE (ce51)   ; Otherwise scroll 1 line up
+    ce6c  c3 fd cc   JMP DRAW_SCREEN (ccfd)
 
 
 ; Clear the data buffer at 0xf6e0 for 0x3f bytes
@@ -763,58 +808,87 @@ CLEAR_BUFFER_LOOP:
     ce7f  c9         RET
 
 
-????:
-    ce80  cd 09 f8   CALL PUT_CHAR (f809)       ; Print the char ???? cursor movement???
+; Prepare for moving cursor up
+;
+; The function is executed when pressing up arrow or home keys, and suppose to move cursor somewhere up. The
+; function performs actual cursor movement by printing movement char. Also it flushes input buffer data, if needed.
+; But the most important is that function checks whether cursor is already on the topmost position. In this case
+; Sign bit is raised.
+;
+; Arguments:
+; C - cursor movement char
+;
+; Return:
+; HL - current page start address
+; DE - start of text address (0x3000)
+; S bit is raised if cursor was on the top of the screen (and moving up further is not allowed)
+PREPARE_MOVE_UP:
+    ce80  cd 09 f8   CALL PUT_CHAR (f809)           ; Print the cursor movement char
 
-    ce83  cd ce ce   CALL FLUSH_STRING_BUF (cece)   ; ????
+    ce83  cd ce ce   CALL FLUSH_STRING_BUF (cece)   ; Flush previous string data
 
-    ce86  21 25 f7   LXI HL, CURSOR_Y (f725)    ; Decrement cursor Y position
+    ce86  21 25 f7   LXI HL, CURSOR_Y (f725)        ; Decrement cursor Y position
     ce89  35         DCR M
 
-    ce8a  2a 29 f7   LHLD f729                  ; ???? Load some values
+    ce8a  2a 29 f7   LHLD PAGE_START_ADDR (f729)    ; Load page start and text start addresses
     ce8d  11 00 30   LXI DE, 3000
 
     ce90  c9         RET
 
 
-?????_UP:
-ce91  cd ce ce   CALL FLUSH_STRING_BUF (cece)
-ce94  2a 29 f7   LHLD f729
+; Scroll one page of 32 lines up (Ctrl-Up key combination)
+;
+; The function searches back starting from page start address, and search for line end symbols (\r). Function
+; searches up to B lines up, or stops at the beginning of the text
 
-ce97  06 1e      MVI B, 1e
+; Arguments:
+; B - number of lines to go up
+PAGE_UP:
+    ce91  cd ce ce   CALL FLUSH_STRING_BUF (cece)   ; Flush current line if needed
+
+    ce94  2a 29 f7   LHLD PAGE_START_ADDR (f729)    ; Will start search from the page start address
+
+    ce97  06 1e      MVI B, 1e                      ; Will scroll up to 30 lines
+                                                    ; BUG: UT-88 has only 28 lines, not 32
+
+DO_SCROLL_UP:
+    ce99  11 00 30   LXI DE, 3000                   ; Scroll up but not beyond start of text
+
+SCROLL_UP_SEARCH_LOOP:
+    ce9c  cd ea cc   CALL CMP_HL_DE (ccea)          ; If reached start of text - just redraw the screen and exit
+    ce9f  ca fd cc   JZ DRAW_SCREEN (ccfd)
+
+    cea2  2b         DCX HL                         ; Read the next symbol
+    cea3  7e         MOV A, M
+
+    cea4  fe 0d      CPI A, 0d                      ; If not a \r - continue with the next char
+    cea6  c2 9c ce   JNZ SCROLL_UP_SEARCH_LOOP (ce9c)
+
+    cea9  05         DCR B                          ; Decrement the line counter
+    ceaa  c2 9c ce   JNZ SCROLL_UP_SEARCH_LOOP (ce9c)
+
+    cead  23         INX HL                         ; End of previous line found, advance to the next line
+
+    ceae  c3 fd cc   JMP DRAW_SCREEN (ccfd)         ; Draw the screen
 
 
-????:
-ce99  11 00 30   LXI DE, 3000
+; Handle Home key
+; Move cursor to the topleft position. Scroll screen 1 line up if needed.
+HOME_KEY:
+    ceb1  cd 80 ce   CALL PREPARE_MOVE_UP (ce80)    ; Flush line buffer, Check cursor position
 
-????:
-ce9c  cd ea cc   CALL CMP_HL_DE (ccea)
-ce9f  ca fd cc   JZ ccfd
+HOME_KEY_1:
+    ceb4  fc 63 ce   CM SCROLL_UP_IF_POSSIBLE (ce63); If the cursor is on the first line - scroll 1 line up
 
-cea2  2b         DCX HL                 ; <-- Wrong scan, was 2e
-cea3  7e         MOV A, M
-cea4  fe 0d      CPI A, 0d
-cea6  c2 9c ce   JNZ ce9c
+    ceb7  af         XRA A                          ; Zero cursor logical position
+    ceb8  32 23 f7   STA CURSOR_X (f723)
+    cebb  32 25 f7   STA CURSOR_Y (f725)
 
-cea9  05         DCR B
-ceaa  c2 9c ce   JNZ ce9c
+    cebe  cd 1b cc   CALL HOME_SCREEN_CURSOR (cc1b) ; Move cursor to the top-left corner
 
-cead  23         INX HL
-ceae  c3 fd cc   JMP ccfd
+    cec1  2a 29 f7   LHLD PAGE_START_ADDR (f729)    ; Load the first line on the page
+    cec4  c3 2b ce   JMP LOAD_LINE (ce2b)
 
-
-????:
-ceb1  cd 80 ce   CALL ce80
-
-????:
-ceb4  fc 63 ce   CM ce63
-
-ceb7  af         XRA A
-ceb8  32 23 f7   STA CURSOR_X (f723)
-cebb  32 25 f7   STA CURSOR_Y (f725)
-cebe  cd 1b cc   CALL HOME_SCREEN_CURSOR (cc1b)
-cec1  2a 29 f7   LHLD f729
-cec4  c3 2b ce   JMP ce2b
 
 ????:
 cec7  3a 23 f7   LDA CURSOR_X (f723)
@@ -955,61 +1029,103 @@ SHIFT_STR_RIGHT:
 
 ; Process down arrow key press
 DOWN_ARROW:
-    cf34  3a 25 f7   LDA CURSOR_Y (f725)        ; ????
+    cf34  3a 25 f7   LDA CURSOR_Y (f725)        ; If the screen is not yet initialized - draw it
     cf37  b7         ORA A
-    cf38  fa 0e d0   JM d00e
+    cf38  fa 0e d0   JM REDRAW_SCREEN (d00e)
 
     cf3b  0e 1a      MVI C, 1a                  ; Move cursor down
     cf3d  cd 09 f8   CALL PUT_CHAR (f809)
 
     cf40  cd ce ce   CALL FLUSH_STRING_BUF (cece)   ; Flush the buffer, if the line was changed
 
-cf43  cd 89 cf   CALL GET_NEXT_LINE_ADDR (cf89)
+    cf43  cd 89 cf   CALL GET_NEXT_LINE_ADDR (cf89) ; Check there is line of text below. If not - show just last
+                                                    ; 2 lines on the screen. 
+                                                    ; BUG: This behavior looks weird, it would be better not to
+                                                    ; scroll more if there is no data
 
-cf46  21 25 f7   LXI HL, CURSOR_Y (f725)
-cf49  34         INR M
-cf4a  7e         MOV A, M
+    cf46  21 25 f7   LXI HL, CURSOR_Y (f725)    ; Increment Cursor Y position
+    cf49  34         INR M
+    cf4a  7e         MOV A, M
 
-    cf4b  fe 1f      CPI A, 1f                  ; ?????
-    cf4d  f2 5e cf   JP cf5e                    ; BUG: UT-88 has only 28 lines, not 32
+    cf4b  fe 1f      CPI A, 1f                  ; Check if it reached end of the screen
+                                                ; BUG: UT-88 has only 28 lines, not 32
 
-cf50  3a 22 f7   LDA CUR_LINE_LEN (f722)
-cf53  4f         MOV C, A
-cf54  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
-cf57  06 00      MVI B, 00
-cf59  09         DAD BC
-cf5a  23         INX HL
-cf5b  c3 2b ce   JMP ce2b
-????:
-cf5e  2a 29 f7   LHLD f729
-????:
-cf61  7e         MOV A, M
-cf62  d6 0d      SUI A, 0d
-cf64  23         INX HL
-cf65  c2 61 cf   JNZ cf61
-cf68  c3 fd cc   JMP ccfd
+    cf4d  f2 5e cf   JP SCROLL_DOWN (cf5e)      ; Handle if cursor moved beyond bottom of screen
 
-????_DOWN:
-cf6b  cd ce ce   CALL FLUSH_STRING_BUF (cece)
-cf6e  cd 89 cf   CALL GET_NEXT_LINE_ADDR (cf89)
-cf71  2a 29 f7   LHLD f729
-cf74  06 1f      MVI B, 1f
-????:
-cf76  7e         MOV A, M
-cf77  fe 0d      CPI A, 0d
-cf79  ca 80 cf   JZ cf80
-????:
-cf7c  23         INX HL
-cf7d  c3 76 cf   JMP cf76
-????:
-cf80  05         DCR B
-cf81  c2 7c cf   JNZ cf7c
 
-????:
-cf84  06 02      MVI B, 02
-cf86  c3 99 ce   JMP ce99
+    cf50  3a 22 f7   LDA CUR_LINE_LEN (f722)    ; Calculate end of the previous line
+    cf53  4f         MOV C, A                   ; BUG? GET_NEXT_LINE_ADDR call above did this already
+    cf54  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
+    cf57  06 00      MVI B, 00
+    cf59  09         DAD BC
 
-; ?????
+    cf5a  23         INX HL                     ; Skip \r at the end of the line, HL points to the next line
+
+    cf5b  c3 2b ce   JMP LOAD_LINE (ce2b)
+
+
+; Scroll screen 1 line down
+;
+; The function searches start of the next line, and loads it to HL. DRAW_SCREEN function will redraw
+; the screen starting from calculated position.
+SCROLL_DOWN:
+    cf5e  2a 29 f7   LHLD PAGE_START_ADDR (f729); Load page start address (first line on the screen)
+
+SCROLL_DOWN_LOOP:
+    cf61  7e         MOV A, M                   ; Search for end of the line
+    cf62  d6 0d      SUI A, 0d
+    cf64  23         INX HL
+    cf65  c2 61 cf   JNZ SCROLL_DOWN_LOOP (cf61)
+
+    cf68  c3 fd cc   JMP DRAW_SCREEN (ccfd)
+
+
+; Page down, scroll down for 31 line (Ctrl-Down combination)
+PAGE_DOWN:
+    cf6b  cd ce ce   CALL FLUSH_STRING_BUF (cece)   ; Flush currently edited string
+
+    cf6e  cd 89 cf   CALL GET_NEXT_LINE_ADDR (cf89) ; Perform scroll to last 2 lines if page down is requested
+                                                    ; and there is not enough lines to show.
+                                                    ; BUG: This function expects CUR_LINE_PTR to point to the last
+                                                    ; line shown on screen. But if the User edited a line on the
+                                                    ; last screen, CUR_LINE_PTR will point to other line, and
+                                                    ; scroll to last line will not happen. Instead code below will
+                                                    ; search for another 32 lines and possibly crash.
+
+    cf71  2a 29 f7   LHLD PAGE_START_ADDR (f729); Load current page start
+
+    cf74  06 1f      MVI B, 1f                  ; Will scroll down for 0x1f lines
+                                                ; BUG: UT-88 screen has only 28 lines, not 32
+
+PAGE_DOWN_SEARCH_EOL_LOOP:
+    cf76  7e         MOV A, M                   ; Load the next symbol
+
+    cf77  fe 0d      CPI A, 0d                  ; Search for the \r symbol
+    cf79  ca 80 cf   JZ PAGE_DOWN_NEXT_LINE (cf80)
+
+PAGE_DOWN_NEXT_CHAR:
+    cf7c  23         INX HL                     ; Advance to the next symbol
+    cf7d  c3 76 cf   JMP PAGE_DOWN_SEARCH_EOL_LOOP (cf76)
+
+PAGE_DOWN_NEXT_LINE:
+    cf80  05         DCR B                      ; Repeat search for 0x1f lines
+    cf81  c2 7c cf   JNZ PAGE_DOWN_NEXT_CHAR (cf7c)
+
+PAGE_DOWN_FINISH:
+    cf84  06 02      MVI B, 02                  ; Now move 2 strings up (so that first 2 strings on the screen
+    cf86  c3 99 ce   JMP DO_SCROLL_UP (ce99)    ; are last 2 strings of the previous page)
+
+
+; Calculate and return a pointer to the next line start
+;
+; If the function is called for the last line, and there is no text beyond the line, function scrolls the 
+; screen to the 2nd line to the end of file.
+;
+; Note: This function overall is quite weird. It calculates some value, which is never used on the caller side.
+; At the same time this function is supposed to scroll screen if called beyond end of text. At the same time
+; there is no guarantee that CUR_LINE_PTR points to the last line on the screen - if user edits a line on the 
+; last page, the CUR_LINE_PTR will point to an intermediate line, and scroll will not happen. Instead causes bug
+; elsewhere, as other code expects this function to make a scroll which was not happen.
 GET_NEXT_LINE_ADDR:
     cf89  2a 2b f7   LHLD CUR_LINE_PTR (f72b)   ; Get current line text ptr
     cf8c  3a 22 f7   LDA CUR_LINE_LEN (f722)    ; Get current line length
@@ -1024,11 +1140,12 @@ GET_NEXT_LINE_ADDR:
     cf95  b7         ORA A
     cf96  f0         RP
 
-    cf97  c1         POP BC                     ; ??? Ignore return address
+    cf97  c1         POP BC                     ; Ignore return address
 
-    cf98  c3 fe d0   JMP d0fe                   ; ???? Shift the text ????
+    cf98  c3 fe d0   JMP d0fe                   ; Scroll to the second line before the end
+                                                ; BUG: there may be less than 2 line in the text
 
-
+; Search end of file marker (symbol with code >=0x80)
 GET_END_OF_FILE:
     cf9b  21 00 30   LXI HL, 3000               ; Set the start address
 
@@ -1044,6 +1161,8 @@ GET_END_OF_FILE_LOOP:
     cfa7  c3 9e cf   JMP GET_END_OF_FILE_LOOP (cf9e)
 
 
+
+; Check that file size is within 0x9fff memory range, otherwise report an error
 CHECK_FILE_SIZE:
     cfaa  eb         XCHG                       ; Compare HL with 0x9fff
     cfab  21 ff 9f   LXI HL, 9fff
@@ -1060,7 +1179,7 @@ CHECK_FILE_SIZE:
 
 ????_COMMAND_D:
 cfbb  cd c7 ce   CALL cec7
-cfbe  2a 29 f7   LHLD f729
+cfbe  2a 29 f7   LHLD PAGE_START_ADDR (f729)
 cfc1  22 31 f7   SHLD f731
 cfc4  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
 cfc7  22 2d f7   SHLD f72d
@@ -1073,7 +1192,7 @@ cfd5  ca 3f d0   JZ d03f
 cfd8  3d         DCR A
 cfd9  ca 14 d0   JZ d014
 cfdc  fe 05      CPI A, 05
-cfde  ca 0e d0   JZ d00e
+cfde  ca 0e d0   JZ REDRAW_SCREEN (d00e)
 cfe1  c3 ee cf   JMP cfee
 ????:
 cfe4  fe 1a      CPI A, 1a
@@ -1087,7 +1206,7 @@ cff1  c3 cd cf   JMP cfcd
 cff4  2a 27 f7   LHLD END_OF_FILE_PTR (f727)
 cff7  eb         XCHG
 cff8  2a 31 f7   LHLD f731
-cffb  22 29 f7   SHLD f729
+cffb  22 29 f7   SHLD PAGE_START_ADDR (f729)
 cffe  2a 2d f7   LHLD f72d
 d001  44         MOV B, H
 d002  4d         MOV C, L
@@ -1097,9 +1216,11 @@ d009  60         MOV H, B
 d00a  69         MOV L, C
 d00b  22 27 f7   SHLD END_OF_FILE_PTR (f727)
 
-????:
-d00e  2a 29 f7   LHLD f729
-d011  c3 fd cc   JMP ccfd
+; Re-draw current screen, starting from the same page start address
+REDRAW_SCREEN:
+    d00e  2a 29 f7   LHLD PAGE_START_ADDR (f729)    ; Load page start address
+    d011  c3 fd cc   JMP DRAW_SCREEN (ccfd)         ; And run screen drawing procedure
+
 
 ????:
 d014  cd 2f d0   CALL d02f
@@ -1111,7 +1232,7 @@ d020  c3 cd cf   JMP cfcd
 ????:
 d023  cd 2f d0   CALL d02f
 d026  ca ee cf   JZ cfee
-d029  cd 6b cf   CALL cf6b
+d029  cd 6b cf   CALL PAGE_DOWN (cf6b)
 d02c  c3 1d d0   JMP d01d
 ????:
 d02f  e5         PUSH HL
@@ -1134,7 +1255,7 @@ d049  ca ee cf   JZ cfee
 d04c  3a 25 f7   LDA CURSOR_Y (f725)
 d04f  b7         ORA A
 d050  c2 59 d0   JNZ d059
-d053  cd b1 ce   CALL ceb1
+d053  cd b1 ce   CALL HOME_KEY (ceb1)
 d056  c3 cd cf   JMP cfcd
 
 ????:
@@ -1205,8 +1326,8 @@ PUT_CHAR_BLOCK_LOOP:
     d0a7  c3 97 d0   JMP PUT_CHAR_BLOCK (d097)  ; Repeat if A is not zero
 
 
-; Ctrl-Left key combination deletes symbol at cursor, shifting the rest of the line left 1 char
-CTRL_LEFT:
+; Delete symbol at cursor (Ctrl-Left), shifting the rest of the line left 1 char
+DELETE_SYMB:
     d0aa  cd aa cb   CALL CHECK_SYMBOL_AT_CURSOR (cbaa) ; Deleting at the end of text is not allowed
     d0ad  7e         MOV A, M
     d0ae  b7         ORA A
@@ -1244,12 +1365,13 @@ SEARCH_END_OF_STRING:
 d0d2  cd c7 ce   CALL cec7
 d0d5  cd 9e cc   CALL HOME_CURSOR (cc9e)
 d0d8  cd 34 cf   CALL cf34
-d0db  cd 5c cd   CALL cd5c
+d0db  cd 5c cd   CALL DRAW_SCREEN_FINISH_2 (cd5c)
 ????:
 d0de  af         XRA A
 d0df  32 21 f7   STA f721
 d0e2  cd 20 cc   CALL INPUT_LINE (cc20)
-d0e5  da 0e d0   JC d00e
+d0e5  da 0e d0   JC REDRAW_SCREEN (d00e)
+
 d0e8  cd ce ce   CALL FLUSH_STRING_BUF (cece)
 d0eb  3a 22 f7   LDA CUR_LINE_LEN (f722)
 d0ee  5f         MOV E, A
@@ -1266,7 +1388,7 @@ d0fb  cd ce ce   CALL FLUSH_STRING_BUF (cece)
     d0fe  2a 27 f7   LHLD END_OF_FILE_PTR (f727)    ; Get pointer to the last text char
     d101  2b         DCX HL
 
-d102  cd 84 cf   CALL cf84
+d102  cd 84 cf   CALL PAGE_DOWN_FINISH (cf84)
 
 d105  3a 22 f7   LDA CUR_LINE_LEN (f722)
 d108  4f         MOV C, A
@@ -1301,7 +1423,7 @@ NEW_FILE:
 
     d133  36 ff      MVI M, ff                  ; Add end of text marker
 
-    d135  c3 fe d0   JMP d0fe                   ; ????
+    d135  c3 fe d0   JMP d0fe                   ; ??????
 
 
 ; Output file to the tape
@@ -1781,8 +1903,8 @@ COMMAND_HANDLERS:
     d36b  52 a7 cd      db 'R', ????_COMMAND_R (cda7)
     d36e  46 bf cd      db 'F', ????_COMMAND_F (cdbf)
     d371  59 9d cd      db 'Y', ????_COMMAND_Y (cd9d)
-    d374  08 aa d0      db 0x08, CTRL_LEFT (d0aa)
+    d374  08 aa d0      db 0x08, DELETE_SYMB (d0aa)
     d377  18 5f d0      db 0x18, d05f
-    d37a  19 91 ce      db 0x19, ce91
-    d37d  1a 6b cf      db 0x1a, cf6b
+    d37a  19 91 ce      db 0x19, PAGE_UP (ce91)
+    d37d  1a 6b cf      db 0x1a, PAGE_DOWN (cf6b)
     d380  00            db 00               ; End of the table
