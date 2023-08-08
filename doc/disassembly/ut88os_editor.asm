@@ -1,10 +1,113 @@
- ; General description TBD
-
+; "Micron" Full Screen Text Editor
+;
+; The Editor application comes as a part of UT-88 OS package and offers the following features:
+; - Full screen text editing
+; - Supports editing up to 28k of text (0x3000-0x9fff memory range), each line up to 63 chars. Lines split with
+;   \r char, text ends with a symbol with code >= 0x80
+; - Insert or overwrite mode
+; - Insert/Delete char under cursor with Ctrl-Left/Right. Insert/Delete line with Ctrl-A/Ctrl-D commands.
+; - Handy navigation with arrow buttons, as well as Page Up/Down (with Ctrl-Up/Down keys)
+; - Search a substring in the text
+; - Selectable tab size (4 or 8 chars). Tabs are entered with Ctrl-Space key combination.
+; - Input and output text from/to the tape recorder, verify text in memory against the tape
+; - Appending a file from tape to the text currently loaded in memory
+;
+; There are no features, that offer a typical modern editor:
+; - Copy/Paste
+; - Line wrapping
+; - Undo/Redo
+;
+; When running the Editor program it starts with a prompt, and allows entering commands. It is possible to
+; load an existing text from tape (Ctrl-I), or create a new one (Ctrl-N). If the text was already loaded
+; in any other way, the User can switch from prompt to text editing mode using Up or Down keys. 
+;
+; Text editing is typically performed by inserting or removing symbols to/from the text. It may be too CPU 
+; consuming to move large amount of data in memory for each entered symbol. Instead, the Editor uses a concept
+; of a currently edited line. The line at cursor in fact is a screen wide edit field. Text in memory is split
+; into individual lines separated with \r symbol. When cursor moves to a line, the line is loaded to a 63-byte
+; line buffer. The edit field edits data in that buffer. As the buffer is relatively small, adding or removing
+; symbols in has no performance impact. When editing is finished (moving to another line, or executing a command),
+; the buffer is flushed back to the main text memory, shifting memory block next to the edited line if necessary.
+;
+; Keys and key combinations that are supported in the Editor:
+; - Alpha-numeric or symbol keys perform entering a character to the text. Depending on insert/overwrite mode
+;   a new symbol will be inserted at the cursor position (and remaining of the line will be shifted right), or
+;   the new char will overwrite symbol at cursor position (line size will remain the same). Ctrl-Y key combination
+;   toggles insert/overwrite mode.
+; - Ctrl-Space key combination add spaces up to the next 4-char or 8-char tab stop (Ctrl-W command toggles the
+;   tab width)
+; - Ctrl-Left/Ctrl-Right perform deletion/insertion of a symbol at cursor position. Insertion is performed even
+;   in overwrite mode.
+; - Up/Down/Left/Right arrows move the cursor on the screen. If cursor reaches top or bottom of the screen it is
+;   scrolled for 1 line.
+; - Ctrl-Up/Ctrl-Down performs page up or down
+; - Ctrl-L searches a substring in entire text file
+; - Ctrl-X searches a substring from the current line till the end of the file
+; - Ctrl-D is intended to delete one or more lines. The command works only at the beginning of the line. When
+;   Ctrl-D combination is pressed, the line is marked with # symbol indicating a range start. User may navigate
+;   to a point later in the file with Up/Down arrows or Ctrl-Up/Down keys selecting the end range to delete.
+;   It is possible to select only entire lines, deleting part of the line with Ctrl-D is not possible. When the
+;   range is selected another Ctrl-D press perform the deletion. Clear Screen button exits the range selection, 
+;   and cancels the mode.
+; - Ctrl-A adds a new line after the current line. The command works only at the beginning of the line. When line 
+;   is added user can enter text to a new line. The command allows adding multiple lines. Return key submits
+;   the added line. Clear Screen key exits the mode.
+; - Ctrl-T command is similar, but text is added at the end of the text file.
+; - Ctrl-N creates a new empty text file. Previous text is cleared.
+; - Ctrl-F prints the current text file size and free memory stats
+; - Ctrl-O outputs current text to the tape. User enters the file name, which is stored to the tape in the file
+;   header. Storage format is slightly different, compared to format used by Monitor. This, which makes impossible
+;   to load in Monitor text files exported from the Editor. And vice versa, loading binary data as a text is not
+;   allowed. The format uses a different pilot tone so that text and binary can be distinguished audibly.
+; - Ctrl-I loads a text from the tape. The user enters expected file name, and the function will search the
+;   matched file name on the tape.
+; - Ctrl-V is similar to the previous command, but instead of loading a text data from the tape, it verifies that
+;   text in memory matches the text on the tape.
+; - Ctrl-M appends a file on tape to the current text.
+; - Ctrl-R toggles the default Monitor's tape delay constants with a shorter ones, so that text is saved at a 
+;   faster speed
+; - Clear Screen key exits to the Monitor
+;
+; Refer to particular command function for more detailed description.
+;
+; Bugs and issues:
+; - There is no check whether text is loaded or not while displaying a prompt screen. User can switch to the
+;   editing mode even though text is not loaded, and new file not created. In this case loading program will
+;   perform very long scanning loop processing all the memory range looking for end of text marker (or, if you
+;   are lucky, FILE TOO LONG error will be shown).
+; - Although the Editor comes as a part of UT-88 OS bundle, in fact it is a separate program, not tightly 
+;   integrated with the rest of the system. Basically it shall work normally with the original MonitorF, except
+;   for Ctrl-R command which changes tape speed constants directly in the Monitor's variable.
+; - Since UT-88 Monitor does not offer Escape-Y sequence for direct cursor placement, the editor tracks cursor
+;   position on its own. If the editor needs to place cursor at a certain location, it prints 0x0c home cursor
+;   char, and then print move cursor down or right symbols (0x1a or 0x18 respectively) a desired number of times.
+; - Perhaps this editor is a quick and dirty port from some other system. The editor suppose to run on a system
+;   with a 32-line screen, while UT-88 provides only 28-line screen. This causes very odd drawing, which pretty
+;   much impossible to use for a real text editing. Number of places had to be corrected to run the editor on
+;   the UT-88 display.
+; - There is keyboard read function incompatibility. If a Ctrl-symbol key combination pressed some monitors
+;   generate a single char code in 0x01-0x1f range. Instead, the Editor code expect symbol to be returned normally
+;   (in a 0x20-0x7f range), and reading Keyboard Port C allows checking Ctrl key state. For proper operation, the
+;   editor code require patched Monitor that return normal char codes even when pressed in combination with Ctrl.
+; - There are 2 line editors used in the program. One editor is used for changes in an existing line, and driven
+;   with the main loop (EDITOR_MAIN_CHAR_LOOP). This editor supports insert/overwrite mode, Ctrl commands, etc.
+;   At the same time this editor does not support Ctrl-Space tabulation, and editing is not completed/submitted
+;   with a return key.
+;   Another editor is implemented in INPUT_LINE function, and used for typing new lines in the text (Ctrl-A/Ctrl-T
+;   commands). This mode supports tabulation and finished with return key, but other Ctrl commands are not 
+;   supported.
+; - Page down function assumes that the last line of the text is active, and CUR_LINE_PTR variable is set properly.
+;   If the user edits another line on the last page, and CUR_LINE_PTR points elsewhere, Page Down operation will
+;   fail up to a crash.
+; - Home key moves cursor to the top-left position. But if cursor is already at the top line, scroll 1 line up
+;   is performed. This is unusual behavior of the Home button.
+;
 ;
 ; Variables:
 ; - f6df    - 0xff, a limiting character for line buffer underrun
-; - f6e0    - 0x3f bytes of buffer ????
-; - f721    - 
+; - f6e0    - 63 bytes line editing buffer
+; - f720    - Tape input mode (used to distinguish between Ctrl-I, Ctrl-V, and Ctrl-M commands)
+; - f721    - Flag indicating that edit buffer is flushed (0xff means flushed, other values - not flushed)
 ; - f722    - Current line length
 ; - f723    - Cursor X position, counting from left side. 0xff if not initialized yet.
 ; - f724    - Tab size - 1
@@ -13,8 +116,11 @@
 ; - f727    - end of file pointer (points to the next symbol after the last text char)
 ; - f729    - address of the first line visible on the screen
 ; - f72b    - Pointer to the beginning of the current line
+; - f72d    - Temporary storage for the current line pointer (used for Ctrl-D command)
+; - f731    - Temporary storage for active page pointer (user for Ctrl-D command)
 
-COMMAND_E_EDITOR:
+; Entry pointis referred in Monitor code as COMMAND_E_EDITOR (executed with 'E' command with no parameters)
+START:              
     cb00  0e 1f      MVI C, 1f                  ; Clear screen
     cb02  cd 09 f8   CALL PUT_CHAR (f809)
 
@@ -22,37 +128,40 @@ COMMAND_E_EDITOR:
     cb08  39         DAD SP
     cb09  22 2f f7   SHLD SAVE_SP (f72f)
 
+; The main commands loop. Commands are returned here on error, or normal exit
 EDITOR_MAIN_LOOP:
-    cb0c  2a 2f f7   LHLD SAVE_SP (f72f)        ; Restore SP
-    cb0f  f9         SPHL
+    cb0c  2a 2f f7   LHLD SAVE_SP (f72f)        ; Restore SP on every cycle (no matter how deep we were in the
+    cb0f  f9         SPHL                       ; code - just jump to EDITOR_MAIN_LOOP, and program will reset)
 
     cb10  cd 12 cc   CALL PRINT_HELLO_PROMPT (cc12) ; Print prompt
 
-    cb13  21 00 30   LXI HL, 3000               ; ???? text start, and current cursor position?????
+    cb13  21 00 30   LXI HL, 3000               ; Set text start as first page, and the current line
     cb16  22 29 f7   SHLD PAGE_START_ADDR (f729)
     cb19  22 2b f7   SHLD CUR_LINE_PTR (f72b)
 
-    cb1c  cd 9b cf   CALL GET_END_OF_FILE (cf9b); ???? get end of file pointer
+    cb1c  cd 9b cf   CALL GET_END_OF_FILE (cf9b); Initialize end of file pointer
     cb1f  22 27 f7   SHLD END_OF_FILE_PTR (f727)
 
     cb22  cd 6f ce   CALL CLEAR_BUFFER (ce6f)
+    cb25  eb         XCHG
 
-    cb25  eb         XCHG                       ; ????? Store 0x00
-    cb26  32 22 f7   STA CUR_LINE_LEN (f722)
+    cb26  32 22 f7   STA CUR_LINE_LEN (f722)    ; Initialize line length and insert/overwrite mode
     cb29  32 26 f7   STA INSERT_MODE (f726)
 
-    cb2c  3d         DCR A                      ; ???? Store 0xff
-    cb2d  32 21 f7   STA f721
-    cb30  32 23 f7   STA CURSOR_X (f723)
+    cb2c  3d         DCR A                      ; Mark the line buffer as flushed (0xff)
+    cb2d  32 21 f7   STA BUF_FLUSHED (f721)
+
+    cb30  32 23 f7   STA CURSOR_X (f723)        ; Set cursor position as uninitialized
     cb33  32 25 f7   STA CURSOR_Y (f725)
 
     cb36  2b         DCX HL                     ; Store 0xff to f6df (some functions intentionally do read prior
     cb37  77         MOV M, A                   ; the line buffer, and 0xff indicate no data there)
     cb38  23         INX HL
 
-    cb39  3e 03      MVI A, 03                  ; Set the default tab size
+    cb39  3e 03      MVI A, 03                  ; Set the default tab size of 4 chars
     cb3b  32 24 f7   STA TAB_SIZE (f724)
 
+; Main editor loop, responsible for keyboard characters processing
 EDITOR_MAIN_CHAR_LOOP:
     cb3e  01 3e cb   LXI BC, EDITOR_MAIN_CHAR_LOOP (cb3e)   ; Character processing will return back here
     cb41  c5         PUSH BC
@@ -82,11 +191,13 @@ EDITOR_MAIN_CHAR_LOOP:
     cb69  c1         POP BC
     cb6a  c9         RET
 
+; Process normal char
 EDITOR_MAIN_PROCESS_CHAR:
     cb6b  fe 0d      CPI A, 0d                  ; Check if Return key is pressed
     cb6d  ca db cc   JZ BEEP (ccdb)
 
-    cb70  cd aa cb   CALL CHECK_SYMBOL_AT_CURSOR (cbaa) ; ?????
+    cb70  cd aa cb   CALL CHECK_SYMBOL_AT_CURSOR (cbaa) ; Ensure text structure is correct, and there are no 
+                                                        ; invalid chars around
 
     cb73  3a 26 f7   LDA INSERT_MODE (f726)     ; Are we in insertion or overwrite mode?
     cb76  b7         ORA A
@@ -172,7 +283,8 @@ GET_KBD_KEY:
     cbbc  79         MOV A, C                   ; Return entered char in A
     cbbd  c9         RET
 
-; Search for a substring in the text starting the current line
+
+; Search for a substring in the text starting the current line (Ctrl-X)
 ; The function prompt the user for a string to search, if string found, the text is scrolled to the line where
 ; text is found.
 SEARCH_FROM_CURRENT:
@@ -182,7 +294,7 @@ SEARCH_FROM_CURRENT:
 
     cbc3  c3 cb cb   JMP DO_SEARCH (cbcb)
 
-; Same as SEARCH_FROM_CURRENT, but search from the beginning
+; Same as SEARCH_FROM_CURRENT, but search from the beginning (Ctrl-X)
 SEARCH_FROM_BEGINING:
     cbc6  e5         PUSH HL                    ; Load the text start to DE
     cbc7  21 00 30   LXI HL, 3000
@@ -238,7 +350,7 @@ BEEP_AND_EXIT:
 
 
 CLEAR_SCREEN_AND_PRINT_COMMAND_PROMPT:
-    cbfd  f5         PUSH PSW                   ; ????
+    cbfd  f5         PUSH PSW                   ; Flush the buffer if needed
     cbfe  cd ce ce   CALL FLUSH_STRING_BUF (cece)
     cc01  f1         POP PSW
 
@@ -323,13 +435,13 @@ INPUT_LINE_MOVE_RIGHT:
     cc50  71         MOV M, C
 
 INPUT_LINE_MOVE_RIGHT_1:
-    cc51  3a 23 f7   LDA CURSOR_X (f723)    ; Increase the buffer chars counter
+    cc51  3a 23 f7   LDA CURSOR_X (f723)        ; Increase the buffer chars counter
     cc54  3c         INR A
 
     cc55  fe 3f      CPI A, 3f                  ; Limit the buffer with 0x3f chars, report an error when
     cc57  d2 d4 cc   JNC INPUT_TEXT_BEEP_AND_REPEAT (ccd4)  ; the buffer is full
 
-    cc5a  32 23 f7   STA CURSOR_X (f723)    ; Store the new counter value
+    cc5a  32 23 f7   STA CURSOR_X (f723)        ; Store the new counter value
 
     cc5d  23         INX HL                     ; Advance buffer pointer
 
@@ -369,7 +481,7 @@ INPUT_LINE_PROCESS_CHAR:
 
     cc90  77         MOV M, A                   ; Store zero char in the buffer
 
-    cc91  3a 23 f7   LDA CURSOR_X (f723)        ; Store number of entered chars in 0xf722 ????
+    cc91  3a 23 f7   LDA CURSOR_X (f723)        ; Store number of entered chars to the line length variable
     cc94  3c         INR A
     cc95  32 22 f7   STA CUR_LINE_LEN (f722)
 
@@ -543,8 +655,8 @@ DRAW_SCREEN_FINISH:
     cd3d  91         SUB C
     cd3e  4f         MOV C, A
 
-    cd3f  32 21 f7   STA f721                   ; Store calculated string length
-    cd42  32 22 f7   STA CUR_LINE_LEN (f722)
+    cd3f  32 21 f7   STA BUF_FLUSHED (f721)     ; Store calculated string length, mark the buffer as dirty and
+    cd42  32 22 f7   STA CUR_LINE_LEN (f722)    ; require a flush
 
     cd45  3e 1e      MVI A, 1e                  ; Calculate Y coordinate (Y = 0x1e - B)
     cd47  90         SUB B                      ; BUG: UT-88 display has only 28 lines, not 32
@@ -744,7 +856,7 @@ PRINT_ERROR:
     ce18  eb         XCHG                       ; Print the error type
     ce19  cd 18 f8   CALL PRINT_STRING (f818)
 
-    ce1c  c3 f7 cb   JMP BEEP_AND_EXIT (cbf7)   ; ?????
+    ce1c  c3 f7 cb   JMP BEEP_AND_EXIT (cbf7)   ; Beep and exit
 
 
 ; Move cursor one line up, scroll one line up if necessary
@@ -757,9 +869,8 @@ UP_ARROW:
     ce28  cd 51 ce   CALL SEARCH_PREV_LINE (ce51)
 
 
-; Load new line pointed by HL
-;
-; The function loads current line to the line buffer. Line length variables updated accordingly.
+; Load new line pointed by HL into the line buffer.
+; Line length variables updated accordingly.
 LOAD_LINE:
     ce2b  22 2b f7   SHLD CUR_LINE_PTR (f72b)   ; Store the new line start pointer
 
@@ -782,8 +893,8 @@ LOAD_LINE_LOOP:
     ce3e  c3 34 ce   JMP LOAD_LINE_LOOP (ce34)
 
 LOAD_LINE_FINISH:
-    ce41  78         MOV A, B                   ; Store new line length
-    ce42  32 21 f7   STA f721                   ; ????
+    ce41  78         MOV A, B                   ; Store new line length, mark the buffer as dirty and require a
+    ce42  32 21 f7   STA BUF_FLUSHED (f721)     ; flush
     ce45  32 22 f7   STA CUR_LINE_LEN (f722)
 
     ce48  e1         POP HL                     ; Load the cursor X position in DE
@@ -864,6 +975,7 @@ CLEAR_BUFFER_LOOP:
 ;
 ; The function is executed when pressing up arrow or home keys, and suppose to move cursor somewhere up. The
 ; function performs actual cursor movement by printing movement char. Also it flushes input buffer data, if needed.
+;
 ; But the most important is that function checks whether cursor is already on the topmost position. In this case
 ; Sign bit is raised.
 ;
@@ -925,7 +1037,7 @@ SCROLL_UP_SEARCH_LOOP:
 
 
 ; Handle Home key
-; Move cursor to the topleft position. Scroll screen 1 line up if needed.
+; Move cursor to the topleft position. Scroll screen 1 line up if already on the top-left position.
 HOME_KEY:
     ceb1  cd 80 ce   CALL PREPARE_MOVE_UP (ce80)    ; Flush line buffer, Check cursor position
 
@@ -942,6 +1054,7 @@ HOME_KEY_1:
     cec4  c3 2b ce   JMP LOAD_LINE (ce2b)
 
 
+; Some commands like Ctrl-D, or Ctrl-A require cursor to be at the leftmost position, otherwise error is generated
 CHECK_CURSOR_AT_LINE_START:
     cec7  3a 23 f7   LDA CURSOR_X (f723)            ; Check if the cursor is located at the line start
     ceca  b7         ORA A                          ; Otherwise make a beep sound
@@ -954,8 +1067,8 @@ CHECK_CURSOR_AT_LINE_START:
 ; of the text left or right in order to fit the buffer text perfectly. Eventually text from the buffer is
 ; flushed to the main text area.
 FLUSH_STRING_BUF:
-    cece  3a 21 f7   LDA f721                   ; Check if X cursor position has meaningful value (do nothing
-    ced1  b7         ORA A                      ; if line editing has not been yet started)
+    cece  3a 21 f7   LDA BUF_FLUSHED (f721)     ; Check if the buffer needs a flush, skip otherwise
+    ced1  b7         ORA A
     ced2  f8         RM
 
     ced3  4f         MOV C, A                   ; HL = Current line start address + line length
@@ -1174,7 +1287,7 @@ PAGE_DOWN_FINISH:
 ; screen to the 2nd line to the end of file.
 ;
 ; Note: This function overall is quite weird. It calculates some value, which is never used on the caller side.
-; At the same time this function is supposed to scroll screen if called beyond end of text. At the same time
+; At the same time this function is supposed to scroll screen if called beyond end of text. Note, that
 ; there is no guarantee that CUR_LINE_PTR points to the last line on the screen - if user edits a line on the 
 ; last page, the CUR_LINE_PTR will point to an intermediate line, and scroll will not happen. Instead causes bug
 ; elsewhere, as other code expects this function to make a scroll which was not happen.
@@ -1474,49 +1587,66 @@ SEARCH_END_OF_STRING:
     d0cf  c3 cb d0   JMP SEARCH_END_OF_STRING (d0cb)
 
 
-????_COMMAND_A:
-d0d2  cd c7 ce   CALL CHECK_CURSOR_AT_LINE_START (cec7)
-d0d5  cd 9e cc   CALL HOME_CURSOR (cc9e)
-d0d8  cd 34 cf   CALL DOWN_ARROW (cf34)
-d0db  cd 5c cd   CALL DRAW_SCREEN_FINISH_2 (cd5c)
-????:
-d0de  af         XRA A
-d0df  32 21 f7   STA f721
-d0e2  cd 20 cc   CALL INPUT_LINE (cc20)
-d0e5  da 0e d0   JC REDRAW_SCREEN (d00e)
+; Insert new lines after current line (Ctrl-A)
+; The function starts a special editing mode, that will add new lines after the selected one. Return key
+; submits the line, Clear screen key exits insertion mode
+INSERT_LINES:
+    d0d2  cd c7 ce   CALL CHECK_CURSOR_AT_LINE_START (cec7)
 
-d0e8  cd ce ce   CALL FLUSH_STRING_BUF (cece)
-d0eb  3a 22 f7   LDA CUR_LINE_LEN (f722)
-d0ee  5f         MOV E, A
-d0ef  16 00      MVI D, 00
-d0f1  2a 2b f7   LHLD CUR_LINE_PTR (f72b)
-d0f4  19         DAD DE
-d0f5  22 2b f7   SHLD CUR_LINE_PTR (f72b)
-d0f8  c3 de d0   JMP d0de
+    d0d5  cd 9e cc   CALL HOME_CURSOR (cc9e)        ; New lines will be inserted after the current line. Move
+    d0d8  cd 34 cf   CALL DOWN_ARROW (cf34)         ; cursor one line down
+    d0db  cd 5c cd   CALL DRAW_SCREEN_FINISH_2 (cd5c)
 
-????_COMMAND_T:
-d0fb  cd ce ce   CALL FLUSH_STRING_BUF (cece)
+INSERT_LINES_LOOP:
+    d0de  af         XRA A                          ; Clear buffer flushed flag
+    d0df  32 21 f7   STA BUF_FLUSHED (f721)
 
-????:
+    d0e2  cd 20 cc   CALL INPUT_LINE (cc20)         ; Input new line (Clear screen key will exit the mode)
+    d0e5  da 0e d0   JC REDRAW_SCREEN (d00e)
+
+    d0e8  cd ce ce   CALL FLUSH_STRING_BUF (cece)   ; Store the new line, insert in before the next one
+
+    d0eb  3a 22 f7   LDA CUR_LINE_LEN (f722)        ; DE = inserted line length
+    d0ee  5f         MOV E, A
+    d0ef  16 00      MVI D, 00
+
+    d0f1  2a 2b f7   LHLD CUR_LINE_PTR (f72b)       ; HL = inserted line end pointer
+    d0f4  19         DAD DE
+
+    d0f5  22 2b f7   SHLD CUR_LINE_PTR (f72b)       ; Store pointer to the next line as a new insertion point
+
+    d0f8  c3 de d0   JMP INSERT_LINES_LOOP (d0de)   ; Want to type another string?
+
+
+; Append text at the end (Ctrl-T)
+;
+; The function is a variation of INSERT_LINES function, but adds text to the end of file
+APPEND_TEXT:
+    d0fb  cd ce ce   CALL FLUSH_STRING_BUF (cece)   ; Flush unsaved data
+
+APPEND_TEXT_1:
     d0fe  2a 27 f7   LHLD END_OF_FILE_PTR (f727)    ; Get pointer to the last text char
     d101  2b         DCX HL
 
-d102  cd 84 cf   CALL PAGE_DOWN_FINISH (cf84)
+    d102  cd 84 cf   CALL PAGE_DOWN_FINISH (cf84)   ; Show the last 2 lines of the text
 
-d105  3a 22 f7   LDA CUR_LINE_LEN (f722)
-d108  4f         MOV C, A
-d109  06 00      MVI B, 00
-d10b  eb         XCHG
-d10c  09         DAD BC
-d10d  23         INX HL
-d10e  22 2b f7   SHLD CUR_LINE_PTR (f72b)
+    d105  3a 22 f7   LDA CUR_LINE_LEN (f722)        ; Get pointer to the last line end
+    d108  4f         MOV C, A
+    d109  06 00      MVI B, 00
+    d10b  eb         XCHG
+    d10c  09         DAD BC
 
-d111  0e 1a      MVI C, 1a
-d113  cd 09 f8   CALL PUT_CHAR (f809)
+    d10d  23         INX HL                         ; Advance to the EOF point, and ready to accept new lines
+    d10e  22 2b f7   SHLD CUR_LINE_PTR (f72b)
 
-d116  c3 de d0   JMP d0de
+    d111  0e 1a      MVI C, 1a                      ; Move cursor one line down
+    d113  cd 09 f8   CALL PUT_CHAR (f809)
+
+    d116  c3 de d0   JMP INSERT_LINES_LOOP (d0de)   ; Input new lines at the end of file
 
 
+; New file (Ctrl-N)
+; The function clears the text in the memory (after confirmation), and starts input of the new text
 NEW_FILE:
     d119  cd ce ce   CALL FLUSH_STRING_BUF (cece)   ; Flush current changes
 
@@ -1536,7 +1666,7 @@ NEW_FILE:
 
     d133  36 ff      MVI M, ff                  ; Add end of text marker
 
-    d135  c3 fe d0   JMP d0fe                   ; ??????
+    d135  c3 fe d0   JMP APPEND_TEXT_1 (d0fe)   ; Type text into the new file
 
 
 ; Output file to the tape
@@ -1723,7 +1853,7 @@ CALCULATE_CRC_LOOP:
 
 ; Read text file from the tape
 ;
-; The function serves Command I (text input), M (merge file), and V (verify). The function works according
+; The function serves Ctrl-I (text input), Ctrl-M (merge file), and Ctrl-V (verify). The function works according
 ; to the following algorithm:
 ; - Ask user for the desired file name
 ; - Read the tape until 4 x 0xe6 marker bytes are found, followed by the file name. If the file name does not
@@ -1732,7 +1862,7 @@ CALCULATE_CRC_LOOP:
 ; - Command M calculates data start/end address so that it appends tape data to the text already in the
 ;   memory. Commands I and V will use 0x3000 as data start address.
 ; - Commands I and M do the actual data load according to calculated addresses.
-; - Command V does not data verification, report mismatch errors if any.
+; - Command V performs the data verification, report mismatch errors if any.
 ; - CRC field stored at the end of file is checked against the memory data, report mismatch errors if any.
 INPUT_FILE:
     d1ee  06 00      MVI B, 00                  ; Set the mode 0 - normal input file from tape
@@ -2000,13 +2130,15 @@ STATS_STR:
 ; BUG (or at least incompatibility): It is supposed to enter commands with the Ctrl key. First issue, is
 ; that GET_KBD_KEY function is looking for a high bit of the Keyboard's Port C, while the Ctrl key is 
 ; connected to 1st bit of that port. Another issue is that Ctrl-<char> combinations produce char codes in
-; 0x01-0x1a range, while the table below expects normal char codes (in 0x41-0x5a range)
+; 0x01-0x1a range, while the table below expects normal char codes (in 0x41-0x5a range). This editor program
+; requires a patched Monitor that returns Ctrl codes as normal characters, and the Editor will read the
+; keyboard Port C checking for Ctrl key press.
 COMMAND_HANDLERS:
     d34a  4c c6 cb      db 'L', SEARCH_FROM_BEGINING (cbc6)
     d34d  58 be cb      db 'X', SEARCH_FROM_CURRENT (cbbe)
     d350  44 bb cf      db 'D', DELETE_LINES (cfbb)
-    d353  41 d2 d0      db 'A', ????_COMMAND_A (d0d2)
-    d356  54 fb d0      db 'T', ????_COMMAND_T (d0fb)
+    d353  41 d2 d0      db 'A', INSERT_LINES (d0d2)
+    d356  54 fb d0      db 'T', APPEND_TEXT (d0fb)
     d359  4e 19 d1      db 'N', NEW_FILE (d119)
     d35c  4f 38 d1      db 'O', OUTPUT_FILE (d138)
     d35f  49 ee d1      db 'I', INPUT_FILE (d1ee)
