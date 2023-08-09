@@ -1,0 +1,28 @@
+The following describes differences between ut88os_editor_orig.rku and ut88os_editor.rku binary files.
+
+ut88os_editor_orig.rku is the original editor binary published in the magazine. This file is a part of
+a UT88.rku (full UT-88 OS bundle), extracted from the main package for simplification. The file already 
+contains wrong scan fixes, compared to other UT-88 OS binaries on the internet.
+
+As mentioned in the Editor disassembly, the program is probably quick and dirty port from other system.
+There are obvious incompatibility issues that prevents the Editor working properly on UT-88 computer as is.
+The following describes fixes that have to be applied to the Editor binary to make it working properly 
+on UT-88 hardware. Hex addresses represent offset in the binary file, and logical address where the binary
+is loaded to.
+
+- Ctrl key is connected to bit 1 of the Keyboard Port C. For some reason original Editor program is looking
+  for Ctrl key connected to the bit 7, which as per computer schematics is not the case. The change below
+  corrects the bit to check for the Ctrl key
+
+000000BF (cbbb): 80 02                                                                                                                                               
+
+- Editor is supposed to work on a system with 32-line display. At the same time UT-88 screen offers only
+  28 lines of text. In order to avoid unnecessary scrolling on every redraw of the text, the following change
+  corrects the number of lines.
+
+0000020C (cd08): 1F 1B                                                                                                                                               
+0000024A (cd46): 1E 1A                                                                                                                                               
+00000266 (cd62): 1F 1B                                                                                                                                               
+0000039C (ce98): 1E 1A                                                                                                                                               
+00000450 (cf4c): 1F 1B                                                                                                                                               
+00000479 (cf75): 1F 1B
