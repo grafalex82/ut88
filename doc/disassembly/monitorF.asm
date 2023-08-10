@@ -269,7 +269,7 @@ ENTER_NEXT_COMMAND:
 HANDLE_BACKSPACE:
     f8d9  3e 63      MVI A, 63                  ; Bug: This constant shall limit writing prior the command
     f8db  bd         CMP L                      ; buffer, which is located at 0xf7d3. So the constant shall
-    f8dc  ca ee f8   JZ INPUT_LINE_RESET (f8ee) ; be 0xd3, not 0x63. Perhaps a scanning issue.
+    f8dc  ca ee f8   JZ INPUT_LINE_RESET (f8ee) ; be 0xd3, not 0x63. Perhaps a typewriter issue.
 
     f8df  e5         PUSH HL                    ; Clear a symbole left to the cursor, move cursor left
     f8e0  21 b7 fe   LXI HL, BACKSPACE_STR (feb7)
@@ -1420,8 +1420,8 @@ PRINT_NORMAL_CHAR:
     fca0  c2 b3 fc   JNZ DO_PUT_CHAR (fcb3)
 
 DO_SCROLL:
-    fca3  cd 6b fe   CALL IS_BUTTON_PRESSED (fe6b)  ; ?????? It is unclear why it requires reading the btn
-    fca6  b7         ORA A
+    fca3  cd 6b fe   CALL IS_BUTTON_PRESSED (fe6b)  ; Pressing a button while scrolling may be used for 
+    fca6  b7         ORA A                          ; pausing the scroll
     fca7  ca ad fc   JZ DO_SCROLL_1 (fcad)
 
     fcaa  cd 57 fd   CALL KBD_INPUT (fd57)
