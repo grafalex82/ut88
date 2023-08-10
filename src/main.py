@@ -269,7 +269,7 @@ class VideoConfiguration(Configuration):
         self._emulator.add_breakpoint(0xf852, lambda: self._emulator._machine.write_memory_word(0xf7b2, 0xe800))
 
         # Each key press generates a short beep. This procedure is quite slow, when running under emulator.
-        # So let's just speed it up a little bit, by setting a shorter delay value.
+        # So let's just speed it up a little bit, by skipping the beep code.
         self._emulator.add_breakpoint(0xfe4d, lambda: self._emulator._cpu.set_pc(0xfe62))
 
         # Functions that intputs/outputs a byte to/from the tape for some reason sets SP to 0, and then

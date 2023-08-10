@@ -7,8 +7,8 @@
 ; MonitorF ROM. UT-88 provides its own Monitor, so the program asks the User to switch off MonitorF ROM, 
 ; and enable RAM instead on the same memory range. After ROM(s) are disconnected, the program copies
 ; US-88 OS binaries to memory locations as follows:
-; - 0x30b0-0x38af to 0xf800-0xffff (Monitor)
-; - 0x38b0-0x58af to 0xc000-0xdfff (Editor, Assembler, Debugger)
+; - 0x30b0-0x38af to 0xf800-0xffff (Monitor main part)
+; - 0x38b0-0x58af to 0xc000-0xdfff (Other monitor functions, Editor, Assembler, Debugger)
 ;
 ; When OS binaries are settled at their addresses, the program starts the Monitor starting 0xf800 address
 
@@ -50,7 +50,7 @@ MONITOR_MEMCOPY:
     3029  3e c3      MVI A, c3                      ; Put JMP opcode to 0x0000
     302b  12         STAX DE
 
-    302c  11 00 c0   LXI DE, c000                   ; Load editor target address
+    302c  11 00 c0   LXI DE, c000                   ; Load second part target address
 
 EDITOR_MEMCOPY:
     302f  7e         MOV A, M                       ; Copy byte
