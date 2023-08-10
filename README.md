@@ -4,6 +4,11 @@ This is the emulator of UT-88 computer, written in Python. Goals of the project:
 - Understand the computer schematics, and emulate it as close as possible to the real hardware
 - Understand software part of the computer, disassemble and document it
 
+This is also the most complete collection of UT-88 related information:
+- scematics, and component descriptions
+- binaries (fixed a lot of scanning issues, compared to other binaries on Internet)
+- disassembly of all programs ever published for UT-88 (and even more)
+
 ## UT-88 - Computer Description
 
 UT-88 (Russian: ЮТ-88) is a DIY computer, first published in "Young Technician - For Skilled Hands" magazine (Russian: "ЮТ Для Умелых Рук") on Feb 1989. In late 80x a typical DIY computers was quite complex, consist of many parts, and required quite solid technical skills to bring it up. Instead, UT-88 offered a very simple design, and a step-by-step build. This extends target audience to children and hobbyist.
@@ -294,9 +299,66 @@ Video module schematics can be found here: [part 1](doc/scans/UT22.djvu), [part 
 
 The next proposed step in upgrading UT-88 computer was building a 64k dynamic RAM module ([schematics](doc/scans/UT38.djvu)). While the RAM module covers whole address space, special logic disables the dynamic RAM for `0xe000`-`0xefff`, and `0xf000`-`0xffff` address ranges (video RAM, and MonitorF RAM/ROM respectively). Thus actual dynamic RAM size is 56k.
 
-Additional RAM allows running programs in other address ranges. It is claimed that UT-88 has partial compatibility with other computers in the same class (particularly Micro-80 and Radio-86RK), but this is true only partially. Programs that communicate with keyboard and display using the Monitor F functions will work as expected. Unfortunately most of the Radio-86RK programs write directly to the video memory (which is located at different address range), or even re-configure i8275 video controller used in 86RK (but not available for UT-88) for a different screen resolution. This makes almost all 86RK games pretty much incompatible. 
+Additional RAM allows running programs in other address ranges. It is claimed that UT-88 is programmatically compatible with other computers in the same class (particularly Micro-80 and Radio-86RK), but this is true only partially. Programs that communicate with keyboard and display using the Monitor F functions will work as expected. Unfortunately most of the Radio-86RK programs write directly to the video memory (which is located at different address range), or even re-configure i8275 video controller used in 86RK (but not available for UT-88) for a different screen resolution. This makes almost all 86RK games pretty much incompatible. 
 
 Examples of Radio-86RK games that run on UT-88 are Treasure game ([Disassembly](doc/disassembly/klad.asm)), and 2048 game ([Disassembly](doc/disassembly/2048.asm)) which was (surprinsingly) developed recently.
+
+## UT-88 OS
+
+64k RAM configuration with some minor modifications allows running so called UT-88 OS. It is presented as an operating system specifically designed for UT-88. In fact this is not an operating system in classical meaning, but rather a package of programs:
+- Extended version of Monitor, that offers a bigger variety of commands, blinking cursor, some text output improvements (e.g. scroll control)
+- Set of development tools: running programs with 2 software breakpoints, program relocator, interactive disassembler and assembler
+- "Micron" full screen text editor
+- "Micron" assembler
+
+The OS does not offer a specific API layering (like CP/M does). It is still a mix of hardware related functions (keyboard, display, tape recorder), middleware (e.g. line editing function), and high level programs (e.g. interactive assembler). At the same time text editor and assembler are separate programs that can potentially work on other systems.
+
+The UT-88 comes as a [single bootstrap binary](tapes/UT88.rku). It assumes that user will switch off Monitor ROM (and other ROMs if any), and enable RAM at the same addresses instead. When the system is reconfigured (on the fly), the bootstrap program will copy OS parts to their dedicated locations. 
+
+The following describes memory map in UT-88 OS configuration (assuming OS parts are already loaded by the bootstrap program):
+- `0x0000` - `0xbfff` is general purpose RAM. Some of the parts of this range have special meaning:
+  - `0x3000` - `0x9fff` - text area. Used by Editor for the edited text, and by Assembler for source code.
+  - `0xa000` - `0xbfff` - default area for binary code produced by assembler
+- `0xc000`-`0xcaff` - additional part of the Monitor, including some [additional functions](doc/disassembly/ut88os_monitor2.asm), [interactive assembler/disassembler](doc/disassembly/ut88os_asm_disasm.asm), and some other development tools.
+- `0xcb00`-`0xd7ff` - ['Micron' text editor](doc/disassembly/ut88os_editor.asm)
+- `0xd800`-`0xdfff` - ['Micron' assembler](doc/disassembly/ut88os_micron_asm.asm)
+- `0xe800`-`0xefff` - Video RAM
+- `0xf400`-`0xf5ff` - Special area for labels and references used while compiling assembler code
+- `0xf600`-`0xf7ff` - Monitor and other UT-88 OS program variables
+- `0xf800`-`0xffff` - [Monitor main part](doc/disassembly/ut88os_monitor.asm), including hardware function, and basic commands processing.
+
+The documentation on the UT-88 OS is very poor. First it has a lot of mistakes in the binary code (0x3c00-0x3fff range of the [UT-88 OS binary code](doc/scans/UT44.djvu) is misplaced with a similar range of [CP/M-35 binary](doc/scans/UT56.djvu)). Some code is obviously wrong (incorrect addresses or values used) and simply will not work out of the box. 
+
+Second, programs and commands description is too brief, so it makes almost impossible to understand how to use program or command. Some statements do not match the actually implemeted behavior. There are number of mistakes in command names, key combinations or values through the text.
+
+The following subchapters describe UT-88 OS software in detail.
+
+### UT-88 OS Monitor
+
+UT-88 OS Monitor offers a concept very similar to MonitorF. 
+
+The API is narrower, but main entry points remain the same:
+- `0xf800`    - Software reset
+- `0xf803`    - Wait for a keyboard press, returns entered symbol in A
+- `0xf806`    - Input a byte from the tape (A - number of bits to receive, or `0xff` if synchronization is needed. Returns the received byte in A)
+- `0xf809`    - Put a char to the display at cursor location (C - char to print)
+- `0xf80c`    - Output a byte to the tape (C - byte to output)
+- `0xf80f`    - Put a char to the display at cursor location (C - char to print)
+- `0xf812`    - Check if any button is pressed on the keyboard (A=`0x00` if no buttons pressed, `0xff` otherwise)
+- `0xf815`    - Print a byte in a 2-digit hexadecimal form (A - byte to print)
+- `0xf818`    - print a NULL terminated string at cursor position (HL - pointer to the string)
+
+Character output function is slightly less featured, compared to MonitorF, and does not support Esc-Y cursor positioning sequence. Scrolling the screen when cursor moves down from the last line is working same way as in MonitorF.
+
+Character output function support several control symbols:
+- `0x08`  - Move cursor 1 position left
+- `0x0c`  - Move cursor to the top left position
+- `0x18`  - Move cursor 1 position right
+- `0x19`  - Move cursor 1 line up
+- `0x1a`  - Move cursor 1 line down
+- `0x1f`  - Clear screen
+
+
 
 
 ## CP/M Operating System and Quasi Disk
@@ -350,7 +412,7 @@ While CP/M system and various CP/M programs are basically working on UT-88 hardw
   - MonitorF keyboard press function generates a signal on the first key press. If the key is still pressed, subsequent calls to Wait for key function will not be processed. This is done to avoid flooding console with keypress events. Thus subsequent wait for key function will wait until the key is released and pressed again (or keyboard auto-repeat triggers).
   - CP/M BIOS expects immediate result - if a key is pressed, wait for key function shall return the code of the pressed function immediately. 
   - CP/M BIOS _printing_ function checks for a keyboard activity, looking whether user pressed Ctrl-C break key combination. 
-  - So it causes strange scenarios: the user has entered a symbol, symbol is echoed on the console, printing function sees that the key is _still_ pressed, and starts waiting for a new key. This leads to swallowing every second entered key, which is very annoyhing (at least when running in emulator).
+  - So it causes strange scenarios: the user has entered a symbol, symbol is echoed on the console. Printing function sees that the key is _still_ pressed, and tries to get its code (to check whether it is Ctrl-C), but in fact starts waiting for a new key. This leads to swallowing every second entered key, which is very annoyhing (at least when running in emulator).
   - As a quick work around the problem, reading the keyboard while printing a symbol was disabled in the emulator.
 
 ### CP/M-35 (CP/M with no quasi disk)
@@ -373,7 +435,7 @@ Memory map and CP/M components layout:
 Special notes about this CP/M version (and particularly BIOS implementation):
 - Surprisingly, the BIOS exposes 4 disk drives, all pointing to the same data memory.
 - Although 36k are allocated for the RAM disk, the disk descriptor exposes only 35k drive
-- There is no special addon that supports ANSI escape sequences
+- There is no special addon that supports ANSI escape sequences (fortunately the system itself does not use this feature)
 - 0 tracks are reserved on the disk for the system. Cold boot process does not copy system to the disk
 - There is no warm boot supported. Instead, MonitorF will take operation during reboot.
 
@@ -421,17 +483,65 @@ Other components, such as LCD, Display and keyboards interact with the User. Thi
 
 ## Running the emulator
 
-To run the emulator in basic UT-88 configuration
+
+### Basic configuration
+
+Basic UT-88 configuration is started with the following command:
 ```
 python src/main.py basic
 ```
 
-This is how to run the emulator in Video UT-88 configuration
+Calculator ROM is also pre-loaded in this configuration.
+
+
+### Video configuration
+This is how to run the emulator in Video module configuration:
 ```
 python src/main.py video
 ```
 
-The `--debug` option will enable CPU instructions logging. In order not to clutter the log for dumping waiting loops, each configuration suppresses logging for some well known functions (e.g. various delays, printing a character, input/output a byte to the tape, etc)
+This configuration enables `0x0000`-`0x7fff` (32k) memory range available for user programs, which allows running some of Radio-86RK software. The configuration also enables some workarounds that improve stability of the MonitorF when running under emulator (see [setup_special_breakpoints()](src/main.py) function for moore details)
+
+
+
+### UT-88 OS configuration
+
+To run the emulator with UT-88 OS enter this command:
+```
+python src/main.py ut88os
+```
+
+This configuration skips the [UT-88 OS bootstrap module](tapes/UT88.rku), as it requires reconfiguration of RAM and ROM components on the fly. Instead it loads UT-88 OS components directly to their target locations, as they would be loaded by the bootstrap module.
+
+Unfortunately the UT-88 OS is pretty raw and contains a lot of bugs. Most critical of them are worked around with special hooks in [setup_special_breakpoints()](src/main.py) function (refer the code for moore details)
+
+
+### CP/M operating system
+UT-88 with CP/M-64 system loaded can be started as follows:
+```
+python src/main.py cpm64
+```
+
+This command starts the regular video module monitor with CP/M components loaded to the memory ([CCP](tapes/cpm64_ccp.rku), [BDOS](tapes/cpm64_bdos.rku), [BIOS](tapes/cpm64_bios.rku)). Use `G DA00` command to skip CP/M bootstrap module, and start CP/M directly. In this case pre-created quasi disk image is used, and its contents survive between runs. 
+
+Use `G 3000` command to run [bootstrap module](tapes/CPM64.RKU), which is also preloaded in this configuration. The bootstrap module will create/clear and initialize quasi disk image, that later may be used with the system.
+
+CP/M-35 version of the OS can be executed as follows: load [OS binary](tapes/CPM35.RKU), and execute it with `G 4A00` command. Note that keyboard incompatibility workaround is applied only for CP/M-64 version, but not CP/M-35.
+
+### Other emulator notes
+
+The `--debug` option will enable CPU instructions logging, and can be used will all modes described above. In order not to clutter the log for dumping waiting loops, each configuration suppresses logging for some well known functions (e.g. various delays, printing a character, input/output a byte to the tape, etc). [configure_logging() method](src/main.py) is responsible for setting up log suppression for a specific configuration.
+
+Basic and Video configurations offer tape recorder component. Use `Alt-L` key combination to load a binary to the tape recorder. When the binary is loaded it can be read by corresponding tape load Monitor command. The data can be also output to the tape. Use `Alt-S` to save data buffered in the tape recorder to a file.
+
+Loading data through the tape recorder is quite time consuming. So emulator offers a shortcut: `Alt-M` key combination loads the tape file directly to the memory. Start address is taken from the binary. `Alt-M` combination works for all configurations, not only those that offer tape recorder.
+
+The emulator supports storage formats from other similar emulators:
+- .PKI files (sometimes used with .GAM extensions). 
+- .RK and .RKU files 
+- raw binary files   
+
+These formats provide similar capabilities, and have just minor differences in data layout. Refer [tape recorder](src/tape.py) component description for more detail.
 
 ## Tests
 
@@ -440,6 +550,8 @@ In order to verify correctness of the implemented features (especially CPU instr
 Most of the tests cover a component functionality in isolation. Some tests require a few components work together (e.g. Machine + RAM + CPU). In order not to use hard-to-set-up or User facing components, [Mocks](test/mock.py) are used where it is convenient.
 
 Some tests, such as [Calculator tests](test/test_calculator.py) are not really tests in classic meaning - it does not suppose to _test_ the firmware (though it found a few issues). These tests is a simple and handy way to execute some functions in the firmware.
+
+For running big portions of machine code, that interacts with memories and peripherals, a [special helper class](test/helper.py) was created. The helper class provide handy way to read/write a machine memory in the test, operate with the peripheral (e.g. emulate key press sequence), and run specific functins of the software. Derived classes represent a specific configuration ([Calculator](test/test_calculator.py), [CP/M](test/cpm_helper.py), [UT-88 OS](test/ut88os_helper.py)), set up corresponding RAM/ROM configuration, peripherals, and load application images.
 
 Tests are implemented with pytest framework.
 
