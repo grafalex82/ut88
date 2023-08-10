@@ -6,7 +6,7 @@
 ;
 ; - Command C - Memory copy and compare:
 ;   - C <src_start>, <src_end>, <dst_start>     - Compare memory data between two ranges
-;   - C/CY <src_start>, <src_end>, <dst_start>  - Copy memory from one memory range to another
+;   - CY <src_start>, <src_end>, <dst_start>    - Copy memory from one memory range to another
 ; - Command F - Fill or verify memory range:
 ;   - FY<addr1>, <addr2>, <constant>            - Fill memory range with the constant
 ;   - F<addr1>, <addr2>, <constant>             - Compare memory range with the constant, report differences

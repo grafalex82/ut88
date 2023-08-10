@@ -1,3 +1,105 @@
+; UT-88 OS Monitor
+;
+; Monitor is a basic software of the UT-88 operation system. It provides the following features:
+; - Initial set up of hardware on startup
+; - Hardware access functions (keyboards, display, tape recorder)
+; - Middleware functions (e.g. line editing function, or command line parsing function)
+; - User commands processing
+; - Set of high level commands and programs
+;
+; The following describes the basic API of the Monitor. It is somewhat narrower than UT-88 MonitorF, but
+; still compatible on the address and parameters level.
+; - 0xf800  - Software reset
+; - 0xf803  - Wait for a keyboard press, returns entered symbol in A
+; - 0xf806  - Input a byte from the tape (A - number of bits to receive, or 0xff if synchronization is
+;             needed. Returns the received byte in A)
+; - 0xf809  - Put a char to the display at cursor location (C - char to print)
+; - 0xf80c  - Output a byte to the tape (C - byte to output)
+; - 0xf80f  - Put a char to the display at cursor location (C - char to print)
+; - 0xf812  - Check if any button is pressed on the keyboard (A=0x00 if no buttons pressed, 0xff otherwise)
+; - 0xf815  - Print a byte in a 2-digit hexadecimal form (A - byte to print)
+; - 0xf818  - print a NULL terminated string at cursor position (HL - pointer to the string)
+;
+; Character printing function is similar to MonitorF version, except for Esc-Y direct cursor positioning
+; sequence is not supported. Also this function does not highlight/hide the cursor - this function is now
+; on keyboard input function, that controls cursor blinking while waiting a character.
+;
+; Keyboard input, and tape input/output works same way as MonitorF (though implementation is somewhat
+; different).
+;
+; Since this Monitor provides more functionality than the MonitorF, it obviously does not fit 0xf800-0xffff
+; range. So the Monitor code is spread over several memory ranges:
+; - 0xf800-0xffff - main Monitor functionality (HW support, some commands) - this file
+; - 0xc000-0xc3c1 - additional Monitor commands - see ut88os_monitor2.asm
+; - 0xc1eb-0xcaff - assembler, disassembler, other development commands - see ut88os_asm_disasm.asm
+;
+; Set of commands was significantly reworked and extended. The following functions are supported:
+;
+; - Memory commands:
+;   - Command M: View and edit memory
+;       M <addr>                                - View and edit memory starting addr
+;   - Command K: Calculate and print CRC for a memory range
+;       L <addr1>, <addr2>                      - Calculate CRC for addr1-addr2 range
+;   - Command C: Memory copy and compare
+;       C <src_start>, <src_end>, <dst_start>   - Compare memory data between two ranges
+;       CY <src_start>, <src_end>, <dst_start>  - Copy memory from one memory range to another
+;   - Command F: Fill or verify memory range
+;       FY <addr1>, <addr2>, <constant>         - Fill memory range with the constant
+;       F <addr1>, <addr2>, <constant>          - Compare memory range with the constant, report differences
+;   - Command D: Dump the memory
+;       D                                       - Dump 128-byte chunk of memory, starting the user program HL
+;       D<start>                                - Dump 128-byte chunk, starting the address provided
+;       D<start>,<end>                          - Dump memory for the specified memory range
+;   - Command S: Search string in a memory range
+;       S maddr1, maddr2, saddr1, saddr2        - Search string located saddr1-saddr2 in a memory range maddr1-maddr2
+;       S maddr1, maddr2, '<string>'            - Search string specified in single quotes in maddr1-maddr2 memory
+;       S maddr1, maddr2, &<hex>, <hex>,...     - Search string specified in a form of hex sequence in specified
+;   - Command L: List the text from the memory
+;       L <addr1>[, <addr2>]                    - List text located at addr1-addr2 range
+;
+; - Tape recorder commands:
+;   - Command O: Output data to the tape
+;       O <addr1>,<addr2>,<offset>[,<speed>]    - Output data for addr1-addr2 range, at specified speed
+;   - Commands I and IY: input data from the tape (IY - data input, I - data verification)
+;       I/IY                                    - Data start and end addresses are stored on the tape
+;       I/IY<addr1>                             - Search for addr1 signature on tape, then read addr2
+;                                                 from the tape
+;       I/IY<addr1>,<addr2>                     - Search addr1/addr2 sequence on the tape
+;       I/IY<space><addr1>                      - Tape data is loaded to address provided as a parameter
+;       I/IY<space><addr1>,<addr2>              - Data start and end addresses are specified as parameters.
+;                                                 Addr2 can be used to limit amount of data to be loaded.
+;   - Command V: Measure tape delay constant
+;
+; - Mode and helper commands:
+;   - Command R: enable or disable scroll
+;       R<any symbol>                           - enable scroll
+;       R                                       - disable scroll (clear screen if full page is filled)
+;   - Command T: trace the command line
+;       T<string>                               - print command line string in a hexadecimal form
+;   - Command H: Calculate sum and difference between the two 16-bit arguments
+;       H <arg1>, <arg2>                        - Calculate and print sum and difference of 2 args
+;
+; - Program execution commands:
+;   - Command G: Run user program
+;       G <addr>                                - Run user program from <addr>
+;       GY <addr>[,<bp1>[,<bp2>[,<cnt>]]]       - Run user program from <addr>, set up to two breakpoints.
+;                                                 This command also sets/restores registers previously set by
+;                                                 Command X (edit registers) or captured during breakpoint
+;                                                 handling. 
+;   - Command X: View and edit CPU registers
+;   - Command J: Quick jump
+;       J<addr>                                 - Set the quick jump address
+;       J                                       - Execute from the previously set quick jump address
+;
+; Refer to corresponding command comments for more details on the command implementation and the algorithm.
+; Note that this file contains only a part of the commands implementation, refer to ut88os_monitor2.asm for 
+; other commands.
+;
+; Development related commands, assembler and disassembler are described in ut88os_asm_disasm.asm. 
+; Editor is described in ut88os_editor.asm, Micron assembler is described in ut88os_micron_asm.asm. At the
+; same time all these commands are integrated in the Monitor command handling mechanism, and listed in the
+; COMMANDS_TABLE in this file.
+;
 ;
 ; Variables:
 ; f750 - 0xc3 JMP instruction (user in Command G in conjunction with argument 1)
@@ -69,7 +171,7 @@ START:
     f837  cd dd f9   CALL PRINT_STRING (f9dd)   
 
 ENTER_NEXT_COMMAND:
-    f83a  31 ff f7   LXI SP, f7ff               ; Some subroutines will jump directly here. Reset the SP ????
+    f83a  31 ff f7   LXI SP, f7ff               ; Some subroutines will jump directly here. Reset the SP
 
     f83d  3e 8b      MVI A, 8b                  ; Configure 8255 keyboard matrix controller as
     f83f  d3 04      OUT 04                     ; port A - output, ports B and C - input (all mode 0).
@@ -119,7 +221,7 @@ RESTART_MAIN_LOOP:
                                                 ; (Registers can be evaluated with X command).
                                                 ;
                                                 ; Another possible feature of this call is to capture 
-                                                ; when exiting the user program, to be evalated with X command.
+                                                ; when exiting the user program, to be evaluated with X command.
                                                 ;
                                                 ; At the same time this definitely breaks Command GY break-
                                                 ; point workflow - when the program is stopped on a break
@@ -137,10 +239,10 @@ RESTART_MAIN_LOOP:
 
 ; Wait for the keyboard input
 ;
-; This function waits for the keyboard input. The function also handles when the key
-; is pressed for some time. In this case auto-repeat mechanism is working, and the key is
+; This function waits for the keyboard input. The function also handles the case when the key
+; is pressed for some time. In this case auto-repeat mechanism is used, and the key is
 ; triggered again, until the key is released. Each symbol trigger is supported with a short
-; beep in the tape port.
+; beep on the tape port.
 ;
 ; For scanning the keyboard, the function sequentally selects one column in the keyboard matrix, by
 ; setting the corresponding bit in the keyboard 8255 port A. The column scanning is performed by reading
@@ -172,6 +274,15 @@ RESTART_MAIN_LOOP:
 ;   Note, that there is no upper and lower case of letters on this computer)
 ; - Ctrl - alters some keys to produce codes in 0x00 - 0x1f range. This range contains control codes
 ;   (e.g. cursor movements, as well as some graphics)
+;
+; Note: although the described behavior perfectly matches MonitoF API, it somewhat contradicts with the
+; rest of UT-88, including parts of this Monitor. Thus this function generates codes 0x00-0x1f for 
+; Ctrl-<symbol> key combination. At the same time clients of this function may expect normal char codes
+; to be generated (e.g. 0x41 for Ctrl-A, instead of 0x01), and read Keyboard Port C to detect whether
+; Ctrl modifier key was pressed.
+; 
+; The function is also responsible for cursor blinking while waiting for the user input. It counts idle
+; cycles, which toggle symbol highlight under cursor position when timer is due. 
 ;
 ; Input symbol is returned in A register
 KBD_INPUT:
@@ -378,7 +489,7 @@ KBD_INPUT_DELAY_LOOP:
 
 
 ; Check if any button is pressed
-; Return ff if a button is pressed, 00 otherwise
+; Return 0xff if a button is pressed, 0x00 otherwise
 IS_BUTTON_PRESSED:
     f91f  af         XRA A                      ; Select all scan column at once
     f920  d3 07      OUT 07
@@ -524,7 +635,7 @@ IN_BYTE_NEXT_BIT:
 ;    ---+   |   +---|---+   |   +---|   +---|---+   |   +---|---+   |
 ;           |<--T-->|       |       |       |       |       |       |
 ;
-; Note: The data is output negated, compared to original Monitor0 and MonitorF implementations. This is
+; Note: The output data is negated, compared to original Monitor0 and MonitorF implementations. This is
 ; not a problem for the real hardware, as tape input function has a polarity detection mechanism, but this
 ; code causes problems when running on an emulator - all data bytes must be negated to get original data.
 OUT_BYTE:
@@ -649,7 +760,7 @@ PUT_CHAR_A:
 ; This function puts a char at the cursor location in a terminal mode (including wrapping
 ; the cursor to the next line, and scrolling the text if the end of screen reached). 
 ;
-; The function is not responsible to show/hide the cursor, just prints a char in the cursor position, and
+; The function is NOT responsible to show/hide the cursor, just prints a char in the cursor position, and
 ; moves cursor position 1 position to the right.
 ;
 ; Function has two scrolling modes, depending on f77a flag:
@@ -812,7 +923,7 @@ SCROLL_LOOP:
     fa6f  c2 4d fa   JNZ SCROLL_LOOP (fa4d)     ; BUG! Shall be 0xfa68
 
     fa72  e5         PUSH HL                    ; Clear the last line
-    fa73  11 c0 e6   LXI DE, e6c0               ; BUG! Shall be 0xeec0 (works on hardware, though)
+    fa73  11 c0 e6   LXI DE, e6c0               ; BUG! Shall be 0xeec0 (works on hardware, though) ????
     fa76  cd 24 fa   CALL CLEAR_SCREEN_LOOP (fa24)
     fa79  e1         POP HL
 
@@ -846,9 +957,7 @@ CLEAR_PAGE:
 ;
 ; The following special keys and key combinations are handled:
 ; - Return, up arrow, and down arrow act like submitting the line - 0x0d terminating symbol is added to
-;   the buffer, and the function returns. Function does not distinguish between dedicated keys and
-;   corresponding Ctrl-M, Ctrl-Y, and Ctrl-Z combinations, which also submit the line. Note that only
-;   symbols left to the cursor are submitted.
+;   the buffer, and the function returns. Note that only symbols left to the cursor are submitted.
 ; - Left and Right arrows are supposed to move cursor left and right respectively. Buffer bounds are
 ;   respected. Unfortunately the implementation is quite buggy, and symbols are visually corrupted (while
 ;   are ok in the buffer)
@@ -880,8 +989,8 @@ INPUT_LINE_CLEAR_BUFFER:
     fa99  c3 9e fa   JMP INPUT_LINE_LOOP (fa9e) ; Continue a little below
 
 ?????:
-fa9c  e5         PUSH HL
-fa9d  d5         PUSH DE
+    fa9c  e5         PUSH HL                    ; ????? Another entry point to the function? Never used.
+    fa9d  d5         PUSH DE
 
 INPUT_LINE_LOOP:
     fa9e  cd 6b f8   CALL KBD_INPUT (f86b)      ; Input a character
@@ -916,6 +1025,7 @@ INPUT_LINE_SAVE_CHAR:
 
 INPUT_LINE_ECHO_CHAR:
     face  fe 1f      CPI A, 1f                  ; Handle clear screen char
+
 INPUT_LINE_ECHO_CHAR_1:
     fad0  cc 67 fc   CZ PRINT_SPACE (fc67)
 
@@ -1051,7 +1161,7 @@ INPUT_LINE_HOME_CURSOR:
     fb56  d2 d0 fa   JNC INPUT_LINE_ECHO_CHAR_1 (fad0)
 
 INPUT_LINE_HOME_LOOP:
-    fb59  79         MOV A, C                   ; We are here if Ctrl-L pressed. Check if we are already
+    fb59  79         MOV A, C                   ; We are here if Ctrl-Home pressed. Check if we are already
     fb5a  b7         ORA A                      ; at the beginning of the line
     fb5b  c8         RZ
 
@@ -1059,7 +1169,7 @@ INPUT_LINE_HOME_LOOP:
     fb5f  c3 59 fb   JMP INPUT_LINE_HOME_LOOP (fb59) ; the line
 
 INPUT_LINE_LEFT:
-    fb62  cd 4b fb   CALL CHECK_CTRL_KEY (fb4b) ; Check if this is Ctrl-H key combination (delete)
+    fb62  cd 4b fb   CALL CHECK_CTRL_KEY (fb4b) ; Check if this is Ctrl-Left key combination (delete)
     fb65  da 6e fb   JC INPUT_LINE_DELETE
 
     fb68  79         MOV A, C                   ; Do not allow moving beyond the left buffer end
@@ -1648,7 +1758,7 @@ TAPE_INPUT_VERIFY_DATA:
 
 ; Set Z if command mode flag is not set ('Y' command alteration is provided)
 GET_COMMAND_MODE_FLAG:
-    fdab  3a ff f7   LDA f7ff                   ; Load the 'command mode' flag
+    fdab  3a ff f7   LDA COMMAND_MODE (f7ff)    ; Load the 'command mode' flag
     fdae  b7         ORA A                      ; Set Z if it is not set
     fdaf  c9         RET
 
@@ -1658,7 +1768,7 @@ RESET_COMMAND_MODE_FLAG:
     fdb0  af         XRA A                      ; Set 'command mode' flag to 0x00
 
 STORE_COMMAND_MODE_FLAG:
-    fdb1  32 ff f7   STA f7ff
+    fdb1  32 ff f7   STA COMMAND_MODE (f7ff)
     fdb4  c9         RET
 
 
@@ -1669,6 +1779,7 @@ SET_COMMAND_MODE_FLAG:
     fdb7  c3 b1 fd   JMP STORE_COMMAND_MODE_FLAG (fdb1)
 
 
+; Part of tape input command (Command I). Report verification error.
 INPUT_DATA_VEFIFY_FAILED:
     fdba  cd af fb   CALL PRINT_BYTE_CHECK_KBD (fbaf)   ; Print byte loaded from the tape
 
@@ -1798,6 +1909,10 @@ GET_PRINTABLE_SYMBOL_LOOP:
     fe37  c9         RET
 
 
+; Command K: Calculate and print CRC for a memory range
+;
+; Usage:
+; K <addr1>, <addr2>
 COMMAND_K_CRC:
     fe38  cd 40 fe   CALL CALC_CRC_GET_ARGS (fe40)
 
@@ -1806,6 +1921,7 @@ PRINT_CRC:
     fe3b  60         MOV H, B
     fe3c  69         MOV L, C
     fe3d  c3 4d fc   JMP PRINT_HL (fc4d)
+
 
 ; Perform CRC calculation according to command line arguments
 CALC_CRC_GET_ARGS:
@@ -1829,7 +1945,6 @@ CALC_CRC_LOOP:
 
     fe4f  cd d3 fb   CALL CMP_HL_DE (fbd3)      ; Repeat until reached the end of the range
     fe52  c2 47 fe   JNZ CALC_CRC_LOOP (fe47)
-
     fe55  c9         RET
 
 
@@ -2103,7 +2218,7 @@ BREAKPOINT_HANDLER_2:
 ; 
 ; Usage:
 ; R<any symbol>     - enable scroll
-; R                 - disable scroll (clear screen if full page is filled])
+; R                 - disable scroll (clear screen if full page is filled)
 COMMAND_R_ENABLE_SCROLL:
     ff63  0d         DCR C                          ; Count symbols in the command
     ff64  0d         DCR C                          ; 2 symbols (e.g. R<symb>) will enable scroll (A non zero)
