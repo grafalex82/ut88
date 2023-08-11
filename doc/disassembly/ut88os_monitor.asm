@@ -282,7 +282,10 @@ RESTART_MAIN_LOOP:
 ; Ctrl modifier key was pressed.
 ; 
 ; The function is also responsible for cursor blinking while waiting for the user input. It counts idle
-; cycles, which toggle symbol highlight under cursor position when timer is due. 
+; cycles, which toggle symbol highlight under cursor position when timer is due. The code is supposed to
+; be run on an alternative display schematics, where 0xe000-0xe7ff is responsible for symbol highlights
+; (MSB only), while 0xe800-0xefff range is used for symbol codes. The keyboard scanning function operates
+; only with symbol attribute to turn on/off cursor highlight, while it does not print entered character.
 ;
 ; Input symbol is returned in A register
 KBD_INPUT:
@@ -453,14 +456,8 @@ BEEP_LOOP:
     f905  23         INX HL                     ; Restore pressed key code
     f906  7e         MOV A, M
 
-    f907  e1         POP HL                     ; Restore cursor position, echo entered character at cursor
-    f908  77         MOV M, A                   ; BUG!!! HL points to the next symbol after cursor. This
-                                                ; causes double symbols on the screen. Perhaps it is supposed
-                                                ; to write only to the attributes area to remove cursor
-                                                ; highlight, but this does not match published hardware
-                                                ; schematics (original design does not distinguish between
-                                                ; 0xe000 and 0xe800 memory areas, and generate CS signals for
-                                                ; both)
+    f907  e1         POP HL                     ; Clear previous cursor highlight (use just high zero bit of 
+    f908  77         MOV M, A                   ; the symbol)
 
     f909  c1         POP BC                     ; Exit
     f90a  d1         POP DE
