@@ -1,0 +1,6 @@
+This file describe changes made in the original Monitor binary (MonitorF_orig.bin)
+
+- Original MonitorF has a bug that allows moving cursor to the left beyond edit field start. There even a code that 
+  should prevent such a movement, but limit is stated incorrectly. It looks like a typo while publishing a magazine.
+  The following change fixes the issue.
+000000DA (f8da): 63 D3
