@@ -1,0 +1,39 @@
+The following describes differences between ut88os_monitor_orig.rku and ut88os_monitor.rku binary files.
+
+- Cursor highlight position, compared to actual cursor position. The difference 0xf801 applied to a pointer
+  in video memory 0xe800-0xeeff will calculate address in the attributes area (0xe000-0xe6ff). Additional 
+  +1 represents cursor highlight in the next char compared to actual cursor position.
+
+  Since official published schematics assumes character inversion bit and 7 bits of character code located
+  in the same byte in 0xe800-0xeeff range, there is no need to apply this offset.
+00000076 (f872): 01 00
+00000077 (f873): F8 00
+
+- A magic constant 0x5f specify cursor blinking pattern. There is some sophisticated logic around this 
+  constant that causes cursor blink for a short time, and then have a long pause. Since emulation speed is
+  much less than real hardware, cursor blinking in this mode is too slow and unobvious. Constant 0x07 works
+  much better under emulation, and provides uniform blinking at a ~2Hz speed.
+0000008D (f889): 5F 07
+
+- The UT-88 OS Monitor keyboard scanning function perfectly matches MonitorF behavior, and particularly 
+  produce char codes in 0x01-0x1f range when a symbol is entered with Ctrl modifier. Instead other programs
+  in the UT-88 OS suite (including this monitor) expect normal charcodes in 0x41-0x5f range. Programs and
+  monitor additionally check Keyboard Port C for a Ctrl key bit. This particular chance remove 0x4x -> 0x0x
+  conversion, so that other programs work as expected.
+000000E6 (f8e2): E6 00
+000000E7 (f8e3): 1F 00
+
+- Each key press is accompanied with a short beep. Since tape output is a pretty heavy operation under the
+  emulator, and sound is not emulated at all, it is reasonable to shorten the beep loop
+00000100 (f8fc): 10 01
+
+- This is an obvious bug in the scroll loop - the loop address is stated incorrectly, and points in the middle
+  of an instruction in other function. Original code jumps to a wrong memory area, and eventually execute an
+  illegal instruction. Fortunately the idea of this code is pretty straightforward, and the loop address can
+  be easily corrected
+00000274 (fa70): 4D 68
+
+- When scrolling is performed one line up, the last line on the screen must be cleared. For some reason 
+  original code references line address in the area (0xe000+) which does not exist according to the official
+  schematics. The address is corrected to the normal video RAM area (0xe800+)
+00000279 (fa75): E6 EE
