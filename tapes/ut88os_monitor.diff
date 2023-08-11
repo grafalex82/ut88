@@ -1,13 +1,12 @@
 The following describes differences between ut88os_monitor_orig.rku and ut88os_monitor.rku binary files.
 
-- Cursor highlight position, compared to actual cursor position. The difference 0xf801 applied to a pointer
-  in video memory 0xe800-0xeeff will calculate address in the attributes area (0xe000-0xe6ff). Additional 
-  +1 represents cursor highlight in the next char compared to actual cursor position.
-
-  Since official published schematics assumes character inversion bit and 7 bits of character code located
-  in the same byte in 0xe800-0xeeff range, there is no need to apply this offset.
+- UT-88 display uses pretty odd cursor highlighting - symbol next to the cursor position is highlighted
+  instead of symbol under cursor. This does not look like a bug, but rather than intentional behavior -
+  there is dedicated code in the MonitorF and UT-88 OS Monitor that increments to the symbol next to the
+  cursor position. At the same time nowadays it looks very unusual and inconvenient. This change sets
+  cursor highlighting to the cursor position. Note, that this change shall be accompanied with the change
+  in main.py, that calculates same shift as well.
 00000076 (f872): 01 00
-00000077 (f873): F8 00
 
 - A magic constant 0x5f specify cursor blinking pattern. There is some sophisticated logic around this 
   constant that causes cursor blink for a short time, and then have a long pause. Since emulation speed is
@@ -22,10 +21,6 @@ The following describes differences between ut88os_monitor_orig.rku and ut88os_m
   conversion, so that other programs work as expected.
 000000E6 (f8e2): E6 00
 000000E7 (f8e3): 1F 00
-
-- Each key press is accompanied with a short beep. Since tape output is a pretty heavy operation under the
-  emulator, and sound is not emulated at all, it is reasonable to shorten the beep loop
-00000100 (f8fc): 10 01
 
 - This is an obvious bug in the scroll loop - the loop address is stated incorrectly, and points in the middle
   of an instruction in other function. Original code jumps to a wrong memory area, and eventually execute an

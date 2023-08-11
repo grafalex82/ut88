@@ -18,9 +18,9 @@ class Display(RAM):
     64x28 monochrome character display. Each symbol can display a character in a 0x00-0x7f range.
     The most significant bit inverts pixels of the symbol.
 
-    Technically the display is based on a two-port 2kb RAM. One port is connected to the computer, 
-    and is a regular memory at 0xe800-0xefff range. Other port is used by the video signal generation
-    schematic, that passes the read byte through the font generator. 
+    The display is based on a two-port 2kb RAM. One port is connected to the computer, and is a regular
+    memory at 0xe800-0xefff range. Other port is used by the video signal generation schematic, that passes
+    the read byte through the font generator to the video output. 
 
     Technically the video controller can display 32 lines, which will fully utilize the memory. But 
     this may not be fully visible on a typical TV. So the range is artificially limited to 28 lines, 
@@ -30,15 +30,30 @@ class Display(RAM):
     Font generator is based on a 2 kb ROM, which is not connected to the data bus. Each symbol is
     a 6x8 bit matrix (bits are inverted), stored in the ROM as 8 consecutive bytes.
 
+    Original schematics published in the magazine is based on a 2k RAM morrored to two ranges: 0xe000-0xe7ff
+    and 0xe800-0xefff. The 0xe800+ is a primary range, but some programs use 0xe000+ range in some cases.
+    It does not matter which range to use on a real hardware. Under emulator 0xe000+ range usages were changed
+    to 0xe800+ (there were just a few such cases).
+
+    At the same time UT-88 OS Monitor treats these ranges differently: it uses 0xe800+ range for symbol 
+    char codes, while 0xe000+ range is used for symbol attributes. Moreover the software is written in a way
+    so that only MSB of each byte is used for attribute (meaning it writes garbage in other bits). Perhaps
+    there was an alternate schematics that works this way, but on original schematics symbol highlighting
+    used in UT-88 OS Monitor looks corrupted.
+
+    This particular display class implements the alternate schematics (0xe000+ for attributes, 0xe800+ for
+    char codes). This allows regular programs which use only 0xe800+ range still work as expected (MSB of each
+    byte inverts the symbol), and UT-88 OS which uses 0xe000+ range for symbol attributes will also get
+    working properly.
 
     Emulation notes:
     In order to decrease amount of calculation during each frame, the Display class detects memory
-    write operations, and blit new char on the screen accordingly. On a regular display update 
-    precalculated image is simply blit on the screen.
+    write operations, and blit new char on the screen only when data is changing. On a regular display
+    update precalculated image is simply blit on the screen.
     """
 
     def __init__(self):
-        RAM.__init__(self, 0xe800, 0xefff)
+        RAM.__init__(self, 0xe000, 0xefff)
 
         with open(f"{resources_dir}/font.bin", mode='rb') as f:
             font = f.read()
@@ -69,12 +84,20 @@ class Display(RAM):
         return char
     
     def write_byte(self, addr, value):
-        # First store the byte as usual
+        # Writing to 0xe000-0xe7ff is treated as changing symbol attribute. Take only MSB of the
+        # value, and apply the inversion bit to the corresponding character in 0xe800-0xefff range
+        if addr < 0xe800:
+            char_addr = addr + 0x0800
+            value &= 0x80
+            value |= RAM.read_byte(self, char_addr) & 0x7f
+            RAM.write_byte(self, char_addr, value)
+
+        # Both attribute and char values updated as usual
         RAM.write_byte(self, addr, value)
 
         # Then update corresponding char on the screen
-        addr -= 0xe800
-        ch = self._ram[addr]
+        addr &= 0x07ff
+        ch = RAM.read_byte(self, 0xe800 + addr)
         col = addr % 0x40
         row = addr // 0x40
         self._display.blit(self._chars[ch], (col*CHAR_WIDTH, row*CHAR_HEIGHT))
