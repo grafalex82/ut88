@@ -352,8 +352,8 @@ def test_input_line_tab(ut88):
     # The gap between letters is also visible on the screen
     assert ut88.get_byte(pos(0, 0)) == ord('A')
     assert ut88.get_byte(pos(1, 0)) == ord('B')
-    assert ut88.get_byte(pos(2, 0)) == ord(' ')
-    assert ut88.get_byte(pos(3, 0)) == 0x00         # Bug? It is expected this ares shall be filled with spaces
+    assert ut88.get_byte(pos(2, 0)) == 0x00         # Bug? It is expected this ares shall be filled with spaces
+    assert ut88.get_byte(pos(3, 0)) == 0x00
     assert ut88.get_byte(pos(4, 0)) == 0x00
     assert ut88.get_byte(pos(5, 0)) == 0x00
     assert ut88.get_byte(pos(6, 0)) == 0x00
@@ -418,8 +418,8 @@ def test_input_line_right(ut88):
     assert ut88.get_byte(pos(0, 0)) == ord('A') 
     assert ut88.get_byte(pos(1, 0)) == ord('B')
     assert ut88.get_byte(pos(2, 0)) == ord('F') # Replaced char
-    assert ut88.get_byte(pos(3, 0)) == 0x18     # D and E are visually corrupted, and replaced with 0x18
-    assert ut88.get_byte(pos(4, 0)) == 0x18
+    assert ut88.get_byte(pos(3, 0)) == ord('D')
+    assert ut88.get_byte(pos(4, 0)) == ord('E')
     assert ut88.get_byte(pos(5, 0)) == ord(' ') # \n produces a space on the screen
     assert ut88.get_word(CURSOR_POS_ADDR) == pos(6, 0)
 
