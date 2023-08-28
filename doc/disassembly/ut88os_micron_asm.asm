@@ -6,21 +6,22 @@
 ; Variables:
 ; - below bf80  - stack area
 ; - bf80 - end of text pointer
-; - bf82 - ???? line counter in BCD form
+; - bf82 - errors counter in BCD form
 ; - bf83 - ????
-; - bf84 - ????
+; - bf84 - ???? error type
 ; - bf85 - Current output pointer (starting 0xa000)
 ; - bf87 - ?????
-; - bf8a - ????
-; - bf8b - register argument bitmask (applied on top of basic opcode)
-; - bf8c - parsed opcode (basic, without register bits applied)
+; - bf89 - parsed opcode's argument type
+; - bf8a - register argument bitmask low bits (applied on top of base opcode)
+; - bf8b - register argument bitmask high bits (applied on top of base opcode)
+; - bf8c - parsed opcode (base opcode, without register bits applied)
 ; - bf8f - currently processing line pointer
 ; - bf93 - ????
 ; - bf94 - working mode ????
 ; - bf95 - ????
 ; - bf98 - 2 bytes ??????
 ; - bfa0 - line buffer (0x40 bytes)
-; - bfe0 - ???? 6 bytes??
+; - bfe0 - working buffer for parsing instruction mnemonic or instruction arguments (6 bytes)
 
 
 START:
@@ -89,8 +90,8 @@ EOF_FOUND:
     d857  21 00 a0   LXI HL, a000               ; Initialize current output pointer
     d85a  22 85 bf   SHLD CUR_OUTPUT_PTR (bf85)
 
-    d85d  af         XRA A                      ; ???? offset within the line ? Line counter?
-    d85e  32 82 bf   STA bf82
+    d85d  af         XRA A                      ; Reset the error counter
+    d85e  32 82 bf   STA ERRORS_COUNT (bf82)
 
 ????:
     d861  af         XRA A                      ; ????
@@ -109,7 +110,7 @@ EOF_FOUND:
     d875  fe 3b      CPI A, 3b                  ; Skip lines starting with semicolon (comment)
     d877  ca c4 d8   JZ ADVANCE_TO_NEXT_LINE (d8c4)
 
-    d87a  cd cd da   CALL dacd                  ; ???? Copy instruction mnemonic to mnemonic buffer ??
+    d87a  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)  ; Copy instruction mnemonic to the working buffer
 
     d87d  fe 3a      CPI A, 3a                  ; Compare with ':'? Is this a label?
     d87f  c2 9b d8   JNZ d89b
@@ -125,41 +126,43 @@ d88f  b7         ORA A
 d890  ca c4 d8   JZ ADVANCE_TO_NEXT_LINE (d8c4)
 d893  fe 3b      CPI A, 3b
 d895  ca c4 d8   JZ ADVANCE_TO_NEXT_LINE (d8c4)
-d898  cd cd da   CALL dacd
+d898  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)
 
 
 ????:
-    d89b  e5         PUSH HL
-    d89c  cd 0d dd   CALL dd0d
+    d89b  e5         PUSH HL                    ; ???? Parse mnemonic
+    d89c  cd 0d dd   CALL PARSE_MNEMONIC (dd0d)
     d89f  e1         POP HL
 
-d8a0  cd b2 db   CALL dbb2
-d8a3  e5         PUSH HL
-d8a4  21 53 de   LXI HL, OUTPUT_HANDLERS_TABLE (de53)
+    d8a0  cd b2 db   CALL dbb2                  ; ??? Parse first argument ????
 
-d8a7  3a 89 bf   LDA bf89
-d8aa  5f         MOV E, A
-d8ab  16 00      MVI D, 00
+    d8a3  e5         PUSH HL                    ; Load pointer to output handlers
+    d8a4  21 53 de   LXI HL, OUTPUT_HANDLERS_TABLE (de53)
 
-d8ad  19         DAD DE
-d8ae  19         DAD DE
+    d8a7  3a 89 bf   LDA OPCODE_ARG_TYPE (bf89) ; Calculate the handler's address based on the argument type
+    d8aa  5f         MOV E, A
+    d8ab  16 00      MVI D, 00
+    d8ad  19         DAD DE
+    d8ae  19         DAD DE
 
-d8af  5e         MOV E, M
-d8b0  23         INX HL
-d8b1  7e         MOV A, M
-d8b2  b9         CMP C
-d8b3  c2 8d da   JNZ da8d
+    d8af  5e         MOV E, M                   ; Load the handler value
+    d8b0  23         INX HL
 
-d8b6  21 d9 d8   LXI HL, d8d9
-d8b9  19         DAD DE
+    d8b1  7e         MOV A, M                   ; ????? Where C gets its values? Is this instruction bytes count?
+    d8b2  b9         CMP C
+    d8b3  c2 8d da   JNZ da8d
+
+    d8b6  21 d9 d8   LXI HL, OUTPUT_HANDLER_BASE (d8d9) ; Load the base handler address, add offset
+    d8b9  19         DAD DE
 
     d8ba  11 c4 d8   LXI DE, ADVANCE_TO_NEXT_LINE (d8c4)    ; Store exit pointer on the stack
     d8bd  eb         XCHG
     d8be  e3         XTHL
 
-    d8bf  d5         PUSH DE                    ; Jump to handler ????
-    d8c0  3a 8b bf   LDA OPCODE_REGISTER_ARG (bf8b)
-    d8c3  c9         RET
+    d8bf  d5         PUSH DE                    ; Push handler's address to stack
+
+    d8c0  3a 8b bf   LDA OPCODE_REGISTER_ARG_HIGH (bf8b)    ; Load the opcode argument in A
+    d8c3  c9         RET                        ; Jump to handler
 
 ADVANCE_TO_NEXT_LINE:
     d8c4  cd 80 dd   CALL dd80                  ; ????
@@ -175,45 +178,70 @@ ADVANCE_TO_NEXT_LINE:
     d8d6  c3 61 d8   JMP d861                   ; If not - process the next line
 
 
-????:
-d8d9  f6 40      ORI A, 40
-d8db  32 8c bf   STA BASIC_OPCODE (bf8c)
-d8de  cd 9a db   CALL db9a
+OUTPUT_HANDLER_BASE:                            ; Just an anchor, handlers' offsets are calculated from here
 
-????:
-d8e1  3a 8a bf   LDA bf8a
+; Output 1-byte MOV instruction with source and destination register arguments
+OUTPUT_HANDLER_1B_MOV:
+    d8d9  f6 40      ORI A, 40                  ; MOV is the only instruction processed by this handler.
+    d8db  32 8c bf   STA BASE_OPCODE (bf8c)     ; The base opcode is 0x40
+
+    d8de  cd 9a db   CALL PARSE_2ND_REG_ARG (db9a)  ; Destination register is parsed by now, parse source register
+
+; Output 1-byte instruction with source register coded in 3 lower bits
+OUTPUT_HANDLER_1B_SRC_REG:
+    d8e1  3a 8a bf   LDA OPCODE_REGISTER_ARG_LOW (bf8a) ; Apply 3 lower register bits
 
 ; Output 1-byte instruction with no arguments
 OUTPUT_HANDLER_1B_NO_ARGS:
     d8e4  c3 32 da   JMP STORE_OPCODE_TO_OUTPUT (da32)
 
+; Output 2-byte MVI instruction, with destination reg coded in the opcode, and 1-byte immediate value
+OUTPUT_HANDLER_2B_MVI:
+    d8e7  f6 06      ORI A, 06                      ; MVI is the only instruction of this type
+    d8e9  32 8c bf   STA BASE_OPCODE (bf8c)         ; The base opcode is 0x06
 
-d8e7  f6 06      ORI A, 06
-d8e9  32 8c bf   STA BASIC_OPCODE (bf8c)
-d8ec  cd 9a db   CALL db9a
-d8ef  0e 01      MVI C, 01
-d8f1  c3 40 da   JMP da40
+    d8ec  cd 9a db   CALL PARSE_2ND_REG_ARG (db9a)  ; Parse the destination re
 
-d8f4  cd 56 da   CALL da56
-d8f7  f6 01      ORI A, 01
-d8f9  32 8c bf   STA BASIC_OPCODE (bf8c)
-d8fc  cd 9a db   CALL db9a
-d8ff  0e 02      MVI C, 02
-d901  c3 40 da   JMP da40
+; Output 2-byte instruction, with no destination reg bits. Second byte is an immediate value
+OUTPUT_HANDLER_2B_IMMEDIATE:
+    d8ef  0e 01      MVI C, 01                      ; 1 byte of the immediate argument to store
+    d8f1  c3 40 da   JMP STORE_IMMEDIATE_ARG (da40)
 
-d904  cd 56 da   CALL da56
+; Output 3-byte LXI instruction, with register pair coded in 4-5th bits, and 2-byte immediate value
+OUTPUT_HANDLER_3B_LXI:
+    d8f4  cd 56 da   CALL PARSE_REG_PAIR (da56)     ; Parse register pair name
 
-; Output 1-byte instruction with 1 argument
-OUTPUT_HANDLER_1B_1_ARG:
+    d8f7  f6 01      ORI A, 01                      ; 0x01 is a base opcode for LXI instruction
+    d8f9  32 8c bf   STA BASE_OPCODE (bf8c)
+
+    d8fc  cd 9a db   CALL PARSE_2ND_REG_ARG (db9a)  ; Parse immediate argument
+
+; Store a 3-byte instruction with a 2-byte immediate argument
+OUTPUT_HANDLER_3B_IMMEDIATE_ARG:
+    d8ff  0e 02      MVI C, 02                      ; Store 2 bytes of the immediate value
+    d901  c3 40 da   JMP STORE_IMMEDIATE_ARG (da40)
+
+; Output a 1-byte instruction with register pair coded in the opcode
+OUTPUT_HANDLER_1B_REG_PAIR:
+    d904  cd 56 da   CALL PARSE_REG_PAIR (da56)    ; Parse register pair name
+
+; Output 1-byte instruction with 1 argument (register name is coded in the opcode)
+OUTPUT_HANDLER_1B_1_REG_ARG:
     d907  c3 32 da   JMP STORE_OPCODE_TO_OUTPUT (da32)
 
-d90a  cd 5e da   CALL da5e
-d90d  c3 32 da   JMP STORE_OPCODE_TO_OUTPUT (da32)
+; Output 1-byte PUSH or POP instruction (register pair is coded in the opcode)
+OUTPUT_HANDLER_1B_PUSH_POP:
+    d90a  cd 5e da   CALL PARSE_REG_PAIR_PSW (da5e)     ; Parse register pair name
+    d90d  c3 32 da   JMP STORE_OPCODE_TO_OUTPUT (da32)  ; Store resulting opcode
 
-d910  cd 66 da   CALL da66
-d913  c3 32 da   JMP STORE_OPCODE_TO_OUTPUT (da32)
+; Output 1-byte LDAX/STAX instruction, register pair name is coded in the 5th bit
+OUTPUT_HANDLER_1B_STAX_LDAX:
+    d910  cd 66 da   CALL PARSE_REG_PAIR_BC_DE (da66)   ; Parse register pair name
+    d913  c3 32 da   JMP STORE_OPCODE_TO_OUTPUT (da32)  ; Store resulting opcode
 
-d916  3a 8a bf   LDA bf8a
+; Output 1-byte RST instruction, rst number is coded in the 3-5th bits of the opcode
+OUTPUT_HANDLER_1B_RST:
+d916  3a 8a bf   LDA OPCODE_REGISTER_ARG_LOW (bf8a)
 d919  47         MOV B, A
 d91a  e6 07      ANI A, 07
 d91c  b8         CMP B
@@ -225,15 +253,15 @@ d923  c3 32 da   JMP STORE_OPCODE_TO_OUTPUT (da32)
 
 d926  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85)
 d929  eb         XCHG
-d92a  2a 8a bf   LHLD bf8a
+d92a  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a)
 d92d  19         DAD DE
 d92e  22 85 bf   SHLD CUR_OUTPUT_PTR (bf85)
 d931  c9         RET
 d932  21 a0 bf   LXI HL, LINE_BUF (bfa0)
-d935  cd cd da   CALL dacd
+d935  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)
 d938  fe 3a      CPI A, 3a
 d93a  c2 92 da   JNZ da92
-d93d  2a 8a bf   LHLD bf8a
+d93d  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a)
 d940  22 87 bf   SHLD bf87
 d943  eb         XCHG
 d944  3a 83 bf   LDA bf83
@@ -268,13 +296,13 @@ d971  77         MOV M, A
 d972  23         INX HL
 d973  c3 66 d9   JMP d966
 ????:
-d976  3a 8a bf   LDA bf8a
+d976  3a 8a bf   LDA OPCODE_REGISTER_ARG_LOW (bf8a)
 d979  77         MOV M, A
 d97a  23         INX HL
-d97b  3a 89 bf   LDA bf89
+d97b  3a 89 bf   LDA OPCODE_ARG_TYPE (bf89)
 d97e  fe 0e      CPI A, 0e
 d980  ca 88 d9   JZ d988
-d983  3a 8b bf   LDA OPCODE_REGISTER_ARG (bf8b)
+d983  3a 8b bf   LDA OPCODE_REGISTER_ARG_HIGH (bf8b)
 d986  77         MOV M, A
 d987  23         INX HL
 ????:
@@ -285,7 +313,7 @@ d98f  b7         ORA A
 d990  c8         RZ
 d991  fe 3b      CPI A, 3b
 d993  c8         RZ
-d994  cd 9a db   CALL db9a
+d994  cd 9a db   CALL PARSE_2ND_REG_ARG (db9a)
 d997  c3 5b d9   JMP d95b
 d99a  3a 95 bf   LDA bf95
 d99d  b7         ORA A
@@ -294,21 +322,25 @@ d99f  3c         INR A
 d9a0  32 95 bf   STA bf95
 d9a3  21 00 a0   LXI HL, a000
 d9a6  eb         XCHG
-d9a7  2a 8a bf   LHLD bf8a
+d9a7  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a)
 d9aa  cd 20 da   CALL SUB_HL_DE (da20)
 d9ad  22 98 bf   SHLD bf98
 d9b0  c9         RET
 
 ????:
-d9b1  cd 80 dd   CALL dd80
+    d9b1  cd 80 dd   CALL dd80                  ; ????
+
 d9b4  21 83 bf   LXI HL, bf83
 d9b7  7e         MOV A, M
+
 d9b8  34         INR M
 d9b9  3d         DCR A
 d9ba  ca 51 d8   JZ d851
+
 d9bd  3a 94 bf   LDA WORKING_MODE (bf94)
 d9c0  fe 02      CPI A, 02
 d9c2  c2 fc d9   JNZ d9fc
+
 d9c5  0e 1f      MVI C, 1f
 d9c7  cd 50 de   CALL PUT_CHAR (de50)
 d9ca  2a 80 bf   LHLD EOF_PTR (bf80)
@@ -338,22 +370,29 @@ d9f2  23         INX HL
 d9f3  01 20 04   LXI BC, 0420
 d9f6  cd 27 da   CALL da27
 d9f9  c3 cd d9   JMP d9cd
+
 ????:
-d9fc  21 b3 df   LXI HL, ERRORS_STR (dfb3)
-d9ff  cd 18 f8   CALL PRINT_STRING (f818)
-da02  3a 82 bf   LDA bf82
-da05  cd 42 de   CALL PRINT_BYTE_HEX (de42)
-da08  cd d3 dd   CALL PRINT_CR_LF (ddd3)
-da0b  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85)
-da0e  2b         DCX HL
-da0f  eb         XCHG
-da10  2a 98 bf   LHLD bf98
-da13  19         DAD DE
-da14  0e 2f      MVI C, 2f
-da16  cd 48 de   CALL PRINT_WORD_HEX (de48)
-da19  eb         XCHG
-da1a  cd 48 de   CALL PRINT_WORD_HEX (de48)
-da1d  c3 00 d8   JMP START (d800)
+    d9fc  21 b3 df   LXI HL, ERRORS_STR (dfb3)      ; Print report string
+    d9ff  cd 18 f8   CALL PRINT_STRING (f818)
+
+    da02  3a 82 bf   LDA ERRORS_COUNT (bf82)        ; Print number of errors
+    da05  cd 42 de   CALL PRINT_BYTE_HEX (de42)
+    da08  cd d3 dd   CALL PRINT_CR_LF (ddd3)
+
+    da0b  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85)     ; Load last output byte pointer to DE
+    da0e  2b         DCX HL
+    da0f  eb         XCHG
+
+    da10  2a 98 bf   LHLD bf98                      ; ????
+    da13  19         DAD DE
+
+    da14  0e 2f      MVI C, 2f                      ; Print ??? address followed by '/'
+    da16  cd 48 de   CALL PRINT_WORD_HEX (de48)
+
+    da19  eb         XCHG                           ; Print last output address, follower by '/'
+    da1a  cd 48 de   CALL PRINT_WORD_HEX (de48)
+
+    da1d  c3 00 d8   JMP START (d800)               ; Restart the program
 
 SUB_HL_DE:
     da20  7d         MOV A, L
@@ -378,9 +417,10 @@ PRINT_CHAR_BLOCK_LOOP:
     da2f  c3 2a da   JMP PRINT_CHAR_BLOCK_LOOP (da2a)
 
 
+; ??????
 STORE_OPCODE_TO_OUTPUT:
-    da32  47         MOV B, A                   ; Apply register bits to the basic opcode
-    da33  3a 8c bf   LDA BASIC_OPCODE (bf8c)
+    da32  47         MOV B, A                   ; Apply register bits to the base opcode
+    da33  3a 8c bf   LDA BASE_OPCODE (bf8c)
     da36  b0         ORA B
 
     da37  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85) ; Store opcode to the output
@@ -395,37 +435,68 @@ STORE_BYTE_TO_OUTPUT_EXIT:
     da3f  c9         RET
 
 
-????:
-da40  2a 8a bf   LHLD bf8a
-da43  eb         XCHG
-da44  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85)
-da47  3a 8c bf   LDA BASIC_OPCODE (bf8c)
-da4a  77         MOV M, A
-da4b  23         INX HL
-da4c  73         MOV M, E
-da4d  23         INX HL
-da4e  0d         DCR C
-da4f  ca 3c da   JZ STORE_BYTE_TO_OUTPUT_EXIT (da3c)
-da52  7a         MOV A, D
-da53  c3 3a da   JMP STORE_BYTE_TO_OUTPUT (da3a)
-????:
-da56  fe 40      CPI A, 40
-????:
-da58  c2 63 da   JNZ da63
-da5b  3e 30      MVI A, 30
-da5d  c9         RET
-????:
-da5e  fe 48      CPI A, 48
-da60  c3 58 da   JMP da58
-????:
-da63  fe 20      CPI A, 20
-da65  c8         RZ
-????:
-da66  fe 10      CPI A, 10
-da68  c8         RZ
-da69  b7         ORA A
-da6a  c2 8d da   JNZ da8d
-da6d  c9         RET
+; Store 2- or 3-byte instruction with 1 or 2 bytes of the immediate argument
+STORE_IMMEDIATE_ARG:
+    da40  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a)    ; Load the argument byte(s) to (D)E
+    da43  eb         XCHG
+
+    da44  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85) ; Store the opcode
+    da47  3a 8c bf   LDA BASE_OPCODE (bf8c)
+    da4a  77         MOV M, A
+
+    da4b  23         INX HL                     ; Store first byte of the argument
+    da4c  73         MOV M, E
+    da4d  23         INX HL
+
+    da4e  0d         DCR C                      ; Check how many bytes to store
+    da4f  ca 3c da   JZ STORE_BYTE_TO_OUTPUT_EXIT (da3c)    ; If only 1 byte of the argument to store - just exit
+
+    da52  7a         MOV A, D                   ; Store the second byte and exit
+    da53  c3 3a da   JMP STORE_BYTE_TO_OUTPUT (da3a)
+
+
+; Parse register pair code into register bits
+; Register pair code is a derivative from register name parsing. It is passed in A register as a parameter,
+; and can have the following values:
+; - 0x40 - for SP register      - produce 0x30 value as result
+; - 0x48 - for PSW register     - produce 0x30 value as result (used in PUSH/POP instructions)
+; - 0x20 - for HL register pair - produce 0x20 value as result
+; - 0x10 - for DE register pair - produce 0x10 value as result
+; - 0x00 - for BC register pair - produce 0x00 value as result
+; - other values flag an error
+;
+; The function has 3 entry points:
+; - PARSE_REG_PAIR for parsing all 4 register pairs (BC/DE/HL/SP) 
+; - PARSE_REG_PAIR_PSW for parsing all 4 register pairs, but PSW instead of SP
+; - PARSE_REG_PAIR_BC_DE for parsing only BC and DE register pairs (used for LDAX/STAX instructions)
+; 
+; Returns register bits in A register
+PARSE_REG_PAIR:
+    da56  fe 40      CPI A, 40                  ; 0x40 will appear in A in case of SP register
+
+PARSE_REG_PAIR_1:
+    da58  c2 63 da   JNZ PARSE_REG_PAIR_2 (da63); If not - check other options below
+
+    da5b  3e 30      MVI A, 30                  ; 0x30 is be the register bits code for SP or PSW registers
+    da5d  c9         RET
+
+PARSE_REG_PAIR_PSW:
+    da5e  fe 48      CPI A, 48                  ; 0x48 will appear in A in case of PSW register pair
+    da60  c3 58 da   JMP PARSE_REG_PAIR_1 (da58)
+
+PARSE_REG_PAIR_2:
+    da63  fe 20      CPI A, 20                  ; 0x20 is the register bits code for HL register pair
+    da65  c8         RZ
+
+PARSE_REG_PAIR_BC_DE:
+    da66  fe 10      CPI A, 10                  ; 0x10 is the register bits code for DE register pair
+    da68  c8         RZ
+
+    da69  b7         ORA A                      ; 0x00 is the register bits code for BC register pair
+    da6a  c2 8d da   JNZ da8d
+
+    da6d  c9         RET                        ; Other values are incorrect. Report an error
+
 
 ????:
 da6e  06 01      MVI B, 01
@@ -436,19 +507,23 @@ da73  06 02      MVI B, 02
 da75  11 fe ff   LXI DE, fffe
 
 ????:
-da78  e5         PUSH HL
-da79  21 84 bf   LXI HL, bf84
-da7c  7e         MOV A, M
-da7d  b0         ORA B
-da7e  77         MOV M, A
-da7f  21 82 bf   LXI HL, bf82
-da82  7e         MOV A, M
-da83  3c         INR A
-da84  27         DAA
-da85  77         MOV M, A
-da86  e1         POP HL
-da87  c9         RET
+    da78  e5         PUSH HL
 
+    da79  21 84 bf   LXI HL, bf84                   ; Apply error type mask
+    da7c  7e         MOV A, M                       
+    da7d  b0         ORA B
+    da7e  77         MOV M, A
+
+    da7f  21 82 bf   LXI HL, ERRORS_COUNT (bf82)    ; Increment error counter
+    da82  7e         MOV A, M
+    da83  3c         INR A
+    da84  27         DAA
+    da85  77         MOV M, A
+
+    da86  e1         POP HL
+    da87  c9         RET
+
+; Instruction match error ???? Syntax error ???
 ????:
 da88  06 04      MVI B, 04
 da8a  c3 94 da   JMP da94
@@ -464,7 +539,7 @@ da94  cd 78 da   CALL da78
 da97  c3 c4 d8   JMP ADVANCE_TO_NEXT_LINE (d8c4)
 
 
-; Copy next line from source text area to the line buffer
+; Copy next line from source text area to the line buffer (0xbfa0)
 ; Copy up to 0x40 bytes from current line in source text to the line buffer at 0xbfa0
 COPY_LINE_TO_BUF:
     da9a  11 a0 bf   LXI DE, LINE_BUF (bfa0)    ; Will copy up to 0x40 chars into the 0xbfa0 buffer
@@ -474,7 +549,7 @@ COPY_LINE_TO_BUF:
 COPY_LINE_TO_BUF_LOOP:
     daa2  7e         MOV A, M                   ; Load the next symbol from source
 
-    daa3  fe ff      CPI A, ff                  ; 0xff line marker will stop processing
+    daa3  fe ff      CPI A, ff                  ; 0xff EOF marker will stop processing
     daa5  ca b1 d9   JZ d9b1
 
     daa8  fe 0d      CPI A, 0d                  ; 0x0d EOL symbol will finish copying the current line
@@ -512,18 +587,23 @@ COPY_LINE_TO_BUF_LINE_COMPLETED:
     dac9  22 8f bf   SHLD CUR_LINE_PTR (bf8f)   ; Store the new line pointer
     dacc  c9         RET
 
-; ????????
-????:
+; Copy up to 6 chars to the working buffer 0xbfe0
+;
+; Arguments:
+; HL - pointer in the source buffer
+;
+; The function fills the buffer with spaces.
+COPY_WORD_TO_WORK_BUF:
     dacd  0e 06      MVI C, 06                  ; Will fill 0xbfe0 buffer with 6 spaces
     dacf  11 e0 bf   LXI DE, bfe0
     dad2  d5         PUSH DE
     dad3  3e 20      MVI A, 20
 
-????:
+COPY_WORD_TO_WORK_BUF_CLEAR_LOOP:
     dad5  12         STAX DE                    ; Store the next space symbol
     dad6  13         INX DE
     dad7  0d         DCR C
-    dad8  c2 d5 da   JNZ dad5
+    dad8  c2 d5 da   JNZ COPY_WORD_TO_WORK_BUF_CLEAR_LOOP (dad5)
 
     dadb  d1         POP DE                     ; Skip spaces in the beginning of the string
     dadc  cd 0a db   CALL SEARCH_NON_SPACE_CHAR (db0a)
@@ -534,42 +614,43 @@ COPY_LINE_TO_BUF_LINE_COMPLETED:
     dae2  fe 80      CPI A, 80                  ; Symbols with codes >= 0x80 will also stop processing the line
     dae4  f0         RP                         ; as well
 
-????:
+COPY_WORD_TO_WORK_BUF_LOOP:
     dae5  47         MOV B, A                   ; Store loaded symbol in B
 
-    dae6  79         MOV A, C                   ; Copy up to 6 characters into the buffer
-    dae7  fe 06      CPI A, 06
-    dae9  ca f0 da   JZ daf0
+    dae6  79         MOV A, C                   ; Copy up to 6 characters into the buffer (symbols above 6-char
+    dae7  fe 06      CPI A, 06                  ; length will not be copied, but processed looking for an end
+    dae9  ca f0 da   JZ COPY_WORD_TO_WORK_BUF_1 (daf0)  ; of the word)
 
-    daec  78         MOV A, B                   ; Store char to the buffer
+    daec  78         MOV A, B                   ; Store char to the output buffer
     daed  12         STAX DE
 
     daee  13         INX DE                     ; Advance to the next symbol
     daef  0c         INR C
 
-????:
+COPY_WORD_TO_WORK_BUF_1:
     daf0  23         INX HL                     ; Look up for the next source char
     daf1  7e         MOV A, M
 
-    daf2  fe 30      CPI A, 30                  ; ??? Chars >= 0x30 will stop copying instruction, advance to the
+    daf2  fe 30      CPI A, 30                  ; Chars < 0x30 will stop copying instruction, advance to the
     daf4  fa 0a db   JM SEARCH_NON_SPACE_CHAR (db0a)    ; next non-space char
 
     daf7  fe 3a      CPI A, 3a                  ; ???? compare with ':' (colon?)
     daf9  ca 08 db   JZ db08
 
-    dafc  fa e5 da   JM dae5                    ; ???? symbol ?
+    dafc  fa e5 da   JM COPY_WORD_TO_WORK_BUF_LOOP (dae5)   ; ???? symbols below 0x3a ?
 
-    daff  fe 40      CPI A, 40                  ; ???? letter ?
+    daff  fe 40      CPI A, 40                  ; ???? Stop on symbols betwee 0x3b to 0x40
     db01  f8         RM
 
-    db02  fe 80      CPI A, 80                  ; ???? char >= 0x80
-    db04  fa e5 da   JM dae5
+    db02  fe 80      CPI A, 80                  ; Repeat for the next char, stop on char codes >= 80
+    db04  fa e5 da   JM COPY_WORD_TO_WORK_BUF_LOOP (dae5)
 
     db07  c9         RET
 
-????:
-    db08  23         INX HL
+????:                                           ; Process label ?????
+    db08  23         INX HL                     ; Advance to the next source char
     db09  c9         RET
+
 
 ; Look for a non space character in a string pointed by HL
 SEARCH_NON_SPACE_CHAR:
@@ -655,22 +736,26 @@ db6a  ca 73 da   JZ da73
 db6d  c9         RET
 
 ????:
-db6e  cd 79 db   CALL db79
-db71  0d         DCR C
-db72  f2 73 da   JP da73
+    db6e  cd 79 db   CALL db79                  ; ????
+
+    db71  0d         DCR C                      ; ????
+    db72  f2 73 da   JP da73
 
 db75  5e         MOV E, M
 db76  23         INX HL
 db77  56         MOV D, M
 db78  c9         RET
 
+
+
 ????:
-db79  2a 80 bf   LHLD EOF_PTR (bf80)
+db79  2a 80 bf   LHLD EOF_PTR (bf80)                ; ??? Check the input line really has a zero terminator?
 ????:
 db7c  0e 06      MVI C, 06
 db7e  af         XRA A
 db7f  be         CMP M
 db80  c8         RZ
+
 
 db81  e5         PUSH HL
 db82  11 e0 bf   LXI DE, bfe0
@@ -682,6 +767,7 @@ db8a  e1         POP HL
 db8b  01 08 00   LXI BC, 0008
 db8e  09         DAD BC
 db8f  c3 7c db   JMP db7c
+
 ????:
 db92  13         INX DE
 db93  23         INX HL
@@ -690,47 +776,57 @@ db95  c2 85 db   JNZ db85
 db98  d1         POP DE
 db99  c9         RET
 
+
+;????? 2nd reg? or not only reg, but rather all 2nd arguments
+PARSE_2ND_REG_ARG:
+    db9a  7e         MOV A, M                   ; Get back to parsing instruction again. It shall stop at comma
+    db9b  fe 2c      CPI A, 2c                  ; after the first argument - varify this (otherwise show an error)
+    db9d  c2 8d da   JNZ da8d
+
+    dba0  23         INX HL                     ; Parse second argument, expect it to be a register
+    dba1  cd b2 db   CALL dbb2
+
+
+    dba4  3a 89 bf   LDA OPCODE_ARG_TYPE (bf89) ; Argument type 0x03 is a special case - 2 register arguments
+    dba7  fe 03      CPI A, 03
+    dba9  ca ad db   JZ PARSE_2ND_REG_ARG_1 (dbad)
+
+    dbac  0d         DCR C                      ; All other types are more than 1 byte long
+
+PARSE_2ND_REG_ARG_1:
+    dbad  0d         DCR C                      ; Verify the instruction length. Report an error in case of
+    dbae  c2 8d da   JNZ da8d                   ; mismatch
+
+    dbb1  c9         RET
+
+
+
 ????:
-db9a  7e         MOV A, M
-db9b  fe 2c      CPI A, 2c
-db9d  c2 8d da   JNZ da8d
-
-dba0  23         INX HL
-dba1  cd b2 db   CALL dbb2
-dba4  3a 89 bf   LDA bf89
-dba7  fe 03      CPI A, 03
-dba9  ca ad db   JZ dbad
-dbac  0d         DCR C
-????:
-dbad  0d         DCR C
-dbae  c2 8d da   JNZ da8d
-dbb1  c9         RET
-
-
-
-????:
-    dbb2  cd cd da   CALL dacd                  ; Copy args to the buffer ????
+    dbb2  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)  ; Copy an argument to the working buffer
 
     dbb5  af         XRA A                      ; Reset some vars????
     dbb6  32 93 bf   STA bf93
-    dbb9  32 8a bf   STA bf8a
-    dbbc  32 8b bf   STA OPCODE_REGISTER_ARG (bf8b)
+    dbb9  32 8a bf   STA OPCODE_REGISTER_ARG_LOW (bf8a)
+    dbbc  32 8b bf   STA OPCODE_REGISTER_ARG_HIGH (bf8b)
 
-    dbbf  b9         CMP C                      ; ???? All symbols were copied?
+    dbbf  b9         CMP C                      ; Was there any symbol copied???
     dbc0  ca da db   JZ dbda
 
-    dbc3  cd 22 dc   CALL dc22
+    dbc3  cd 22 dc   CALL PARSE_REGISTER_NAME (dc22)
 
-dbc6  fe 01      CPI A, 01
-dbc8  c2 d3 db   JNZ dbd3
-dbcb  4f         MOV C, A
-dbcc  cd 17 dc   CALL CHECK_END_OF_ARG (dc17)
-dbcf  c8         RZ
-dbd0  da 8d da   JC da8d
+    dbc6  fe 01      CPI A, 01                  ; Check if the register name was parsed successfully
+    dbc8  c2 d3 db   JNZ dbd3
+
+    dbcb  4f         MOV C, A                   ; Ensure that argument was fully matched
+    dbcc  cd 17 dc   CALL CHECK_END_OF_ARG (dc17)
+    dbcf  c8         RZ
+
+    dbd0  da 8d da   JC da8d                    ; Report an error if argument was not fully parsed
+
 ????:
-dbd3  e5         PUSH HL
-dbd4  cd 6e db   CALL db6e
-dbd7  c3 03 dc   JMP dc03
+    dbd3  e5         PUSH HL                    ; ???? Argument is not a register name, parse the value???
+    dbd4  cd 6e db   CALL db6e
+    dbd7  c3 03 dc   JMP dc03
 
 ????:
     dbda  cd 17 dc   CALL CHECK_END_OF_ARG (dc17)   ; Return if end of arg reached
@@ -747,31 +843,40 @@ dbd7  c3 03 dc   JMP dc03
     dbeb  23         INX HL
 
 ????:
-    dbec  cd 58 dc   CALL dc58
+    dbec  cd 58 dc   CALL PARSE_IMMEDIATE_VALUE (dc58)  ; ??? Parse argument?
 
-dbef  0c         INR C
-dbf0  ca 8d da   JZ da8d
-dbf3  3a 93 bf   LDA bf93
-dbf6  fe 2d      CPI A, 2d
-dbf8  c2 02 dc   JNZ dc02
+    dbef  0c         INR C                          ; ???? Check number of bytes
+    dbf0  ca 8d da   JZ da8d
+
+    dbf3  3a 93 bf   LDA bf93                       ; ????
+    dbf6  fe 2d      CPI A, 2d
+    dbf8  c2 02 dc   JNZ dc02
+
 dbfb  af         XRA A
 dbfc  93         SUB E
 dbfd  5f         MOV E, A
 dbfe  3e 00      MVI A, 00
 dc00  9a         SBB D
 dc01  57         MOV D, A
+
 ????:
-dc02  e5         PUSH HL
+    dc02  e5         PUSH HL
+
 ????:
-dc03  2a 8a bf   LHLD bf8a
-dc06  19         DAD DE
-dc07  22 8a bf   SHLD bf8a
-dc0a  e1         POP HL
-dc0b  cd 58 dc   CALL dc58
-dc0e  0c         INR C
-dc0f  c2 8d da   JNZ da8d
-dc12  0e 02      MVI C, 02
-dc14  c3 da db   JMP dbda
+    dc03  2a 8a bf   LHLD OPCODE_REGISTER_ARGS (bf8a)   ; Store parsed argument values from DE to the var
+    dc06  19         DAD DE
+    dc07  22 8a bf   SHLD OPCODE_REGISTER_ARGS (bf8a)
+
+    dc0a  e1         POP HL
+
+    dc0b  cd 58 dc   CALL PARSE_IMMEDIATE_VALUE (dc58)  ; ??? Parse another argument?
+
+    dc0e  0c         INR C                      ; Report a syntax error if unexpected argument is found
+    dc0f  c2 8d da   JNZ da8d
+
+    dc12  0e 02      MVI C, 02                  ; ????? Number of bytes?
+    dc14  c3 da db   JMP dbda
+
 
 ; Check if the byte at [HL] is zero (EOL), ',', or ';', indicating end of an instruction argument
 ; Clear C flag and set Z flag if mentioned symbol matched, otherwise set C flag and clear Z
@@ -789,248 +894,396 @@ CHECK_END_OF_ARG:
     dc20  37         STC                        ; Otherwise set C flag
     dc21  c9         RET
 
-????:
-dc22  e5         PUSH HL
-dc23  21 77 de   LXI HL, de77
-dc26  41         MOV B, C
-????:
-dc27  11 e0 bf   LXI DE, bfe0
-dc2a  48         MOV C, B
-dc2b  7e         MOV A, M
-dc2c  23         INX HL
-dc2d  b7         ORA A
-dc2e  ca 56 dc   JZ dc56
-dc31  b9         CMP C
-dc32  ca 3f dc   JZ dc3f
-dc35  4f         MOV C, A
-????:
-dc36  23         INX HL
-dc37  0d         DCR C
-dc38  c2 36 dc   JNZ dc36
-dc3b  23         INX HL
-dc3c  c3 27 dc   JMP dc27
-????:
-dc3f  1a         LDAX DE
-dc40  13         INX DE
-dc41  be         CMP M
-dc42  c2 36 dc   JNZ dc36
-dc45  23         INX HL
-dc46  0d         DCR C
-dc47  c2 3f dc   JNZ dc3f
-dc4a  7e         MOV A, M
-dc4b  32 8a bf   STA bf8a
-dc4e  07         RLC
-dc4f  07         RLC
-dc50  07         RLC
-dc51  32 8b bf   STA OPCODE_REGISTER_ARG (bf8b)
-dc54  3e 01      MVI A, 01
-????:
-dc56  e1         POP HL
-dc57  c9         RET
+
+; Parse register name in the instruction argument
+;
+; The function matches word in the buffer with records in the REGISTER_MATCH_TABLE table.
+; In case of match, the function fills OPCODE_REGISTER_ARG_LOW and OPCODE_REGISTER_ARG_HIGH, and returns
+; 0x01 in A register. The 0x00 value is returned in A in case of no matches found.
+PARSE_REGISTER_NAME:
+    dc22  e5         PUSH HL                    ; Load the pointer to the register names table
+    dc23  21 77 de   LXI HL, REGISTER_MATCH_TABLE (de77)
+
+    dc26  41         MOV B, C                   ; Number of chars to match in B
+
+PARSE_REGISTER_NAME_LOOP:
+    dc27  11 e0 bf   LXI DE, bfe0               ; Will start with the first char in the buffer
+
+    dc2a  48         MOV C, B                   ; C is a character counter
+
+    dc2b  7e         MOV A, M                   ; Repeat until all records in the table matched (reached zero
+    dc2c  23         INX HL                     ; terminating byte)
+    dc2d  b7         ORA A
+    dc2e  ca 56 dc   JZ PARSE_REGISTER_NAME_EXIT (dc56)
+
+    dc31  b9         CMP C                      ; Before we start matching characters, first compare register 
+    dc32  ca 3f dc   JZ PARSE_REGISTER_LEN_MATCHED (dc3f)   ; name length match
+
+    dc35  4f         MOV C, A                   ; If length is different - skip to the next record
+
+PARSE_REGISTER_SKIP_LOOP:
+    dc36  23         INX HL                     ; Iterate over all characters in the register name
+    dc37  0d         DCR C
+    dc38  c2 36 dc   JNZ PARSE_REGISTER_SKIP_LOOP (dc36)
+
+    dc3b  23         INX HL                     ; Skip opcode argument, and advance to the next record
+    dc3c  c3 27 dc   JMP PARSE_REGISTER_NAME_LOOP (dc27)
+
+PARSE_REGISTER_LEN_MATCHED:
+    dc3f  1a         LDAX DE                    ; Compare the next register name character
+    dc40  13         INX DE                     ; Skip to the next record in case of mismatch
+    dc41  be         CMP M
+    dc42  c2 36 dc   JNZ PARSE_REGISTER_SKIP_LOOP (dc36)
+
+    dc45  23         INX HL                     ; Advance to the next char until all chars matched
+    dc46  0d         DCR C
+    dc47  c2 3f dc   JNZ PARSE_REGISTER_LEN_MATCHED (dc3f)
+
+    dc4a  7e         MOV A, M                   ; Store the opcode argument in the variable
+    dc4b  32 8a bf   STA OPCODE_REGISTER_ARG_LOW (bf8a)
+
+    dc4e  07         RLC                        ; Make a copy shifted by 3 bits left - this is used for some
+    dc4f  07         RLC                        ; instructions that have register bits at other position
+    dc50  07         RLC
+    dc51  32 8b bf   STA OPCODE_REGISTER_ARG_HIGH (bf8b)
+
+    dc54  3e 01      MVI A, 01                  ; Return 0x01 in case of match, otherwise 0x00
+
+PARSE_REGISTER_NAME_EXIT:
+    dc56  e1         POP HL                     ; Return
+    dc57  c9         RET
+
+
+
+; Parse immediate value
+;
+; The function parses immediate value of the following formats:
+; - 12345   - decimal integer value
+; - 0ABH    - hex value (must start with decimal digit, and end with H)
+; - $       - current output address
+;
+; Parsed value is returned in DE
+PARSE_IMMEDIATE_VALUE:
+    dc58  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)  ; Copy the argument word to the working buffer
+
+    dc5b  0d         DCR C                      ; Check if there were any letters copied (otherwise it is a number)
+    dc5c  f2 ef dc   JP dcef
+
+    dc5f  7e         MOV A, M                   ; Check if the argument starts with quote symbol '
+    dc60  fe 27      CPI A, 27
+    dc62  ca d2 dc   JZ dcd2
+
+    dc65  fe 24      CPI A, 24                  ; Check if the argument starts with '$'
+    dc67  ca fe dc   JZ dcfe
+
+    dc6a  fe 30      CPI A, 30                  ; Check if it is a digit ('0'-'9')
+    dc6c  f8         RM                         ; Otherwise return
+    dc6d  fe 3a      CPI A, 3a
+    dc6f  f0         RP
+
+    dc70  11 e0 bf   LXI DE, bfe0               ; ???? Output buffer ??
+    dc73  0e 00      MVI C, 00                  ; ???? Counter ??
+
+PARSE_IMMEDIATE_VALUE_LOOP:
+    dc75  d6 30      SUI A, 30                  ; Convert symbol to number (subtract '0'), and store it in the
+    dc77  12         STAX DE                    ; output buffer
+
+    dc78  13         INX DE                     ; Advance to the next byte
+    dc79  23         INX HL
+
+    dc7a  7e         MOV A, M                   ; Load the next byte
+
+    dc7b  fe 30      CPI A, 30                  ; Verify this is still in '0'-'9' range
+
+    dc7d  fa 9a dc   JM PARSE_IMMEDIATE_VALUE_ERROR (dc9a)  ; Symbols < '0' are incorrect
+
+    dc80  fe 3a      CPI A, 3a                  ; Process next digit
+    dc82  fa 75 dc   JM PARSE_IMMEDIATE_VALUE_LOOP (dc75)
+
+    dc85  fe 41      CPI A, 41                  ; Symbols <'A' are incorrect
+    dc87  fa 9a dc   JM PARSE_IMMEDIATE_VALUE_ERROR (dc9a)
+
+    dc8a  0c         INR C                      ; Probably we match a hex char, 'H' will stop the match, and 
+    dc8b  fe 48      CPI A, 48                  ; start converting the string to the value
+    dc8d  ca a4 dc   JZ HEX_STR_TO_INT (dca4)
+
+    dc90  fe 4a      CPI A, 4a                  ; Chars >= 'I' lead to error
+    dc92  f2 8d da   JP da8d
+
+    dc95  d6 07      SUI A, 07                  ; Convert the char to 0x3a-0x3f range, than it can be stored to
+    dc97  c3 75 dc   JMP PARSE_IMMEDIATE_VALUE_LOOP (dc75)  ; the buffer for further parsing in HEX_STR_TO_INT
+
+PARSE_IMMEDIATE_VALUE_ERROR:
+    dc9a  af         XRA A                      ; Check if all symbols are parsed, if not - it is a syntax error
+    dc9b  b9         CMP C                      ; If all symbols are parsed - convert them to the value
+    dc9c  c2 8d da   JNZ da8d
+
+; Convert a string to 16-bit value, treating symbols as decimal digits
+; See STR_TO_INT for more information
+DEC_STR_TO_INT:
+    dc9f  3e 19      MVI A, 19
+    dca1  c3 a7 dc   JMP dca7
+
+; Convert a string to 16-bit value, treating symbols as hex digits
+; See STR_TO_INT for more information
+HEX_STR_TO_INT:
+    dca4  23         INX HL
+    dca5  3e 29      MVI A, 29
+
+; Convert a string to 16-bit integer value
+;
+; Algorithm:
+; Result accumulator is shifted left for 1 digit (multiply by 10 or 16 depending on mode), and next digit
+; is added to the accumulator.
+; 
+; Note: this is not a standalone function, just a piece of code that does conversion.
+;
+; Arguments:
+; A - 0x19 to treat input string as decimal digits, 0x29 to treat them as hex digits
+; Input digits are in the buffer at 0xbfe0, each symbol shall be prepared to a 0x00-0x0f range.
+; DE shall point to the position after the last digit.
+;
+; Result:
+; DE - parsed value
+STR_TO_INT:
+    dca7  12         STAX DE                    ; Store mode flag after the last digit
+    dca8  e5         PUSH HL
+
+    dca9  21 e0 bf   LXI HL, bfe0               ; Will start processing from the beginning of the buffer
+    dcac  11 00 00   LXI DE, 0000               ; Zero result accumulator
+
+    dcaf  de 19      SBI A, 19                  ; A=0 for decimal mode, A>0 for hex mode
+
+STR_TO_INT_LOOP:
+    dcb1  47         MOV B, A                   ; Store mode flag in B
+
+    dcb2  7e         MOV A, M                   ; Load the next digit, and advance pointer to the next one
+    dcb3  23         INX HL
+
+    dcb4  fe 10      CPI A, 10                  ; Digits >= 0x10 stop processing
+    dcb6  f2 09 dd   JP dd09
+
+    dcb9  4f         MOV C, A                   ; Load the next digit into C
+
+    dcba  78         MOV A, B                   ; Check the mode, set Z flag
+    dcbb  b7         ORA A
+
+    dcbc  06 00      MVI B, 00                  ; Clear B, so that in BC there is next digit
+
+    dcbe  e5         PUSH HL                    ; The following lines multiply DE by 10 or 16, depending on Z
+                                                ; flag
+
+    dcbf  62         MOV H, D                   ; HL = 4 * DE
+    dcc0  6b         MOV L, E
+    dcc1  29         DAD HL
+    dcc2  29         DAD HL
+
+    dcc3  c2 ca dc   JNZ STR_TO_INT (dcca)      ; Zero flag - multiplication by 10, otherwise by 16
+
+    dcc6  19         DAD DE                     ; HL = 5 * original DE
+
+    dcc7  c3 cb dc   JMP STR_TO_INT_2 (dccb)
+
+STR_TO_INT_1:
+    dcca  29         DAD HL                     ; Double HL, so that it contains 8 * original DE
+
+STR_TO_INT_2:
+    dccb  29         DAD HL                     ; Double HL, so that it contains either 16*DE or 10*DE (original DE)
+
+    dccc  09         DAD BC                     ; Add the loaded digit
+
+    dccd  eb         XCHG                       ; Store result in the result accumulator
+
+    dcce  e1         POP HL                     ; Advance to the next digit
+    dccf  c3 b1 dc   JMP STR_TO_INT_LOOP (dcb1)
+
+
 
 ????:
-dc58  cd cd da   CALL dacd
-dc5b  0d         DCR C
-dc5c  f2 ef dc   JP dcef
-dc5f  7e         MOV A, M
-dc60  fe 27      CPI A, 27
-dc62  ca d2 dc   JZ dcd2
-dc65  fe 24      CPI A, 24
-dc67  ca fe dc   JZ dcfe
-dc6a  fe 30      CPI A, 30
-dc6c  f8         RM
-dc6d  fe 3a      CPI A, 3a
-dc6f  f0         RP
-dc70  11 e0 bf   LXI DE, bfe0
-dc73  0e 00      MVI C, 00
-????:
-dc75  d6 30      SUI A, 30
-dc77  12         STAX DE
-dc78  13         INX DE
-dc79  23         INX HL
-dc7a  7e         MOV A, M
-dc7b  fe 30      CPI A, 30
-dc7d  fa 9a dc   JM dc9a
-dc80  fe 3a      CPI A, 3a
-dc82  fa 75 dc   JM dc75
-dc85  fe 41      CPI A, 41
-dc87  fa 9a dc   JM dc9a
-dc8a  0c         INR C
-dc8b  fe 48      CPI A, 48
-dc8d  ca a4 dc   JZ dca4
-dc90  fe 4a      CPI A, 4a
-dc92  f2 8d da   JP da8d
-dc95  d6 07      SUI A, 07
-dc97  c3 75 dc   JMP dc75
-????:
-dc9a  af         XRA A
-dc9b  b9         CMP C
-dc9c  c2 8d da   JNZ da8d
-dc9f  3e 19      MVI A, 19
-dca1  c3 a7 dc   JMP dca7
-????:
-dca4  23         INX HL
-dca5  3e 29      MVI A, 29
-????:
-dca7  12         STAX DE
-dca8  e5         PUSH HL
-dca9  21 e0 bf   LXI HL, bfe0
-dcac  11 00 00   LXI DE, 0000
-dcaf  de 19      SBI A, 19
-????:
-dcb1  47         MOV B, A
-dcb2  7e         MOV A, M
-dcb3  23         INX HL
-dcb4  fe 10      CPI A, 10
-dcb6  f2 09 dd   JP dd09
-dcb9  4f         MOV C, A
-dcba  78         MOV A, B
-dcbb  b7         ORA A
-dcbc  06 00      MVI B, 00
-dcbe  e5         PUSH HL
-dcbf  62         MOV H, D
-dcc0  6b         MOV L, E
-dcc1  29         DAD HL
-dcc2  29         DAD HL
-dcc3  c2 ca dc   JNZ dcca
-dcc6  19         DAD DE
-dcc7  c3 cb dc   JMP dccb
-????:
-dcca  29         DAD HL
-????:
-dccb  29         DAD HL
-dccc  09         DAD BC
-dccd  eb         XCHG
-dcce  e1         POP HL
-dccf  c3 b1 dc   JMP dcb1
-????:
-dcd2  0e 02      MVI C, 02
-dcd4  3a 89 bf   LDA bf89
+    dcd2  0e 02      MVI C, 02                  ; Opcodes with the arguments are al least 2-byte instructions
+
+dcd4  3a 89 bf   LDA OPCODE_ARG_TYPE (bf89)     ; ?????
 dcd7  fe 0e      CPI A, 0e
 dcd9  c2 df dc   JNZ dcdf
+
 dcdc  33         INX SP
 dcdd  33         INX SP
 dcde  c9         RET
+
 ????:
-dcdf  23         INX HL
-dce0  5e         MOV E, M
-dce1  23         INX HL
-dce2  56         MOV D, M
+    dcdf  23         INX HL                     ; Load symbol
+    dce0  5e         MOV E, M
+    dce1  23         INX HL                     ; Load second symbol ?
+    dce2  56         MOV D, M
+
 ????:
-dce3  7e         MOV A, M
-dce4  23         INX HL
-dce5  b7         ORA A
-dce6  ca 8d da   JZ da8d
-dce9  fe 27      CPI A, 27
-dceb  c2 e3 dc   JNZ dce3
-dcee  c9         RET
+    dce3  7e         MOV A, M                   ; Load next char
+    dce4  23         INX HL
+
+    dce5  b7         ORA A                      ; If EOL happens earlier than closing quote - report an error
+    dce6  ca 8d da   JZ da8d
+
+    dce9  fe 27      CPI A, 27                  ; Repeat until closing quote is found
+    dceb  c2 e3 dc   JNZ dce3
+
+    dcee  c9         RET                        ; Done, return matched symbol(s) in DE
+
+
 ????:
-dcef  cd 22 dc   CALL dc22
+dcef  cd 22 dc   CALL PARSE_REGISTER_NAME (dc22)
+
 dcf2  fe 01      CPI A, 01
 dcf4  ca 8d da   JZ da8d
+
 dcf7  e5         PUSH HL
 dcf8  cd 6e db   CALL db6e
 dcfb  c3 09 dd   JMP dd09
+
 ????:
 dcfe  23         INX HL
 dcff  e5         PUSH HL
+
 dd00  2a 87 bf   LHLD bf87
 dd03  eb         XCHG
 dd04  2a 98 bf   LHLD bf98
 dd07  19         DAD DE
 dd08  eb         XCHG
+
 ????:
 dd09  e1         POP HL
 dd0a  0e 02      MVI C, 02
 dd0c  c9         RET
 
-????:
+
+; Parse mnemonic string, and convert it to opcode and argument type code
+; 
+; The function parses a 3-char string in 0xbfe0 array. Some of the instructions are 4-char, but most of them
+; are not ambiguous except for STA/STAX and LDA/LDAX. So the first step of the algorithm is to convert STAX and
+; LDAX instructions into STX and LDX respectively. Thus all instructions are not ambiguous having only first
+; 3 letters.
+;
+; Then it follows the next algorithm:
+; - Use the first letter to find a value in the MNEMONIC_1ST_LETTER_LUT table. The value represents first index
+;   of a record in the MNEMONIC_2ND_3RD_LETTER_LUT table, that corresponds to instruction starting with this
+;   letter. The function also checks the next value in the MNEMONIC_1ST_LETTER_LUT table to determine how many
+;   records in the MNEMONIC_2ND_3RD_LETTER_LUT table are associated with this letter.
+; - Every record in the MNEMONIC_2ND_3RD_LETTER_LUT includes 2nd and 3rd letters of the mnemonic. The function
+;   searches the corresponding record
+; - When exact record is found, the function extracts base opcode, and argument type. These values are stored in
+;   BASE_OPCODE and OPCODE_ARG_TYPE variables for further processing.
+;  
+;
+; Example:
+; MVI instruction is parsed as follows:
+; - First byte is 'M'. A record that matches 'M' symbol in MNEMONIC_1ST_LETTER_LUT contains value 0x30. This
+;   means we need to look at 0x30th record in the MNEMONIC_2ND_3RD_LETTER_LUT table, which contains two records:
+;   b2 45 06 and 7d 83 40
+; - Take lowest 5 bits of the 2nd char ('V' = 0x56 -> 0x16 -> 1 0110), and lowest 5 bits of 3rd char ('I' = 0x49
+;   -> 0x09 -> 0 1001) and arrange them as 22222333 33xxxxxx: 10110 010 01 xxxxxx -> 0xb2 0x40. Calculated value
+;   corresponds the first record (of the two found on the previous step)
+; - 3rd byte of the record (0x06) is a base opcode
+; - 6 lowest bits of the 2nd byte of the record (0x05) represent argument type. Literally it selects a function 
+;   responsible to parse instruction arguments
+
+PARSE_MNEMONIC:
     dd0d  3a e3 bf   LDA bfe3                   ; Check the 4th symbol of the mnemonic
 
     dd10  fe 58      CPI A, 58                  ; Is it 'X'? LDAX/STAX
-    dd12  c2 18 dd   JNZ dd18
+    dd12  c2 18 dd   JNZ PARSE_MNEMONIC_1 (dd18)
 
     dd15  32 e2 bf   STA bfe2                   ; Copy 'X' to 3rd symbol as well (so it becomes LDX/STX)
 
-????:
+PARSE_MNEMONIC_1:
     dd18  3a e0 bf   LDA bfe0                   ; Load the 1st symbol of the mnemonic
 
-    dd1b  d6 41      SUI A, 41                  ; Compare it with 'A'
-    dd1d  fa 88 da   JM da88                    ; ????? If < 'A' ????
+    dd1b  d6 41      SUI A, 41                  ; Symbols with codes < 'A' are invalid. Report a syntax error
+    dd1d  fa 88 da   JM da88
 
-    dd20  5f         MOV E, A                   ; Store opcode-'A' to DE
+    dd20  5f         MOV E, A                   ; Load opcode-'A' to DE
     dd21  16 00      MVI D, 00
 
-    dd23  21 99 de   LXI HL, de99               ; Search in the look up table
+    dd23  21 99 de   LXI HL, MNEMONIC_1ST_LETTER_LUT (de99) ; Search in the look up table
     dd26  19         DAD DE
 
-    dd27  5e         MOV E, M                   ; ????? Match first 2 letters equal (CC, RRC)
-    dd28  23         INX HL
-    dd29  7e         MOV A, M
+    dd27  5e         MOV E, M                   ; Duplicating items in the table mean there is no instruction
+    dd28  23         INX HL                     ; starting this letter (B, F, G, K, Q, T, U, V, W, Y, Z). Report
+    dd29  7e         MOV A, M                   ; an error in this case
     dd2a  93         SUB E
     dd2b  ca 88 da   JZ da88
 
-dd2e  4f         MOV C, A
-dd2f  c5         PUSH BC
+    dd2e  4f         MOV C, A                   ; Store number of instructions that start with this letter in C
+    dd2f  c5         PUSH BC
 
-dd30  21 b4 de   LXI HL, deb4
-dd33  19         DAD DE
-dd34  19         DAD DE
-dd35  19         DAD DE
+    dd30  21 b4 de   LXI HL, MNEMONIC_2ND_3RD_LETTER_LUT (deb4) ; Calculate a pointer in the 2nd/3rd letters table
+    dd33  19         DAD DE                     ; HL = 0xdeb4 + 3*index  (each record is 3 bytes: 2 bytes match
+    dd34  19         DAD DE                     ; the letters, 3rd byte is instruction opcode base)
+    dd35  19         DAD DE
 
-dd36  0e 20      MVI C, 20
-dd38  3a e1 bf   LDA bfe1                   ; Load 2nd char
-dd3b  91         SUB C
-dd3c  ca 43 dd   JZ dd43
+    dd36  0e 20      MVI C, 20
+    dd38  3a e1 bf   LDA bfe1                   ; Load 2nd char, and compare it with space
+    dd3b  91         SUB C
+    dd3c  ca 43 dd   JZ PARSE_MNEMONIC_2 (dd43)
 
-dd3f  91         SUB C
-dd40  fa 88 da   JM da88
+    dd3f  91         SUB C                      ; Symbols below 0x40 (letter) is a syntax error
+    dd40  fa 88 da   JM da88
 
-????:
-dd43  07         RLC
-dd44  07         RLC
-dd45  07         RLC
-dd46  47         MOV B, A
-dd47  3a e2 bf   LDA bfe2
-dd4a  91         SUB C
-dd4b  ca 52 dd   JZ dd52
-dd4e  91         SUB C
-dd4f  fa 88 da   JM da88
-????:
-dd52  0f         RRC
-dd53  0f         RRC
-dd54  4f         MOV C, A
-dd55  e6 07      ANI A, 07
-dd57  b0         ORA B
-dd58  57         MOV D, A
-dd59  79         MOV A, C
-dd5a  e6 c0      ANI A, c0
-dd5c  5f         MOV E, A
-dd5d  c1         POP BC
+PARSE_MNEMONIC_2:
+    dd43  07         RLC                        ; Shift 2nd char for 3 bits left
+    dd44  07         RLC
+    dd45  07         RLC
+    dd46  47         MOV B, A
 
-????:
-dd5e  7e         MOV A, M
-dd5f  23         INX HL
-dd60  ba         CMP D
-dd61  c2 6b dd   JNZ dd6b
-dd64  7e         MOV A, M
-dd65  e6 c0      ANI A, c0
-dd67  bb         CMP E
-dd68  ca 74 dd   JZ dd74
-????:
-dd6b  23         INX HL
-dd6c  23         INX HL
-dd6d  0d         DCR C
-dd6e  c2 5e dd   JNZ dd5e
-dd71  c3 88 da   JMP da88
-????:
-dd74  7e         MOV A, M
-dd75  e6 3f      ANI A, 3f
-dd77  32 89 bf   STA bf89
-dd7a  23         INX HL
-dd7b  7e         MOV A, M
-dd7c  32 8c bf   STA BASIC_OPCODE (bf8c)
-dd7f  c9         RET
+    dd47  3a e2 bf   LDA bfe2                   ; Check if the 3rd char is a space
+    dd4a  91         SUB C
+    dd4b  ca 52 dd   JZ PARSE_MNEMONIC_3 (dd52) 
+    dd4e  91         SUB C                      ; Symbols below 'A' are syntax error
+    dd4f  fa 88 da   JM da88
+
+PARSE_MNEMONIC_3:
+    dd52  0f         RRC                        ; Apply 3 highest bits of the 3rd char (so that result is
+    dd53  0f         RRC                        ; 22222333, where 2s are 5 low bits of the 2nd char, and 
+    dd54  4f         MOV C, A                   ; 3s are 3 bits of the 3rd char)
+    dd55  e6 07      ANI A, 07
+    dd57  b0         ORA B                      ; Put result in D
+    dd58  57         MOV D, A
+
+    dd59  79         MOV A, C                   ; Take 2 remaining bits of the 3rd char and place it to DE
+    dd5a  e6 c0      ANI A, c0                  ; Now DE is 22222333 33000000
+    dd5c  5f         MOV E, A
+    dd5d  c1         POP BC
+
+PARSE_MNEMONIC_LOOP:
+    dd5e  7e         MOV A, M                   ; Compare D with the next record's 1st byte
+    dd5f  23         INX HL
+    dd60  ba         CMP D
+    dd61  c2 6b dd   JNZ PARSE_MNEMONIC_4 (dd6b)
+
+    dd64  7e         MOV A, M                   ; Compare 2 highest bits of E with the record's 2nd byte
+    dd65  e6 c0      ANI A, c0
+    dd67  bb         CMP E
+    dd68  ca 74 dd   JZ PARSE_MNEMONIC_EXIT (dd74)
+
+PARSE_MNEMONIC_4:
+    dd6b  23         INX HL                     ; If no match - advance to the next record
+    dd6c  23         INX HL
+
+    dd6d  0d         DCR C                      ; Repear for all records associated with the first letter of
+    dd6e  c2 5e dd   JNZ PARSE_MNEMONIC_LOOP (dd5e) ; mnemonic
+
+    dd71  c3 88 da   JMP da88                   ; If still no match - report a syntax error
+
+PARSE_MNEMONIC_EXIT:
+    dd74  7e         MOV A, M                   ; Lowest 6 bits of the record's 2nd byte are the argument
+    dd75  e6 3f      ANI A, 3f                  ; increment
+    dd77  32 89 bf   STA OPCODE_ARG_TYPE (bf89)
+
+    dd7a  23         INX HL                     ; 3rd byte of the record is the base opcode
+    dd7b  7e         MOV A, M
+    dd7c  32 8c bf   STA BASE_OPCODE (bf8c)
+
+    dd7f  c9         RET
+
+
 
 ????:
     dd80  3a 94 bf   LDA WORKING_MODE (bf94)    ; The following code works only for mode 2
@@ -1083,7 +1336,7 @@ PRINT_CR_LF:
     ddda  c3 50 de   JMP PUT_CHAR (de50)
 
 ????:
-dddd  3a 89 bf   LDA bf89
+dddd  3a 89 bf   LDA OPCODE_ARG_TYPE (bf89)
 dde0  fe 0c      CPI A, 0c
 dde2  c8         RZ
 dde3  fe 0d      CPI A, 0d
@@ -1132,7 +1385,7 @@ de23  c9         RET
     de29  0e 20      MVI C, 20                  ; Print ' '
     de2b  cd 50 de   CALL PUT_CHAR (de50)
 
-    de2e  2a 8a bf   LHLD bf8a                  ; ????? Print 0xbf8a
+    de2e  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a)   ; ????? Print 0xbf8a
     de31  cd 48 de   CALL PRINT_WORD_HEX (de48)
 
     de34  0e 29      MVI C, 29                  ; Print ')'
@@ -1152,6 +1405,7 @@ PRINT_BYTE_HEX:
     de46  c1         POP BC
     de47  c9         RET
 
+; Print 16-bit value as hex, then print a byte in C
 PRINT_WORD_HEX:
     de48  7c         MOV A, H
     de49  cd 42 de   CALL PRINT_BYTE_HEX (de42)
@@ -1164,308 +1418,201 @@ PUT_CHAR:
 
 
 ; Output handlers table. Each entry consists of 2 bytes:
-; - offset from 0xd8d9
+; - offset from OUTPUT_HANDLER_BASE (0xd8d9)
 ; - ????    number of bytes ?
 OUTPUT_HANDLERS_TABLE:
-    de53  0b 00     ; 1-byte instruction with no arguments (OUTPUT_HANDLER_1B_NO_ARGS)
-    de55  08 01 
-    de57  2e 01     ; 1-byte instruction with 1 argument (OUTPUT_HANDLER_1B_1_ARG)
-    de59  00 01 
-    de5b  16 02
-    de5d  0e 01
-    de5f  26 02
-    de61  2b 01
-    de63  31 01
-    de65  37 01 
-    de67  1b 01
-    de69  3d 02
-    de6b  c1 02
-    de6d  d8 00
-    de6f  82 02
-    de71  82 02
-    de73  4d 02
-    de75  59 02
+    de53  0b 00     ; arg type 0x00: 1-byte instruction with no arguments (OUTPUT_HANDLER_1B_NO_ARGS)
+    de55  08 01     ; arg type 0x01: 1-byte instruction with source 8-reg coded in lower 3 bits (OUTPUT_HANDLER_1B_SRC_REG)
+    de57  2e 01     ; arg type 0x02: 1-byte instruction with register coded in the opcode (OUTPUT_HANDLER_1B_1_REG_ARG)
+    de59  00 01     ; arg type 0x03: MOV - 1-byte instruction with 2 register args (OUTPUT_HANDLER_1B_MOV)
+    de5b  16 02     ; arg type 0x04: 2 byte instruction, no registers coded in the opcode, 8-bit immediate value (OUTPUT_HANDLER_2B_IMMEDIATE)
+    de5d  0e 01     ; arg type 0x05: MVI - destination 8-bit register coded in 3-5th bits, 8-bit immediate value (OUTPUT_HANDLER_2B_MVI)
+    de5f  26 02     ; arg type 0x06: no register bits, 2-byte immediate value (OUTPUT_HANDLER_3B_IMMEDIATE_ARG)
+    de61  2b 01     ; arg type 0x07: 1-byte instruction with register pair coded in 4-5th bits (OUTPUT_HANDLER_1B_REG_PAIR)
+    de63  31 01     ; arg type 0x08: PUSH/POP - register pair coded in the opcode (OUTPUT_HANDLER_1B_PUSH_POP)
+    de65  37 01     ; arg type 0x09: 1-byte LDAX/STAX instruction, register pair name is coded in the 5th bit (OUTPUT_HANDLER_1B_STAX_LDAX)
+    de67  1b 01     ; arg type 0x0a: LXI - reg pair bits cpded in 4-5 bits of the opcode, 2-byte 2nd argument value (OUTPUT_HANDLER_3B_LXI)
+    de69  3d 02     ; arg type 0x0b: RST - rst number is coded in the 3-5th bits of the opcode (OUTPUT_HANDLER_1B_RST)
+    de6b  c1 02     ; arg type 0x0c:
+    de6d  d8 00     ; arg type 0x0d:
+    de6f  82 02     ; arg type 0x0e:
+    de71  82 02     ; arg type 0x0f:
+    de73  4d 02     ; arg type 0x10:
+    de75  59 02     ; arg type 0x11:
 
-????:
-de77  01 41 07   LXI BC, 0741
-de7a  01 42 00   LXI BC, 0042
-de7d  01 43 01   LXI BC, 0143
-de80  01 44 02   LXI BC, 0244
-de83  01 45 03   LXI BC, 0345
-de86  01 48 04   LXI BC, 0448
-de89  01 4c 05   LXI BC, 054c
-de8c  01 4d 00   LXI BC, 004d
-de8f  02         STAX BC
-de90  53         MOV D, E
-de91  50         MOV D, B
-de92  08         db 08
-de93  03         INX BC
-de94  50         MOV D, B
-de95  53         MOV D, E
-de96  57         MOV D, A
-de97  09         DAD BC
-de98  00         NOP
-
-; Opcode table???? First symbol table???
-????:
-de99  00         NOP                ; 'A'
-de9a  06                            ; 'B' 
-de9b  06                            ; 'C'
-de9c  13                            ; 'D'
-de9d  1b                            ; 'E'
-de9e  1e 1e      MVI E, 1e
-dea0  1e 1f      MVI E, 1f
-dea2  22 2c 2c   SHLD 2c2c
-dea5  30         db 30
-dea6  32 33 37   STA 3733
-dea9  3a 3a 48   LDA 483a
-deac  51         MOV D, C
-dead  51         MOV D, C
-deae  51         MOV D, C
-deaf  51         MOV D, C
-deb0  51         MOV D, C
-deb1  55         MOV D, L
-deb2  55         MOV D, L
-deb3  55         MOV D, L
+; A table that matches register names and return an opcode modifier that corresponds the register
+;
+; Format of each record:
+; - Number of symbols to match (0x00 - end of the table)
+; - Symbols to match (1-3 chars)
+; - Opcode modifier
+REGISTER_MATCH_TABLE:
+    de77  01 41 07          db 0x01, 'A', 0x07
+    de7a  01 42 00          db 0x01, 'B', 0x00
+    de7d  01 43 01          db 0x01, 'C', 0x01
+    de80  01 44 02          db 0x01, 'D', 0x02
+    de83  01 45 03          db 0x01, 'E', 0x03
+    de86  01 48 04          db 0x01, 'H', 0x04
+    de89  01 4c 05          db 0x01, 'L', 0x05
+    de8c  01 4d 00          db 0x01, 'M', 0x06
+    de8f  02 53 50 08       db 0x02, 'SP', 0x08
+    de93  03 50 53 57 09    db 0x01, 'PSW', 0x09
+    de98  00                db 0x00
 
 
-????:
-deb4  1a         LDAX DE
-deb5  44         MOV B, H
-deb6  ce
+; First symbol of the mnemonic lookup table
+;
+; This table is used to match first letter of the instruction. Position in this table matches the letter if 
+; counting from 'A'. Value in this table is index in the next lookup table, that matches 2nd and 3rd chars of
+; the instruction. 
+;
+; Difference between the two items in the table represent number of different instructions stat start with the
+; particular letters. Duplicating items represent error cases when no instruction starting the particular letter
+; exists.
+MNEMONIC_1ST_LETTER_LUT:
+    de99  00                            ; 'A'
+    de9a  06                            ; 'B' - no instruction starting this letter
+    de9b  06                            ; 'C'
+    de9c  13                            ; 'D'
+    de9d  1b                            ; 'E'
+    de9e  1e                            ; 'F' - no instruction starting this letter
+    de9f  1e                            ; 'G' - no instruction starting this letter
+    dea0  1e                            ; 'H' 
+    dea1  1f                            ; 'I'
+    dea2  22                            ; 'J' 
+    dea3  2c                            ; 'K' - no instruction starting this letter
+    dea4  2c                            ; 'L'
+    dea5  30                            ; 'M' - MOV, MVI
+    dea6  32                            ; 'N' - NOP
+    dea7  33                            ; 'O'
+    dea8  37                            ; 'P'
+    dea9  3a                            ; 'Q' - no instruction starting this letter
+    deaa  3a                            ; 'R'
+    deab  48                            ; 'S'
+    deac  51                            ; 'T' - no instruction starting this letter
+    dead  51                            ; 'U' - no instruction starting this letter
+    deae  51                            ; 'V' - no instruction starting this letter
+    deaf  51                            ; 'W' - no instruction starting this letter
+    deb0  51                            ; 'X'
+    deb1  55                            ; 'Y' - no instruction starting this letter
+    deb2  55                            ; 'Z' - no instruction starting this letter
+    deb3  55                            ; end of table marker
 
- 20      ACI A, 20
-deb8  c1         POP BC
-deb9  88         ADC B
 
-deba  21 01 80   LXI HL, 8001
-debd  22 44 c6   SHLD c644
-
-dec0  70         MOV M, B
-dec1  41         MOV B, C
-dec2  a0         ANA B
-
-dec3  72         MOV M, D
-dec4  44         MOV B, H
-dec5  e6 
-
-0b      ANI A, 0b
-dec7  06 cd      MVI B, cd
-
-dec9  18         db 18
-deca  06 dc      MVI B, dc
-
-decc  68         MOV L, B
-decd  06 fc      MVI B, fc
-
-decf  68         MOV L, B
-ded0  40         MOV B, B
-ded1  2f         CMA
-
-ded2  68         MOV L, B
-ded3  c0         RNZ
-ded4  3f         CMC
-
-ded5  6c         MOV L, H
-ded6  01 b8
-
- 70   LXI BC, 70b8
-ded9  c6 d4      ADI A, d4
-
-dedb  76         HLT
-dedc  86         ADD M
-dedd  c4
-
- 00 06   CNZ 0600
-dee0  f4
-
- 81 46   CP 4681
-dee3  ec 
-
-82 44   CPE 4482
-dee6  fe
-
- 83      CPI A, 83
-dee8  c6 e4      ADI A, e4
-
-deea  d0         RNC
-deeb  06 cc      MVI B, cc
-
-deed  08         db 08
-deee  40         MOV B, B
-deef  27         DAA
-
-def0  09         DAD BC
-def1  07         RLC
-def2  09         DAD BC
-
-def3  1c         INR E
-def4  82         ADD D
-def5  05         DCR B
-
-def6  1e 07      MVI E, 07
-def8  0b         DCX BC
-
-def9  48         MOV C, B
-defa  00         NOP
-defb  f3         DI
-
-defc  10         db 10
-defd  0e 60      MVI C, 60
-
-deff  b8         CMP B
-df00  0f         RRC
-df01  00         NOP
-df02  98         SBB B
-df03  10         db 10
-df04  00         NOP
-df05  48         MOV C, B
-df06  00         NOP
-df07  fb         EI
-df08  71         MOV M, C
-df09  0d         DCR C
-df0a  00         NOP
-df0b  80         ADD B
-df0c  51         MOV D, C
-df0d  00         NOP
-df0e  65         MOV H, L
-df0f  00         NOP
-df10  76         HLT
-df11  70         MOV M, B
-df12  04         INR B
-df13  db 74      IN 74
-df15  82         ADD D
-df16  04         INR B
-df17  76         HLT
-df18  07         RLC
-df19  03         INX BC
-df1a  18         db 18
-df1b  06 da      MVI B, da
-df1d  68         MOV L, B
-df1e  06 fa      MVI B, fa
-df20  6c         MOV L, H
-df21  06 c3      MVI B, c3
-df23  00         NOP
-df24  06 c3      MVI B, c3
-df26  70         MOV M, B
-df27  c6 d2      ADI A, d2
-df29  76         HLT
-df2a  86         ADD M
-df2b  02         STAX BC
-df2c  00         NOP
-df2d  06 f2      MVI B, f2
-df2f  01 46 ea   LXI BC, ea46
-df32  83         ADD E
-df33  c6 e2      ADI A, e2
-df35  d0         RNC
-df36  06 ca      MVI B, ca
-df38  20         db 20
-df39  46         MOV B, M
-df3a  3a 26 09   LDA 0926
-df3d  0a         LDAX BC
-df3e  43         MOV B, E
-df3f  06 2a      MVI B, 2a
-df41  c2 4a 01   JNZ 014a
-df44  b2         ORA D
-df45  45         MOV B, L
-df46  06 7d      MVI B, 7d
-df48  83         ADD E
-df49  40         MOV B, B
-df4a  7d         MOV A, L
-df4b  00         NOP
-df4c  00         NOP
-df4d  90         SUB B
-df4e  41         MOV B, C
-df4f  b0         ORA B
-df50  92         SUB D
-df51  44         MOV B, H
-df52  f6 ad      ORI A, ad
-df54  04         INR B
-df55  d3 91      OUT 91
-df57  cc 00 1a   CZ 1a00
-df5a  00         NOP
-df5b  e9         PCHL
-df5c  7c         MOV A, H
-df5d  08         db 08
-df5e  c1         POP BC
-df5f  ac         XRA H
-df60  c8         RZ
-df61  c5         PUSH BC
-df62  0b         DCX BC
-df63  00         NOP
-df64  17         RAL
-df65  0c         INR C
-df66  80         ADD B
-df67  1f         RAR
-df68  60         MOV H, B
-df69  c0         RNZ
-df6a  07         RLC
-df6b  90         SUB B
-df6c  c0         RNZ
-df6d  0f         RRC
-df6e  2d         DCR L
-df6f  00         NOP
-df70  c9         RET
-df71  18         db 18
-df72  00         NOP
-df73  d8         RC
-df74  70         MOV M, B
-df75  c0         RNZ
-df76  d0         RNC
-df77  d0         RNC
-df78  00         NOP
-df79  c8         RZ
-df7a  76         HLT
-df7b  80         ADD B
-df7c  c0         RNZ
-df7d  80         ADD B
-df7e  00         NOP
-df7f  f0         RP
-df80  68         MOV L, B
-df81  00         NOP
-df82  f8         RM
-df83  81         ADD C
-df84  40         MOV B, B
-df85  e8         RPE
-df86  83         ADD E
-df87  c0         RNZ
-df88  e0         RPO
-df89  9d         SBB L
-df8a  0b         DCX BC
-df8b  c7         RST 0
-df8c  10         db 10
-df8d  81         ADD C
-df8e  98         SBB B
-df8f  12         STAX DE
-df90  44         MOV B, H
-df91  de 43      SBI A, 43
-df93  06 22      MVI B, 22
-df95  82         ADD D
-df96  00         NOP
-df97  f9         SPHL
-df98  a0         ANA B
-df99  46         MOV B, M
-df9a  32 a6 09   STA 09a6
-df9d  02         STAX BC
-df9e  a0         ANA B
-df9f  c0         RNZ
-dfa0  37         STC
-dfa1  a8         XRA B
-dfa2  81         ADD C
-dfa3  90         SUB B
-dfa4  aa         XRA D
-dfa5  44         MOV B, H
-dfa6  d6 1a      SUI A, 1a
-dfa8  00         NOP
-dfa9  eb         XCHG
-dfaa  90         SUB B
-dfab  41         MOV B, C
-dfac  a8         XRA B
-dfad  92         SUB D
-dfae  44         MOV B, H
-dfaf  ee a2      XRI A, a2
-dfb1  00         NOP
-dfb2  e3         XTHL
+; Instructions table for matching 2nd and 3rd symbols of the mnemonic
+; Each record contains 3 bytes:
+; - 1st and 2nd byte are 22222333 33bbbbbb, where
+;   - '2's are lowest 5 bits of the 2nd mnemonic char
+;   - '3's are lowest 5 bits of the 3rd mnemonic char
+;   - 'b's are the argument type, and particularly selects the function that is used to parse arguments
+; - 3rd byte is the base opcode with register bits masked out
+;
+; Different instructions use different types of register bits coded in the opcode:
+; - 0x00 - no register bits in the opcode
+; - 0x01 - source 8-bit register coded in lower 3 bits of the opcode
+; - 0x02 - 1-byte instruction with register name coded in the 3-5th bits
+; - 0x03 - MOV - 1-byte instruction with 2 register args
+; - 0x04 - 2 byte instruction, no registers coded in the opcode, 8-bit immediate value
+; - 0x05 - MVI - destination 8-bit register coded in 3-5th bits, 8-bit immediate value
+; - 0x06 - no register bits, 2-byte immediate value
+; - 0x07 - 1-byte instruction with register name coded in the 3-5th bits of theopcode
+; - 0x08 - 1-byte PUSH/POP instruction, register pair name coded in the 3-5th bits of the opcode
+; - 0x09 - 1-byte LDAX/STAX instruction, register pair name is coded in the 5th bit
+; - 0x0a - LXI - reg pair bits cpded in 4-5 bits of the opcode, 2-byte 2nd argument value
+; - 0x0b - RST - rst number is coded in the 3-5th bits of the opcode
+; - 0x0c - 
+; - 0x0d - 
+; - 0x0e - 
+; - 0x0f - 
+; - 0x10 - 
+; - 0x11 - 
+;
+MNEMONIC_2ND_3RD_LETTER_LUT:
+    deb4  1a 44 ce                      ; ACI (opcode 0xce, type=0x04 - no register bits, 1-byte immediate value)
+    deb7  20 c1 88                      ; ADC (base opcode 0x88, type=0x01 - source register coded in opcode)
+    deba  21 01 80                      ; ADD (base 0pcode 0x80, type=0x01 - source register coded in opcode)
+    debd  22 44 c6                      ; ADI (opcode 0xc6, type=0x04 - no register bits, 1-byte immediate value)
+    dec0  70 41 a0                      ; ANA (base opcode 0xa0, type=0x01 - source register coded in opcode)
+    dec3  72 44 e6                      ; ANI (opcode 0xe6, type=0x04 - no register bits, 1-byte immediate value)
+    dec6  0b 06 cd                      ; CALL (opcode 0xcd, arg=0x06 - no register bits, 2-byte immediate value)
+    dec9  18 06 dc                      ; CC (opcode 0xdc, arg=0x06 - no register bits, 2-byte immediate value)
+    decc  68 06 fc                      ; CM (opcode 0xfc, arg=0x06 - no register bits, 2-byte immediate value)
+    decf  68 40 2f                      ; CMA (opcode 0x2f, type=0x00 - no register bits in the opcode)
+    ded2  68 c0 3f                      ; CMC (opcode 0x3f, type=0x00 - no register bits in the opcode)
+    ded5  6c 01 b8                      ; CMP (base opcode 0xb8, type=0x01 - source register coded in opcode)
+    ded8  70 c6 d4                      ; CNC (opcode 0xd4, arg=0x06 - no register bits, 2-byte immediate value)
+    dedb  76 86 c4                      ; CNZ (opcode 0xc4, arg=0x06 - no register bits, 2-byte immediate value)
+    dede  00 06 f4                      ; CP (opcode 0xf4, arg=0x06 - no register bits, 2-byte immediate value)
+    dee1  81 46 ec                      ; CPE (opcode 0xec, arg=0x06 - no register bits, 2-byte immediate value)
+    dee4  82 44 fe                      ; CPI (opcode 0xfe, arg=0x04 - no register bits, 1-byte immediate value)
+    dee7  83 c6 e4                      ; CPO (opcode 0xe4, arg=0x06 - no register bits, 2-byte immediate value)
+    deea  d0 06 cc                      ; CZ (opcode 0xcc, arg=0x06 - no register bits, 2-byte immediate value)
+    deed  08 40 27                      ; DAA (opcode 0x27, type=0x00 - no register bits in the opcode)
+    def0  09 07 09                      ; DAD (opcode 0x09, type=0x07 - reg pair is coded in 3-4th bits)
+    def3  1c 82 05                      ; DCR (base opcode 0x05, type=0x02 - register coded in 3-5th bits)
+    def6  1e 07 0b                      ; DCX (base opcode 0x0b, type=0x07 - reg pair is coded in 3-4th bits)
+    def9  48 00 f3                      ; DI (opcode 0xf3, type=0x00 - no register bits in the opcode)
+    defc  10 0e 00                      ; DB - compiler special instruction, arg code 0x0e
+    deff  b8 0f 00                      ; DW - compiler special instruction, arg code 0x0f
+    df02  98 10 00                      ; DS - compiler special instruction, arg code 0x10
+    df05  48 00 fb                      ; EI (opcode 0xfb, type=0x00 - no register bits in the opcode)
+    df08  71 0d 00                      ; END - compiler special instruction, arg code 0x0d
+    df0b  80 51 00                      ; EPA - compiler special instruction, arg code 0x11
+    df0e  65 00 76                      ; HLT (opcode 0x76, type=0x00 - no register bits in the opcode)
+    df11  70 04 db                      ; IN (opcode 0xdb, type=0x04 - no register bits, 1-byte immediate value)
+    df14  74 82 04                      ; INR (base opcode 0x04, type=0x02 - register coded in 3-5th bits)
+    df17  76 07 03                      ; INX (base opcode 0x03, type=0x07 - reg pair is coded in 3-4th bits)
+    df1a  18 06 da                      ; JC (opcode 0xda, type=0x06 - no register bits, 2-byte immediate value)
+    df1d  68 06 fa                      ; JM (opcode 0xfa, type=0x06 - no register bits, 2-byte immediate value)
+    df20  6c 06 c3                      ; JMP (opcode 0xc3, type=0x06 - no register bits, 2-byte immediate value) 
+    df23  00 06 c3                      ; J - non standard alias for JMP (opcode 0xc3, type=0x06 - no register bits, 2-byte immediate value) 
+    df26  70 c6 d2                      ; JNC (opcode 0xd2, type=0x06 - no register bits, 2-byte immediate value) 
+    df29  76 86 c2                      ; JNZ (opcode 0xc2, type=0x06 - no register bits, 2-byte immediate value) 
+    df2c  80 06 f2                      ; JP (opcode 0xf2, type=0x06 - no register bits, 2-byte immediate value)
+    df2f  81 46 ea                      ; JPE (opcode 0xea, type=0x06 - no register bits, 2-byte immediate value)
+    df32  83 c6 e2                      ; JPO (opcode 0xe2, type=0x06 - no register bits, 2-byte immediate value)
+    df35  d0 06 ca                      ; JZ (opcode 0xca, type=0x06 - no register bits, 2-byte immediate value)
+    df38  20 46 3a                      ; LDA (opcode 0x3a, type=0x06 - no register bits, 2-byte immediate value)
+    df3b  26 09 0a                      ; LDX (LDAX) (base opcode 0x0a, type=0x09 - reg pair bits)
+    df3e  43 06 2a                      ; LHLD (opcode 0x2a, type=0x06 - no register bits, 2-byte immediate value)
+    df41  c2 4a 01                      ; LXI (base opcode 0x01, type=0x0a - reg pair bits, 2-byte value)
+    df44  b2 45 06                      ; MVI (base opcode 0x06, type=0x05 - register and immediate 1-byte value)
+    df47  7d 83 40                      ; MOV (base opcode 0x40, type=0x03 - two registers coded in the opcode)
+    df4a  7c 00 00                      ; NOP (opcode 0x00, type=0x00 - no register bits in the opcode)
+    df4d  90 41 b0                      ; ORA (base opcode 0xb0, type=0x01 - source register coded in opcode)
+    df50  92 44 f6                      ; ORI (opcode 0xf6, type=0x04 - no register bits, 1-byte immediate value)
+    df53  ad 04 d3                      ; OUT (opcode 0xd3, type=0x04 - no register bits, 1-byte immediate value)
+    df56  91 cc 00                      ; ORG - compiler special instruction, arg code 0x0c 
+    df59  1a 00 e9                      ; PCHL (opcode 0xe9, type=0x00 - no register bits in the opcode)
+    df5c  7c 08 c1                      ; POP (base opcode 0xc1, type=0x08 - register pair coded in the opcode)
+    df5f  ac c8 c5                      ; PUSH (base opcode 0xc5, type=0x08 - register pair coded in the opcode)
+    df62  0b 00 17                      ; RAL (opcode 0x17, type=0x00 - no register bits in the opcode)
+    df65  0c 80 1f                      ; RAR (opcode 0x1f, type=0x00 - no register bits in the opcode)
+    df68  60 c0 07                      ; RLC (opcode 0x07, type=0x00 - no register bits in the opcode)
+    df6b  90 c0 0f                      ; RRC (opcode 0x0f, type=0x00 - no register bits in the opcode)
+    df6e  2d 00 c9                      ; RET (opcode 0xc9, type=0x00 - no register bits in the opcode)
+    df71  18 00 d8                      ; RC (opcode 0xd8, type=0x00 - no register bits in the opcode)
+    df74  70 c0 d0                      ; RNC (opcode 0xd0, type=0x00 - no register bits in the opcode)
+    df77  d0 00 c8                      ; RZ (opcode 0xc8, type=0x00 - no register bits in the opcode)
+    df7a  76 80 c0                      ; RNZ (opcode 0xc0, type=0x00 - no register bits in the opcode)
+    df7d  80 00 f0                      ; RP (opcode 0xf0, type=0x00 - no register bits in the opcode)
+    df80  68 00 f8                      ; RM (opcode 0xf8, type=0x00 - no register bits in the opcode)
+    df83  81 40 e8                      ; RPE (opcode 0xe8, type=0x00 - no register bits in the opcode)
+    df86  83 c0 e0                      ; RPO (opcode 0xe0, type=0x00 - no register bits in the opcode)
+    df89  9d 0b c7                      ; RST (opcode 0xc7, type=0x0b - rst number is coded in the opcode)
+    df8c  10 81 98                      ; SBB (base opcode 0x98, type=0x01 - source register coded in opcode)
+    df8f  12 44 de                      ; SBI (opcode 0xde, type=0x04 - no register bits, 1-byte immediate value)
+    df92  43 06 22                      ; SHLD (opcode 0x22, type=0x06 - no register bits, 2-byte immediate value)
+    df95  82 00 f9                      ; SPHL (opcode 0xf9, type=0x00 - no register bits in the opcode)
+    df98  a0 46 32                      ; STA (opcode 0x32, type=0x06 - no register bits, 2-byte immediate value)
+    df9b  a6 09 02                      ; STX (STAX) (base opcode 0x02, type=0x09 - reg pair bits)
+    df9e  a0 c0 37                      ; STC (opcode 0x37, type=0x00)
+    dfa1  a8 81 90                      ; SUB (base opcode 0x90, type=0x01 - source register coded in opcode)
+    dfa4  aa 44 d6                      ; SUI (opcode 0xd6, type=0x04 - no register bits, 1-byte immediate value)
+    dfa7  1a 00 eb                      ; XCHG (opcode 0xeb, type=0x00 - no register bits in the opcode)
+    dfaa  90 41 a8                      ; XRA (base opcode 0xa8, type=0x01 - source register coded in opcode)
+    dfad  92 44 ee                      ; XRI (opcode 0xee, type=0x04 - no register bits, 1-byte immediate value)
+    dfb0  a2 00 e3                      ; XTHL (opcode 0xe3, type=0x00 - no register bits in the opcode)
 
 ERRORS_STR:
     dfb3  0a 45 52 52 4f 52 53 20   db 0x0a, "ERRORS "
