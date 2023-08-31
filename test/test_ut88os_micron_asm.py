@@ -24,6 +24,7 @@ def set_text(ut88, addr, text):
 
 
 def run_command(ut88, cmd, endaddr):
+    # Capture the console output
     text = []
     ut88.emulator.add_breakpoint(0xf9f0, lambda: text.append(chr(ut88.cpu.c)))
 
@@ -46,10 +47,13 @@ def run_assembler(ut88, text, mode = "1", command = "B"):
     ut88.set_byte(addr, 0xff)
 
     # The Micron assembler expects the User to enter operation mode at start
-    ut88.emulate_key_sequence(mode + "^C")
+    ut88.emulate_key_sequence(mode + "?")   # '?' will generate an error input, to catch end of program execution
+
+    # Skip check for Ctrl-C press after each processed line
+    ut88.emulator.add_breakpoint(0xd8ce, lambda: ut88.cpu.set_pc(0xd8d6))
 
     # Run the assembler command
-    text = run_command(ut88, command, 0xd8c4)   # Stop at ADVANCE_TO_NEXT_LINE
+    text = run_command(ut88, command, 0xd81f)   # Stop at '?' incorrect mode input
     return text.replace('\r', '\n')
 
 
@@ -209,4 +213,28 @@ def test_assembler_two_symb_arg(ut88):
     assert ut88.get_byte(0xa002) == ord('B')
 
 
+def test_assembler_cur_addr_arg(ut88):
+    # Use '$' as current address
+    asm = "JMP $"    
+    text = run_assembler(ut88, asm)
+    print(text)
+
+    # Verify the instruction is assembled
+    assert ut88.get_byte(0xa000) == 0xc3
+    assert ut88.get_byte(0xa001) == 0x00
+    assert ut88.get_byte(0xa002) == 0xa0
+
+
 # TODO: $ usage as a argument, meaning current address
+
+
+def test_assembler_org(ut88):
+    asm =  "ORG 1234H\r"
+    asm += "JMP $"
+    text = run_assembler(ut88, asm)
+    print(text)
+
+    # Verify the instruction is assembled
+    assert ut88.get_byte(0xa000) == 0xc3    # Storage address remains the same - 0xa000
+    assert ut88.get_byte(0xa001) == 0x34    # But JMP argument gets value passed in ORG - 0x1234
+    assert ut88.get_byte(0xa002) == 0x12

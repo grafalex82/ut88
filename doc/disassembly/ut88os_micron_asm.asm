@@ -19,7 +19,7 @@
 ; - bf93 - ????
 ; - bf94 - working mode ????
 ; - bf95 - ????
-; - bf98 - 2 bytes ??????
+; - bf98 - ORG offset (difference between ORG target address and target storage address 0xa000)
 ; - bfa0 - line buffer (0x40 bytes)
 ; - bfe0 - working buffer for parsing instruction mnemonic or instruction arguments (6 bytes)
 
@@ -64,8 +64,8 @@ GET_KBD_INPUT:
     d833  3c         INR A                      ; ???? Set 1 to sometihng
     d834  32 83 bf   STA bf83
 
-    d837  21 00 00   LXI HL, 0000               ; ???? Zero some offset
-    d83a  22 98 bf   SHLD bf98
+    d837  21 00 00   LXI HL, 0000               ; Zero target offset
+    d83a  22 98 bf   SHLD ORG_OFFSET (bf98)
 
     d83d  21 00 30   LXI HL, 3000               ; Will search for end of text marker starting 0x3000
 
@@ -241,22 +241,27 @@ OUTPUT_HANDLER_1B_STAX_LDAX:
 
 ; Output 1-byte RST instruction, rst number is coded in the 3-5th bits of the opcode
 OUTPUT_HANDLER_1B_RST:
-d916  3a 8a bf   LDA OPCODE_REGISTER_ARG_LOW (bf8a)
-d919  47         MOV B, A
-d91a  e6 07      ANI A, 07
-d91c  b8         CMP B
-d91d  c2 8d da   JNZ da8d
-d920  07         RLC
-d921  07         RLC
-d922  07         RLC
-d923  c3 32 da   JMP STORE_OPCODE_TO_OUTPUT (da32)
+    d916  3a 8a bf   LDA OPCODE_REGISTER_ARG_LOW (bf8a) ; RST number shall be parsed as a part of mnemonic+arg
+    d919  47         MOV B, A                           ; parsing routine
 
+    d91a  e6 07      ANI A, 07                          ; Verify the number does not exceed 0x07, otherwise
+    d91c  b8         CMP B                              ; report an error
+    d91d  c2 8d da   JNZ da8d
+
+    d920  07         RLC                                ; Shift to 3-5th bits
+    d921  07         RLC
+    d922  07         RLC
+
+    d923  c3 32 da   JMP STORE_OPCODE_TO_OUTPUT (da32)  ; And store the opcode
+
+????:
 d926  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85)
 d929  eb         XCHG
 d92a  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a)
 d92d  19         DAD DE
 d92e  22 85 bf   SHLD CUR_OUTPUT_PTR (bf85)
 d931  c9         RET
+
 d932  21 a0 bf   LXI HL, LINE_BUF (bfa0)
 d935  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)
 d938  fe 3a      CPI A, 3a
@@ -315,17 +320,27 @@ d991  fe 3b      CPI A, 3b
 d993  c8         RZ
 d994  cd 9a db   CALL PARSE_2ND_REG_ARG (db9a)
 d997  c3 5b d9   JMP d95b
-d99a  3a 95 bf   LDA bf95
-d99d  b7         ORA A
-d99e  c0         RNZ
-d99f  3c         INR A
-d9a0  32 95 bf   STA bf95
-d9a3  21 00 a0   LXI HL, a000
-d9a6  eb         XCHG
-d9a7  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a)
-d9aa  cd 20 da   CALL SUB_HL_DE (da20)
-d9ad  22 98 bf   SHLD bf98
-d9b0  c9         RET
+
+
+ORG_HANDLER:
+    d99a  3a 95 bf   LDA bf95                   ; Allow having only one ORG directive, otherwise return
+    d99d  b7         ORA A
+    d99e  c0         RNZ
+
+    d99f  3c         INR A                      ; Set the flag that ORG directive was already used
+    d9a0  32 95 bf   STA bf95
+
+    d9a3  21 00 a0   LXI HL, a000               ; Load the default target address 0xa000 to DE
+    d9a6  eb         XCHG
+
+    d9a7  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a)    ; Load the new ORG address to HL
+
+    d9aa  cd 20 da   CALL SUB_HL_DE (da20)      ; Calculate difference between ORG address and target address
+
+    d9ad  22 98 bf   SHLD ORG_OFFSET (bf98)     ; Store the difference in the var
+
+    d9b0  c9         RET
+
 
 ????:
     d9b1  cd 80 dd   CALL dd80                  ; ????
@@ -333,16 +348,17 @@ d9b0  c9         RET
 d9b4  21 83 bf   LXI HL, bf83
 d9b7  7e         MOV A, M
 
-d9b8  34         INR M
-d9b9  3d         DCR A
+d9b8  34         INR M                      ; Increment current pass number ????
+d9b9  3d         DCR A                      ; ????
 d9ba  ca 51 d8   JZ d851
 
 d9bd  3a 94 bf   LDA WORKING_MODE (bf94)
 d9c0  fe 02      CPI A, 02
 d9c2  c2 fc d9   JNZ d9fc
 
-d9c5  0e 1f      MVI C, 1f
-d9c7  cd 50 de   CALL PUT_CHAR (de50)
+    d9c5  0e 1f      MVI C, 1f              ; Clear screen
+    d9c7  cd 50 de   CALL PUT_CHAR (de50)
+
 d9ca  2a 80 bf   LHLD EOF_PTR (bf80)
 ????:
 d9cd  06 06      MVI B, 06
@@ -383,7 +399,7 @@ d9f9  c3 cd d9   JMP d9cd
     da0e  2b         DCX HL
     da0f  eb         XCHG
 
-    da10  2a 98 bf   LHLD bf98                      ; ????
+    da10  2a 98 bf   LHLD ORG_OFFSET (bf98)         ; Apply the org offset
     da13  19         DAD DE
 
     da14  0e 2f      MVI C, 2f                      ; Print ??? address followed by '/'
@@ -681,7 +697,7 @@ db2d  22 8d bf   SHLD bf8d
 db30  e5         PUSH HL
 db31  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85)
 db34  eb         XCHG
-db35  2a 98 bf   LHLD bf98
+db35  2a 98 bf   LHLD ORG_OFFSET (bf98)
 db38  19         DAD DE
 db39  eb         XCHG
 db3a  e1         POP HL
@@ -1145,7 +1161,7 @@ dcff  e5         PUSH HL
 
 dd00  2a 87 bf   LHLD bf87
 dd03  eb         XCHG
-dd04  2a 98 bf   LHLD bf98
+dd04  2a 98 bf   LHLD ORG_OFFSET (bf98)
 dd07  19         DAD DE
 dd08  eb         XCHG
 
@@ -1349,7 +1365,7 @@ ddeb  ca 3d de   JZ de3d
 ddee  f5         PUSH PSW
 ddef  d5         PUSH DE
 ddf0  eb         XCHG
-ddf1  2a 98 bf   LHLD bf98
+ddf1  2a 98 bf   LHLD ORG_OFFSET (bf98)
 ddf4  19         DAD DE
 ddf5  cd 48 de   CALL PRINT_WORD_HEX (de48)
 ddf8  eb         XCHG
@@ -1433,7 +1449,7 @@ OUTPUT_HANDLERS_TABLE:
     de65  37 01     ; arg type 0x09: 1-byte LDAX/STAX instruction, register pair name is coded in the 5th bit (OUTPUT_HANDLER_1B_STAX_LDAX)
     de67  1b 01     ; arg type 0x0a: LXI - reg pair bits cpded in 4-5 bits of the opcode, 2-byte 2nd argument value (OUTPUT_HANDLER_3B_LXI)
     de69  3d 02     ; arg type 0x0b: RST - rst number is coded in the 3-5th bits of the opcode (OUTPUT_HANDLER_1B_RST)
-    de6b  c1 02     ; arg type 0x0c:
+    de6b  c1 02     ; arg type 0x0c: ORG compiler directive (ORG_HANDLER)
     de6d  d8 00     ; arg type 0x0d:
     de6f  82 02     ; arg type 0x0e:
     de71  82 02     ; arg type 0x0f:
@@ -1520,7 +1536,7 @@ MNEMONIC_1ST_LETTER_LUT:
 ; - 0x09 - 1-byte LDAX/STAX instruction, register pair name is coded in the 5th bit
 ; - 0x0a - LXI - reg pair bits cpded in 4-5 bits of the opcode, 2-byte 2nd argument value
 ; - 0x0b - RST - rst number is coded in the 3-5th bits of the opcode
-; - 0x0c - 
+; - 0x0c - ORG compiler directive
 ; - 0x0d - 
 ; - 0x0e - 
 ; - 0x0f - 
