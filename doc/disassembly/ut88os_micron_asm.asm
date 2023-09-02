@@ -254,13 +254,17 @@ OUTPUT_HANDLER_1B_RST:
 
     d923  c3 32 da   JMP STORE_OPCODE_TO_OUTPUT (da32)  ; And store the opcode
 
-????:
-d926  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85)
-d929  eb         XCHG
-d92a  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a)
-d92d  19         DAD DE
-d92e  22 85 bf   SHLD CUR_OUTPUT_PTR (bf85)
-d931  c9         RET
+DS_HANDLER:
+    d926  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85)         ; Load the current storage target address to DE
+    d929  eb         XCHG
+
+    d92a  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a)    ; Load the argument to HL
+
+    d92d  19         DAD DE                             ; Advance current storage pointer with the argument value
+    d92e  22 85 bf   SHLD CUR_OUTPUT_PTR (bf85)
+
+    d931  c9         RET                                ; Done
+    
 
 d932  21 a0 bf   LXI HL, LINE_BUF (bfa0)
 d935  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)
@@ -283,45 +287,66 @@ d957  73         MOV M, E
 d958  23         INX HL
 d959  72         MOV M, D
 d95a  c9         RET
-????:
-d95b  eb         XCHG
-d95c  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85)
-d95f  1a         LDAX DE
-d960  fe 27      CPI A, 27
-d962  c2 76 d9   JNZ d976
-d965  13         INX DE
-????:
-d966  1a         LDAX DE
-d967  13         INX DE
-d968  b7         ORA A
-d969  ca 8d da   JZ da8d
-d96c  fe 27      CPI A, 27
-d96e  ca 88 d9   JZ d988
-d971  77         MOV M, A
-d972  23         INX HL
-d973  c3 66 d9   JMP d966
-????:
-d976  3a 8a bf   LDA OPCODE_REGISTER_ARG_LOW (bf8a)
-d979  77         MOV M, A
-d97a  23         INX HL
-d97b  3a 89 bf   LDA OPCODE_ARG_TYPE (bf89)
-d97e  fe 0e      CPI A, 0e
-d980  ca 88 d9   JZ d988
-d983  3a 8b bf   LDA OPCODE_REGISTER_ARG_HIGH (bf8b)
-d986  77         MOV M, A
-d987  23         INX HL
-????:
-d988  22 85 bf   SHLD CUR_OUTPUT_PTR (bf85)
-d98b  eb         XCHG
-d98c  cd 0a db   CALL SEARCH_NON_SPACE_CHAR (db0a)
-d98f  b7         ORA A
-d990  c8         RZ
-d991  fe 3b      CPI A, 3b
-d993  c8         RZ
-d994  cd 9a db   CALL PARSE_2ND_REG_ARG (db9a)
-d997  c3 5b d9   JMP d95b
 
 
+; Parse DB and DW directive arguments, store data to the output
+DB_DW_HANDLER:
+    d95b  eb         XCHG                       ; Load source argument pointer in DE
+
+    d95c  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85) ; Load output address to HL
+
+    d95f  1a         LDAX DE                    ; Check if the argument starts with a quote
+    d960  fe 27      CPI A, 27
+    d962  c2 76 d9   JNZ DB_DW_HANDLER_1 (d976)
+
+    d965  13         INX DE
+
+DB_DW_HANDLER_QUOTE_LOOP:
+    d966  1a         LDAX DE                    ; Load the symbol in quotes
+    d967  13         INX DE
+
+    d968  b7         ORA A                      ; EOL is a syntax error
+    d969  ca 8d da   JZ da8d
+
+    d96c  fe 27      CPI A, 27                  ; Stop parsing on closing quote
+    d96e  ca 88 d9   JZ DB_DW_HANDLER_STORE (d988)
+
+    d971  77         MOV M, A                   ; Store the symbol to the output
+    d972  23         INX HL
+
+    d973  c3 66 d9   JMP DB_DW_HANDLER_QUOTE_LOOP (d966); Advance to the next symbol until closing quote is found
+
+DB_DW_HANDLER_1:
+    d976  3a 8a bf   LDA OPCODE_REGISTER_ARG_LOW (bf8a) ; Store the parsed by to the output
+    d979  77         MOV M, A
+
+    d97a  23         INX HL                         ; Advance to the next output byte
+
+    d97b  3a 89 bf   LDA OPCODE_ARG_TYPE (bf89)     ; If this is 'DB' directive - we are done
+    d97e  fe 0e      CPI A, 0e
+    d980  ca 88 d9   JZ DB_DW_HANDLER_STORE (d988)
+
+    d983  3a 8b bf   LDA OPCODE_REGISTER_ARG_HIGH (bf8b); For 'DW' directive save the second byte as well
+    d986  77         MOV M, A
+    d987  23         INX HL
+
+DB_DW_HANDLER_STORE:
+    d988  22 85 bf   SHLD CUR_OUTPUT_PTR (bf85)     ; Store the new output pointer
+
+    d98b  eb         XCHG                           ; Look whether there is another byte/word specified
+    d98c  cd 0a db   CALL SEARCH_NON_SPACE_CHAR (db0a)
+
+    d98f  b7         ORA A                          ; Stop processing if no more data
+    d990  c8         RZ
+
+    d991  fe 3b      CPI A, 3b                      ; Stop parsing on semicolon (everything else is a comment)
+    d993  c8         RZ
+
+    d994  cd 9a db   CALL PARSE_2ND_REG_ARG (db9a)  ; Parse the next item
+    d997  c3 5b d9   JMP DB_DW_HANDLER (d95b)
+
+
+; Process ORG directive, cakculate difference between output storage address and code target address
 ORG_HANDLER:
     d99a  3a 95 bf   LDA bf95                   ; Allow having only one ORG directive, otherwise return
     d99d  b7         ORA A
@@ -360,14 +385,18 @@ d9c2  c2 fc d9   JNZ d9fc
     d9c7  cd 50 de   CALL PUT_CHAR (de50)
 
 d9ca  2a 80 bf   LHLD EOF_PTR (bf80)
+
 ????:
 d9cd  06 06      MVI B, 06
+
 ????:
 d9cf  7e         MOV A, M
 d9d0  b7         ORA A
 d9d1  ca fc d9   JZ d9fc
+
 d9d4  4f         MOV C, A
 d9d5  cd 50 de   CALL PUT_CHAR (de50)
+
 d9d8  05         DCR B
 d9d9  23         INX HL
 d9da  c2 cf d9   JNZ d9cf
@@ -1451,9 +1480,9 @@ OUTPUT_HANDLERS_TABLE:
     de69  3d 02     ; arg type 0x0b: RST - rst number is coded in the 3-5th bits of the opcode (OUTPUT_HANDLER_1B_RST)
     de6b  c1 02     ; arg type 0x0c: ORG compiler directive (ORG_HANDLER)
     de6d  d8 00     ; arg type 0x0d:
-    de6f  82 02     ; arg type 0x0e:
-    de71  82 02     ; arg type 0x0f:
-    de73  4d 02     ; arg type 0x10:
+    de6f  82 02     ; arg type 0x0e: DB compiler directive (DB_DW_HANDLER)
+    de71  82 02     ; arg type 0x0f: DW compiler directive (DB_DW_HANDLER)
+    de73  4d 02     ; arg type 0x10: DS compiler directive (DS_HANDLER)
     de75  59 02     ; arg type 0x11:
 
 ; A table that matches register names and return an opcode modifier that corresponds the register
@@ -1538,9 +1567,9 @@ MNEMONIC_1ST_LETTER_LUT:
 ; - 0x0b - RST - rst number is coded in the 3-5th bits of the opcode
 ; - 0x0c - ORG compiler directive
 ; - 0x0d - 
-; - 0x0e - 
-; - 0x0f - 
-; - 0x10 - 
+; - 0x0e - DB compiler directive (data byte)
+; - 0x0f - DW compiler directive (data word)
+; - 0x10 - DS compiler directive (data string ????)
 ; - 0x11 - 
 ;
 MNEMONIC_2ND_3RD_LETTER_LUT:

@@ -225,8 +225,55 @@ def test_assembler_cur_addr_arg(ut88):
     assert ut88.get_byte(0xa002) == 0xa0
 
 
-# TODO: $ usage as a argument, meaning current address
+def test_assembler_db(ut88):
+    # Use DB directive for raw data
+    asm = "DB 42H, 123, 'A', 'QWE'"
+    text = run_assembler(ut88, asm)
+    print(text)
 
+    # Verify the instruction is assembled
+    assert ut88.get_byte(0xa000) == 0x42
+    assert ut88.get_byte(0xa001) == 123
+    assert ut88.get_byte(0xa002) == ord('A')
+    assert ut88.get_byte(0xa003) == ord('Q')
+    assert ut88.get_byte(0xa004) == ord('W')
+    assert ut88.get_byte(0xa005) == ord('E')
+
+
+def test_assembler_dw(ut88):
+    # Use DW directive for raw data words
+    asm = "DW 1234H, 12345, 'AB', 'QWER'"
+    text = run_assembler(ut88, asm)
+    print(text)
+
+    # Verify the instruction is assembled
+    assert ut88.get_byte(0xa000) == 0x34        # 0x1234
+    assert ut88.get_byte(0xa001) == 0x12
+
+    assert ut88.get_byte(0xa002) == 0x39        # 12345 dec
+    assert ut88.get_byte(0xa003) == 0x30
+    
+    assert ut88.get_byte(0xa004) == ord('A')    # Pair of symbols
+    assert ut88.get_byte(0xa005) == ord('B')
+
+    assert ut88.get_byte(0xa006) == ord('Q')    # String
+    assert ut88.get_byte(0xa007) == ord('W')
+    assert ut88.get_byte(0xa008) == 0x00        # DW does not support strings that are more than 2 chars
+    assert ut88.get_byte(0xa009) == 0x00
+
+
+def test_assembler_ds(ut88):
+    # Use DS directive to set up non-default target location
+    asm  = "DS 42H\r"
+    asm += "RST 5"
+    text = run_assembler(ut88, asm)
+    print(text)
+
+    # Verify the instruction is assembled
+    assert ut88.get_byte(0xa042) == 0xef    # The RST instruction at 0xa000 + 0x42
+
+
+# TODO: Add test for +/- in the argument
 
 def test_assembler_org(ut88):
     asm =  "ORG 1234H\r"
