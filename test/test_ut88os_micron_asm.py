@@ -57,7 +57,7 @@ def run_assembler(ut88, text, mode = "1", command = "B"):
     return text.replace('\r', '\n')
 
 
-def test_assembler_comment(ut88):
+def test_comment(ut88):
     # Symbols after semicolon are ignored
     asm = "; This is a comment  "    
     text = run_assembler(ut88, asm)
@@ -67,7 +67,7 @@ def test_assembler_comment(ut88):
     assert ut88.get_byte(0xa000) == 0x00   # No any bytes in the output
 
 
-def test_assembler_no_arg_instruction1(ut88):
+def test_no_arg_instruction1(ut88):
     asm = "NOP"
     text = run_assembler(ut88, asm)
     print(text)
@@ -76,7 +76,7 @@ def test_assembler_no_arg_instruction1(ut88):
     assert ut88.get_byte(0xa000) == 0x00
 
 
-def test_assembler_no_arg_instruction2(ut88):
+def test_no_arg_instruction2(ut88):
     asm = "DAA"
     text = run_assembler(ut88, asm)
     print(text)
@@ -85,7 +85,7 @@ def test_assembler_no_arg_instruction2(ut88):
     assert ut88.get_byte(0xa000) == 0x27
 
 
-def test_assembler_mov_two_reg(ut88):
+def test_mov_two_reg(ut88):
     # Instruction with both source and destination register specified
     asm = "MOV A,B"    
     text = run_assembler(ut88, asm)
@@ -95,7 +95,7 @@ def test_assembler_mov_two_reg(ut88):
     assert ut88.get_byte(0xa000) == 0x78
 
 
-def test_assembler_op_with_reg_arg(ut88):
+def test_op_with_reg_arg(ut88):
     # Instruction with source register argument specified
     asm = "ADC E"    
     text = run_assembler(ut88, asm)
@@ -105,7 +105,7 @@ def test_assembler_op_with_reg_arg(ut88):
     assert ut88.get_byte(0xa000) == 0x8b
 
 
-def test_assembler_mvi(ut88):
+def test_mvi(ut88):
     # Instruction with source register specified
     asm = "MVI C, 123"    
     text = run_assembler(ut88, asm)
@@ -115,7 +115,7 @@ def test_assembler_mvi(ut88):
     assert ut88.get_byte(0xa000) == 0x0e
     assert ut88.get_byte(0xa001) == 0x7b # 123 dec = 0x7b
 
-def test_assembler_lxi(ut88):
+def test_lxi(ut88):
     # Instruction with LXI instruction (register pair and 2-byte immediate argument)
     asm = "LXI SP, 0ABCDH"
     text = run_assembler(ut88, asm)
@@ -127,7 +127,7 @@ def test_assembler_lxi(ut88):
     assert ut88.get_byte(0xa002) == 0xab
 
 
-def test_assembler_jmp(ut88):
+def test_jmp(ut88):
     # Instruction with no registers, just value
     asm = "JMP 0ABCDH"
     text = run_assembler(ut88, asm)
@@ -139,7 +139,7 @@ def test_assembler_jmp(ut88):
     assert ut88.get_byte(0xa002) == 0xab
 
 
-def test_assembler_jmp_alt(ut88):
+def test_jmp_alt(ut88):
     # Alternate version of JMP
     asm = "J 0ABCDH"
     text = run_assembler(ut88, asm)
@@ -151,7 +151,7 @@ def test_assembler_jmp_alt(ut88):
     assert ut88.get_byte(0xa002) == 0xab
 
 
-def test_assembler_inx(ut88):
+def test_inx(ut88):
     # 1-byte instruction with register pair coded in 4-5th bits
     asm = "INX D"
     text = run_assembler(ut88, asm)
@@ -161,7 +161,7 @@ def test_assembler_inx(ut88):
     assert ut88.get_byte(0xa000) == 0x13
 
 
-def test_assembler_push_pop(ut88):
+def test_push_pop(ut88):
     # 1-byte instruction with register pair coded in 4-5th bits (PSW is coded in a special way)
     asm = "PUSH PSW"
     text = run_assembler(ut88, asm)
@@ -171,7 +171,7 @@ def test_assembler_push_pop(ut88):
     assert ut88.get_byte(0xa000) == 0xf5
 
 
-def test_assembler_ldax_stax(ut88):
+def test_ldax_stax(ut88):
     # 1-byte instruction with register pair coded in 4-5th bits
     asm = "LDAX D"
     text = run_assembler(ut88, asm)
@@ -181,7 +181,7 @@ def test_assembler_ldax_stax(ut88):
     assert ut88.get_byte(0xa000) == 0x1a
 
 
-def test_assembler_rst(ut88):
+def test_rst(ut88):
     # 1-byte instruction with rst number coded in the opcode
     asm = "RST 5"
     text = run_assembler(ut88, asm)
@@ -191,7 +191,7 @@ def test_assembler_rst(ut88):
     assert ut88.get_byte(0xa000) == 0xef
 
 
-def test_assembler_symb_arg(ut88):
+def test_symb_arg(ut88):
     # Use a symbolic (char) byte argument
     asm = "MVI C, 'A'"    
     text = run_assembler(ut88, asm)
@@ -201,7 +201,7 @@ def test_assembler_symb_arg(ut88):
     assert ut88.get_byte(0xa000) == 0x0e
     assert ut88.get_byte(0xa001) == ord('A')
 
-def test_assembler_two_symb_arg(ut88):
+def test_two_symb_arg(ut88):
     # Use two-char symbol argument
     asm = "LXI H, 'AB'"    
     text = run_assembler(ut88, asm)
@@ -213,7 +213,7 @@ def test_assembler_two_symb_arg(ut88):
     assert ut88.get_byte(0xa002) == ord('B')
 
 
-def test_assembler_cur_addr_arg(ut88):
+def test_cur_addr_arg(ut88):
     # Use '$' as current address
     asm = "JMP $"    
     text = run_assembler(ut88, asm)
@@ -225,7 +225,7 @@ def test_assembler_cur_addr_arg(ut88):
     assert ut88.get_byte(0xa002) == 0xa0
 
 
-def test_assembler_db(ut88):
+def test_db(ut88):
     # Use DB directive for raw data
     asm = "DB 42H, 123, 'A', 'QWE'"
     text = run_assembler(ut88, asm)
@@ -240,7 +240,7 @@ def test_assembler_db(ut88):
     assert ut88.get_byte(0xa005) == ord('E')
 
 
-def test_assembler_dw(ut88):
+def test_dw(ut88):
     # Use DW directive for raw data words
     asm = "DW 1234H, 12345, 'AB', 'QWER'"
     text = run_assembler(ut88, asm)
@@ -262,7 +262,7 @@ def test_assembler_dw(ut88):
     assert ut88.get_byte(0xa009) == 0x00
 
 
-def test_assembler_ds(ut88):
+def test_ds(ut88):
     # Use DS directive to set up non-default target location
     asm  = "DS 42H\r"
     asm += "RST 5"
@@ -275,7 +275,7 @@ def test_assembler_ds(ut88):
 
 # TODO: Add test for +/- in the argument
 
-def test_assembler_org(ut88):
+def test_org(ut88):
     asm =  "ORG 1234H\r"
     asm += "JMP $"
     text = run_assembler(ut88, asm)
@@ -285,3 +285,24 @@ def test_assembler_org(ut88):
     assert ut88.get_byte(0xa000) == 0xc3    # Storage address remains the same - 0xa000
     assert ut88.get_byte(0xa001) == 0x34    # But JMP argument gets value passed in ORG - 0x1234
     assert ut88.get_byte(0xa002) == 0x12
+
+def test_label(ut88):
+    asm  = "QQ: NOP\r"
+    asm += "WW: NOP\r"
+    asm += "CALL QQ\r"
+    asm += "JMP WW"
+
+    text = run_assembler(ut88, asm)
+    print(text)
+
+    # Verify the instruction is assembled
+    assert ut88.get_byte(0xa000) == 0x00    # 1st NOP
+    assert ut88.get_byte(0xa001) == 0x00    # 2nd NOP
+
+    assert ut88.get_byte(0xa002) == 0xcd    # CALL
+    assert ut88.get_byte(0xa003) == 0x00    # Address of the first NOP
+    assert ut88.get_byte(0xa004) == 0xa0
+
+    assert ut88.get_byte(0xa005) == 0xc3    # JMP
+    assert ut88.get_byte(0xa006) == 0x01    # Address of the second NOP
+    assert ut88.get_byte(0xa007) == 0xa0

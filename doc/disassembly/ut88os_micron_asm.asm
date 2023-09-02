@@ -115,22 +115,27 @@ EOF_FOUND:
     d87d  fe 3a      CPI A, 3a                  ; Compare with ':'? Is this a label?
     d87f  c2 9b d8   JNZ d89b
 
-d882  af         XRA A
-d883  b9         CMP C
-d884  ca 92 da   JZ da92
-d887  e5         PUSH HL
-d888  cd 12 db   CALL db12
-d88b  e1         POP HL
-d88c  cd 0a db   CALL SEARCH_NON_SPACE_CHAR (db0a)
-d88f  b7         ORA A
-d890  ca c4 d8   JZ ADVANCE_TO_NEXT_LINE (d8c4)
-d893  fe 3b      CPI A, 3b
-d895  ca c4 d8   JZ ADVANCE_TO_NEXT_LINE (d8c4)
-d898  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)
+    d882  af         XRA A                      ; There must be at least a few letters before ':'
+    d883  b9         CMP C                      ; Otherwise indicate an error
+    d884  ca 92 da   JZ da92
+
+    d887  e5         PUSH HL
+    d888  cd 12 db   CALL db12
+    d88b  e1         POP HL
+
+    d88c  cd 0a db   CALL SEARCH_NON_SPACE_CHAR (db0a)  ; Look for the instruction start
+
+    d88f  b7         ORA A                      ; If this is the end of the line - advance to the next line
+    d890  ca c4 d8   JZ ADVANCE_TO_NEXT_LINE (d8c4)
+
+    d893  fe 3b      CPI A, 3b                  ; String after the semicolon is a comment - skip it
+    d895  ca c4 d8   JZ ADVANCE_TO_NEXT_LINE (d8c4)
+
+    d898  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)  ; Otherwise get ready to parse the command
 
 
 ????:
-    d89b  e5         PUSH HL                    ; ???? Parse mnemonic
+    d89b  e5         PUSH HL                    ; Parse instruction mnemonic
     d89c  cd 0d dd   CALL PARSE_MNEMONIC (dd0d)
     d89f  e1         POP HL
 
@@ -266,12 +271,16 @@ DS_HANDLER:
     d931  c9         RET                                ; Done
     
 
-d932  21 a0 bf   LXI HL, LINE_BUF (bfa0)
-d935  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)
-d938  fe 3a      CPI A, 3a
-d93a  c2 92 da   JNZ da92
-d93d  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a)
-d940  22 87 bf   SHLD bf87
+EPA_HANDLER:
+    d932  21 a0 bf   LXI HL, LINE_BUF (bfa0)            ; ????
+    d935  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)
+
+    d938  fe 3a      CPI A, 3a                          ; ??? Must start with ':'
+    d93a  c2 92 da   JNZ da92
+
+    d93d  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a)    ; ????? Copy some value
+    d940  22 87 bf   SHLD bf87
+
 d943  eb         XCHG
 d944  3a 83 bf   LDA bf83
 d947  3d         DCR A
@@ -280,6 +289,7 @@ d949  3a 84 bf   LDA bf84
 d94c  3d         DCR A
 d94d  c8         RZ
 d94e  fa 54 d9   JM d954
+
 d951  11 fe ff   LXI DE, fffe
 ????:
 d954  2a 8d bf   LHLD bf8d
@@ -707,34 +717,47 @@ SEARCH_NON_SPACE_CHAR:
     db0f  c3 0a db   JMP SEARCH_NON_SPACE_CHAR (db0a)
 
 ????:
-db12  cd 79 db   CALL db79
-db15  3a 83 bf   LDA bf83
-db18  3d         DCR A
-db19  c2 5e db   JNZ db5e
-db1c  b9         CMP C
-db1d  ca 59 db   JZ db59
-db20  11 e0 bf   LXI DE, bfe0
-db23  0e 06      MVI C, 06
+    db12  cd 79 db   CALL SEARCH_LABEL_RECORD (db79)    ; ????
+
+    db15  3a 83 bf   LDA bf83                   ; ????
+
+    db18  3d         DCR A                      ; ????
+    db19  c2 5e db   JNZ db5e
+
+    db1c  b9         CMP C                      ; ???? Compare with 6 set by SEARCH_LABEL_RECORD
+    db1d  ca 59 db   JZ db59
+
+    db20  11 e0 bf   LXI DE, bfe0               ; Copy 6 chars from bfe0 to HL
+    db23  0e 06      MVI C, 06
+
 ????:
-db25  1a         LDAX DE
-db26  77         MOV M, A
-db27  13         INX DE
-db28  23         INX HL
-db29  0d         DCR C
-db2a  c2 25 db   JNZ db25
-db2d  22 8d bf   SHLD bf8d
-db30  e5         PUSH HL
-db31  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85)
-db34  eb         XCHG
-db35  2a 98 bf   LHLD ORG_OFFSET (bf98)
-db38  19         DAD DE
-db39  eb         XCHG
-db3a  e1         POP HL
-db3b  73         MOV M, E
-db3c  23         INX HL
-db3d  72         MOV M, D
-db3e  23         INX HL
-db3f  71         MOV M, C
+    db25  1a         LDAX DE                    ; Copy symbol
+    db26  77         MOV M, A
+
+    db27  13         INX DE                     ; Advance to the next char
+    db28  23         INX HL
+
+    db29  0d         DCR C                      ; Repeat for all 6 chars
+    db2a  c2 25 db   JNZ db25
+
+    db2d  22 8d bf   SHLD bf8d                  ; Store the pointer to the label record
+    db30  e5         PUSH HL
+
+    db31  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85) ; Load label target address to DE
+    db34  eb         XCHG
+
+    db35  2a 98 bf   LHLD ORG_OFFSET (bf98)     ; Apply ORG offset if needed
+    db38  19         DAD DE
+    db39  eb         XCHG                       ; Store result to DE
+
+    db3a  e1         POP HL                     ; Store label target address right after the label text
+    db3b  73         MOV M, E
+    db3c  23         INX HL
+    db3d  72         MOV M, D
+
+    db3e  23         INX HL                     ; Store terminating zero
+    db3f  71         MOV M, C
+
 
 CHECK_TEXT_SIZE:
     db40  eb         XCHG                       ; HL points to a symbol in a text area
@@ -780,46 +803,66 @@ db69  b8         CMP B
 db6a  ca 73 da   JZ da73
 db6d  c9         RET
 
-????:
-    db6e  cd 79 db   CALL db79                  ; ????
 
-    db71  0d         DCR C                      ; ????
+; Search for a label record, and return a label pointer
+GET_LABEL_POINTER:
+    db6e  cd 79 db   CALL SEARCH_LABEL_RECORD (db79)    ; Search for a label record
+
+    db71  0d         DCR C                      ; If no label record matched - raise an error
     db72  f2 73 da   JP da73
 
-db75  5e         MOV E, M
-db76  23         INX HL
-db77  56         MOV D, M
-db78  c9         RET
+    db75  5e         MOV E, M                   ; Return the label pointer in DE
+    db76  23         INX HL
+    db77  56         MOV D, M
+    db78  c9         RET
 
 
+; Search for a label record in the records area (after the main text)
+;
+; The function searches for a record, that matches label in the working buffer (0xbfe0) and returns the pointer
+; to the record
+;
+; The function expects:
+; - Label records are stored after the EOF
+; - Label to match is in the working buffer (0xbfe0)
+;
+; Return:
+; - C=0x00 in case of match, HL points to the label pointer field
+; - C=0x06 if no matches found
+SEARCH_LABEL_RECORD:
+    db79  2a 80 bf   LHLD EOF_PTR (bf80)                ; Look for a end of labels array, starting the EOF pointer
 
-????:
-db79  2a 80 bf   LHLD EOF_PTR (bf80)                ; ??? Check the input line really has a zero terminator?
-????:
-db7c  0e 06      MVI C, 06
-db7e  af         XRA A
-db7f  be         CMP M
-db80  c8         RZ
+SEARCH_LABEL_RECORD_LOOP:
+    db7c  0e 06      MVI C, 06                          ; If the byte at pointer is zero - we reached the end of
+    db7e  af         XRA A                              ; the table - return 
+    db7f  be         CMP M
+    db80  c8         RZ
 
 
-db81  e5         PUSH HL
-db82  11 e0 bf   LXI DE, bfe0
-????:
-db85  1a         LDAX DE
-db86  be         CMP M
-db87  ca 92 db   JZ db92
-db8a  e1         POP HL
-db8b  01 08 00   LXI BC, 0008
-db8e  09         DAD BC
-db8f  c3 7c db   JMP db7c
+    db81  e5         PUSH HL                            ; Save the current record pointer
 
-????:
-db92  13         INX DE
-db93  23         INX HL
-db94  0d         DCR C
-db95  c2 85 db   JNZ db85
-db98  d1         POP DE
-db99  c9         RET
+    db82  11 e0 bf   LXI DE, bfe0                       ; Will match with the working buffer
+
+SEARCH_LABEL_RECORD_CHAR_LOOP:
+    db85  1a         LDAX DE                            ; Compare if the label in the buffer matches the label
+    db86  be         CMP M                              ; in the labels array
+    db87  ca 92 db   JZ SEARCH_LABEL_RECORD_1 (db92)
+
+    db8a  e1         POP HL                             ; If not - advance by 8 bytes (6 chars is a label length,
+    db8b  01 08 00   LXI BC, 0008                       ; and 2 bytes label pointer)
+    db8e  09         DAD BC
+
+    db8f  c3 7c db   JMP SEARCH_LABEL_RECORD_LOOP (db7c)
+
+SEARCH_LABEL_RECORD_1:
+    db92  13         INX DE                             ; Advance to the next byte
+    db93  23         INX HL
+
+    db94  0d         DCR C                              ; Repeat until all 6 chars of the label are matched
+    db95  c2 85 db   JNZ SEARCH_LABEL_RECORD_CHAR_LOOP (db85)
+
+    db98  d1         POP DE                             ; If all chars are matched - return the label pointer
+    db99  c9         RET
 
 
 ;????? 2nd reg? or not only reg, but rather all 2nd arguments
@@ -869,8 +912,8 @@ PARSE_2ND_REG_ARG_1:
     dbd0  da 8d da   JC da8d                    ; Report an error if argument was not fully parsed
 
 ????:
-    dbd3  e5         PUSH HL                    ; ???? Argument is not a register name, parse the value???
-    dbd4  cd 6e db   CALL db6e
+    dbd3  e5         PUSH HL                    ; Argument is not a register name, probably a label ???
+    dbd4  cd 6e db   CALL GET_LABEL_POINTER (db6e)
     dbd7  c3 03 dc   JMP dc03
 
 ????:
@@ -1181,7 +1224,7 @@ dcf2  fe 01      CPI A, 01
 dcf4  ca 8d da   JZ da8d
 
 dcf7  e5         PUSH HL
-dcf8  cd 6e db   CALL db6e
+dcf8  cd 6e db   CALL GET_LABEL_POINTER (db6e)
 dcfb  c3 09 dd   JMP dd09
 
 ????:
@@ -1483,7 +1526,7 @@ OUTPUT_HANDLERS_TABLE:
     de6f  82 02     ; arg type 0x0e: DB compiler directive (DB_DW_HANDLER)
     de71  82 02     ; arg type 0x0f: DW compiler directive (DB_DW_HANDLER)
     de73  4d 02     ; arg type 0x10: DS compiler directive (DS_HANDLER)
-    de75  59 02     ; arg type 0x11:
+    de75  59 02     ; arg type 0x11: EPA compiler directive (EPA_HANDLER)
 
 ; A table that matches register names and return an opcode modifier that corresponds the register
 ;
