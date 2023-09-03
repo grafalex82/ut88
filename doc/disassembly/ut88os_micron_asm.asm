@@ -7,7 +7,7 @@
 ; - below bf80  - stack area
 ; - bf80 - end of text pointer
 ; - bf82 - errors counter in BCD form
-; - bf83 - ????
+; - bf83 - current pass number (1, 2 ????)
 ; - bf84 - ???? error type
 ; - bf85 - Current output pointer (starting 0xa000)
 ; - bf87 - ?????
@@ -15,6 +15,7 @@
 ; - bf8a - register argument bitmask low bits (applied on top of base opcode)
 ; - bf8b - register argument bitmask high bits (applied on top of base opcode)
 ; - bf8c - parsed opcode (base opcode, without register bits applied)
+; - bf8d - currently selected label record pointer (valid for lines starting with a label)
 ; - bf8f - currently processing line pointer
 ; - bf93 - ????
 ; - bf94 - working mode ????
@@ -61,8 +62,8 @@ GET_KBD_INPUT:
     d82f  af         XRA A                      ;  ??? Zero something ?
     d830  32 95 bf   STA bf95
 
-    d833  3c         INR A                      ; ???? Set 1 to sometihng
-    d834  32 83 bf   STA bf83
+    d833  3c         INR A                      ; Start with pass #1
+    d834  32 83 bf   STA PASS_NUMBER (bf83)
 
     d837  21 00 00   LXI HL, 0000               ; Zero target offset
     d83a  22 98 bf   SHLD ORG_OFFSET (bf98)
@@ -270,33 +271,42 @@ DS_HANDLER:
 
     d931  c9         RET                                ; Done
     
+; Parse EQU line
+; 
+; Expected line format:
+; <label>: EQU <value>
+;
+; The value is stored in the labels area
+EQU_HANDLER:
+    d932  21 a0 bf   LXI HL, LINE_BUF (bfa0)            ; We need to start parsing the whole string, not just
+    d935  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)  ; value (as it would for other handlers)
 
-EPA_HANDLER:
-    d932  21 a0 bf   LXI HL, LINE_BUF (bfa0)            ; ????
-    d935  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)
+    d938  fe 3a      CPI A, 3a                          ; The line must start with the label (which is loaded by
+    d93a  c2 92 da   JNZ da92                           ; COPY_WORD_TO_WORK_BUF), then ':' colon. Otherwise error.
 
-    d938  fe 3a      CPI A, 3a                          ; ??? Must start with ':'
-    d93a  c2 92 da   JNZ da92
-
-    d93d  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a)    ; ????? Copy some value
+    d93d  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a); Store EQU value in a temporary variable
     d940  22 87 bf   SHLD bf87
 
-d943  eb         XCHG
-d944  3a 83 bf   LDA bf83
-d947  3d         DCR A
-d948  c0         RNZ
-d949  3a 84 bf   LDA bf84
-d94c  3d         DCR A
-d94d  c8         RZ
-d94e  fa 54 d9   JM d954
+    d943  eb         XCHG                               ; Load EQU value to DE as well
 
-d951  11 fe ff   LXI DE, fffe
-????:
-d954  2a 8d bf   LHLD bf8d
-d957  73         MOV M, E
-d958  23         INX HL
-d959  72         MOV M, D
-d95a  c9         RET
+    d944  3a 83 bf   LDA PASS_NUMBER (bf83)             ; Perform EQU loading only on pass #1, skip on other
+    d947  3d         DCR A                              ; passes
+    d948  c0         RNZ
+
+    d949  3a 84 bf   LDA bf84                           ; ???? Return if error mask is 01, pass otherwise ???
+    d94c  3d         DCR A
+    d94d  c8         RZ
+
+    d94e  fa 54 d9   JM EQU_HANDLER_1 (d954)            ; Skip if there were no errors so far
+
+    d951  11 fe ff   LXI DE, fffe                       ; Set the value to 0xfffe magic number in case of error
+
+EQU_HANDLER_1:
+    d954  2a 8d bf   LHLD CUR_LABEL_VALUE_PTR (bf8d)    ; Store the EQU value to the label record
+    d957  73         MOV M, E
+    d958  23         INX HL
+    d959  72         MOV M, D
+    d95a  c9         RET
 
 
 ; Parse DB and DW directive arguments, store data to the output
@@ -380,7 +390,7 @@ ORG_HANDLER:
 ????:
     d9b1  cd 80 dd   CALL dd80                  ; ????
 
-d9b4  21 83 bf   LXI HL, bf83
+d9b4  21 83 bf   LXI HL, PASS_NUMBER (bf83)
 d9b7  7e         MOV A, M
 
 d9b8  34         INR M                      ; Increment current pass number ????
@@ -423,7 +433,7 @@ d9ee  cd 42 de   CALL PRINT_BYTE_HEX (de42)
 d9f1  23         INX HL
 d9f2  23         INX HL
 d9f3  01 20 04   LXI BC, 0420
-d9f6  cd 27 da   CALL da27
+d9f6  cd 27 da   CALL PRINT_CHAR_BLOCK (da27)
 d9f9  c3 cd d9   JMP d9cd
 
 ????:
@@ -642,12 +652,20 @@ COPY_LINE_TO_BUF_LINE_COMPLETED:
     dac9  22 8f bf   SHLD CUR_LINE_PTR (bf8f)   ; Store the new line pointer
     dacc  c9         RET
 
-; Copy up to 6 chars to the working buffer 0xbfe0
+
+; Copy up to 6 chars literal to the working buffer 0xbfe0
+;
+; The function algorithm:
+; - The output buffer is filled with spaces
+; - Skip leading spaces on input
+; - Copied literal must start with a letter
+; - Up to 6 chars are copies (or until a non-alpha numeric character is met. EOF symbol 0x80 also stops the
+;   copying)
 ;
 ; Arguments:
 ; HL - pointer in the source buffer
 ;
-; The function fills the buffer with spaces.
+; The function fills the buffer with spaces. Upon return C indicates number of chars in the buffer
 COPY_WORD_TO_WORK_BUF:
     dacd  0e 06      MVI C, 06                  ; Will fill 0xbfe0 buffer with 6 spaces
     dacf  11 e0 bf   LXI DE, bfe0
@@ -664,7 +682,7 @@ COPY_WORD_TO_WORK_BUF_CLEAR_LOOP:
     dadc  cd 0a db   CALL SEARCH_NON_SPACE_CHAR (db0a)
 
     dadf  fe 3f      CPI A, 3f                  ; Symbols below 0x40 (symbols, not letters) will stop copying
-    dae1  f8         RM                         ; the instruction
+    dae1  f8         RM                         ; the literal
 
     dae2  fe 80      CPI A, 80                  ; Symbols with codes >= 0x80 will also stop processing the line
     dae4  f0         RP                         ; as well
@@ -689,12 +707,12 @@ COPY_WORD_TO_WORK_BUF_1:
     daf2  fe 30      CPI A, 30                  ; Chars < 0x30 will stop copying instruction, advance to the
     daf4  fa 0a db   JM SEARCH_NON_SPACE_CHAR (db0a)    ; next non-space char
 
-    daf7  fe 3a      CPI A, 3a                  ; ???? compare with ':' (colon?)
-    daf9  ca 08 db   JZ db08
+    daf7  fe 3a      CPI A, 3a                  ; ':' colon symbol probably means a label. Stop copying.
+    daf9  ca 08 db   JZ COPY_WORD_TO_WORK_BUF_2 (db08)
 
-    dafc  fa e5 da   JM COPY_WORD_TO_WORK_BUF_LOOP (dae5)   ; ???? symbols below 0x3a ?
+    dafc  fa e5 da   JM COPY_WORD_TO_WORK_BUF_LOOP (dae5)   ; Symbols below 0x3a stop copying
 
-    daff  fe 40      CPI A, 40                  ; ???? Stop on symbols betwee 0x3b to 0x40
+    daff  fe 40      CPI A, 40                  ; Also stop on symbols between 0x3b and 0x40
     db01  f8         RM
 
     db02  fe 80      CPI A, 80                  ; Repeat for the next char, stop on char codes >= 80
@@ -702,7 +720,7 @@ COPY_WORD_TO_WORK_BUF_1:
 
     db07  c9         RET
 
-????:                                           ; Process label ?????
+COPY_WORD_TO_WORK_BUF_2:                                           
     db08  23         INX HL                     ; Advance to the next source char
     db09  c9         RET
 
@@ -716,12 +734,13 @@ SEARCH_NON_SPACE_CHAR:
     db0e  23         INX HL                     ; Advance to the next symbol and repeat
     db0f  c3 0a db   JMP SEARCH_NON_SPACE_CHAR (db0a)
 
-????:
-    db12  cd 79 db   CALL SEARCH_LABEL_RECORD (db79)    ; ????
 
-    db15  3a 83 bf   LDA bf83                   ; ????
+; ???????
+SAVE_LABEL:
+    db12  cd 79 db   CALL SEARCH_LABEL_RECORD (db79)    ; Check whether the label with the same name exists ???
 
-    db18  3d         DCR A                      ; ????
+    db15  3a 83 bf   LDA PASS_NUMBER (bf83)     ; ????
+    db18  3d         DCR A
     db19  c2 5e db   JNZ db5e
 
     db1c  b9         CMP C                      ; ???? Compare with 6 set by SEARCH_LABEL_RECORD
@@ -740,7 +759,7 @@ SEARCH_NON_SPACE_CHAR:
     db29  0d         DCR C                      ; Repeat for all 6 chars
     db2a  c2 25 db   JNZ db25
 
-    db2d  22 8d bf   SHLD bf8d                  ; Store the pointer to the label record
+    db2d  22 8d bf   SHLD CUR_LABEL_VALUE_PTR (bf8d)    ; Store the pointer to the label record
     db30  e5         PUSH HL
 
     db31  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85) ; Load label target address to DE
@@ -837,7 +856,6 @@ SEARCH_LABEL_RECORD_LOOP:
     db7e  af         XRA A                              ; the table - return 
     db7f  be         CMP M
     db80  c8         RZ
-
 
     db81  e5         PUSH HL                            ; Save the current record pointer
 
@@ -1049,20 +1067,22 @@ PARSE_REGISTER_NAME_EXIT:
 ; - 12345   - decimal integer value
 ; - 0ABH    - hex value (must start with decimal digit, and end with H)
 ; - $       - current output address
+; - 'ch'    - char value in single quotes (may be 1 or 2 chars depending on instruction)
+; - 
 ;
 ; Parsed value is returned in DE
 PARSE_IMMEDIATE_VALUE:
     dc58  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)  ; Copy the argument word to the working buffer
 
-    dc5b  0d         DCR C                      ; Check if there were any letters copied (otherwise it is a number)
-    dc5c  f2 ef dc   JP dcef
+    dc5b  0d         DCR C                      ; Check if there were any letters copied (otherwise it is a number,
+    dc5c  f2 ef dc   JP PARSE_IMMEDIATE_VALUE_LITERAL (dcef)  ; or a string literal)
 
     dc5f  7e         MOV A, M                   ; Check if the argument starts with quote symbol '
     dc60  fe 27      CPI A, 27
     dc62  ca d2 dc   JZ dcd2
 
-    dc65  fe 24      CPI A, 24                  ; Check if the argument starts with '$'
-    dc67  ca fe dc   JZ dcfe
+    dc65  fe 24      CPI A, 24                  ; Check if the argument is '$' (current address)
+    dc67  ca fe dc   JZ PARSE_IMMEDIATE_VALUE_CUR_ADDR (dcfe)
 
     dc6a  fe 30      CPI A, 30                  ; Check if it is a digit ('0'-'9')
     dc6c  f8         RM                         ; Otherwise return
@@ -1149,7 +1169,7 @@ STR_TO_INT_LOOP:
     dcb3  23         INX HL
 
     dcb4  fe 10      CPI A, 10                  ; Digits >= 0x10 stop processing
-    dcb6  f2 09 dd   JP dd09
+    dcb6  f2 09 dd   JP PARSE_IMMEDIATE_VALUE_EXIT_3B (dd09)
 
     dcb9  4f         MOV C, A                   ; Load the next digit into C
 
@@ -1188,11 +1208,11 @@ STR_TO_INT_2:
 
 
 ????:
-    dcd2  0e 02      MVI C, 02                  ; Opcodes with the arguments are al least 2-byte instructions
+    dcd2  0e 02      MVI C, 02                  ; Opcodes with the arguments are at least 2-byte instructions
 
-dcd4  3a 89 bf   LDA OPCODE_ARG_TYPE (bf89)     ; ?????
-dcd7  fe 0e      CPI A, 0e
-dcd9  c2 df dc   JNZ dcdf
+    dcd4  3a 89 bf   LDA OPCODE_ARG_TYPE (bf89) ; DB directive (type 0x0e) has special processing for symbols
+    dcd7  fe 0e      CPI A, 0e
+    dcd9  c2 df dc   JNZ dcdf
 
 dcdc  33         INX SP
 dcdd  33         INX SP
@@ -1217,30 +1237,33 @@ dcde  c9         RET
     dcee  c9         RET                        ; Done, return matched symbol(s) in DE
 
 
-????:
-dcef  cd 22 dc   CALL PARSE_REGISTER_NAME (dc22)
+PARSE_IMMEDIATE_VALUE_LITERAL:
+    dcef  cd 22 dc   CALL PARSE_REGISTER_NAME (dc22)    ; Try matching a register name
 
-dcf2  fe 01      CPI A, 01
-dcf4  ca 8d da   JZ da8d
+    dcf2  fe 01      CPI A, 01                  ; Check if any register is matched
+    dcf4  ca 8d da   JZ da8d
 
-dcf7  e5         PUSH HL
-dcf8  cd 6e db   CALL GET_LABEL_POINTER (db6e)
-dcfb  c3 09 dd   JMP dd09
+    dcf7  e5         PUSH HL                    ; If not a register name, then this probably a label
+    dcf8  cd 6e db   CALL GET_LABEL_POINTER (db6e)  ; Parse the label
 
-????:
-dcfe  23         INX HL
-dcff  e5         PUSH HL
+    dcfb  c3 09 dd   JMP PARSE_IMMEDIATE_VALUE_EXIT_3B (dd09)
 
-dd00  2a 87 bf   LHLD bf87
-dd03  eb         XCHG
-dd04  2a 98 bf   LHLD ORG_OFFSET (bf98)
-dd07  19         DAD DE
-dd08  eb         XCHG
 
-????:
-dd09  e1         POP HL
-dd0a  0e 02      MVI C, 02
-dd0c  c9         RET
+PARSE_IMMEDIATE_VALUE_CUR_ADDR:
+    dcfe  23         INX HL                     ; ????
+    dcff  e5         PUSH HL
+
+    dd00  2a 87 bf   LHLD bf87                  ; ?????
+    dd03  eb         XCHG
+
+    dd04  2a 98 bf   LHLD ORG_OFFSET (bf98)     ; Apply the ORG offset, put result to DE
+    dd07  19         DAD DE
+    dd08  eb         XCHG
+
+PARSE_IMMEDIATE_VALUE_EXIT_3B:
+    dd09  e1         POP HL                     ; Set output as 3-byte instruction
+    dd0a  0e 02      MVI C, 02
+    dd0c  c9         RET
 
 
 ; Parse mnemonic string, and convert it to opcode and argument type code
@@ -1272,7 +1295,6 @@ dd0c  c9         RET
 ; - 3rd byte of the record (0x06) is a base opcode
 ; - 6 lowest bits of the 2nd byte of the record (0x05) represent argument type. Literally it selects a function 
 ;   responsible to parse instruction arguments
-
 PARSE_MNEMONIC:
     dd0d  3a e3 bf   LDA bfe3                   ; Check the 4th symbol of the mnemonic
 
@@ -1373,12 +1395,15 @@ PARSE_MNEMONIC_EXIT:
 
 
 
+; ???????? Second pass processing ???
+;
+;
 ????:
     dd80  3a 94 bf   LDA WORKING_MODE (bf94)    ; The following code works only for mode 2
     dd83  1f         RAR
     dd84  d0         RNC
 
-dd85  3a 83 bf   LDA bf83
+dd85  3a 83 bf   LDA PASS_NUMBER (bf83)
 dd88  3d         DCR A
 dd89  c8         RZ
 dd8a  cd d3 dd   CALL PRINT_CR_LF (ddd3)
@@ -1392,7 +1417,7 @@ dd9c  c3 a5 dd   JMP dda5
 
 ????:
 dd9f  01 20 03   LXI BC, 0320
-dda2  cd 27 da   CALL da27
+dda2  cd 27 da   CALL PRINT_CHAR_BLOCK (da27)
 ????:
 dda5  11 a0 bf   LXI DE, LINE_BUF (bfa0)
 dda8  1a         LDAX DE
@@ -1404,7 +1429,7 @@ ddb2  32 93 bf   STA bf93
 ddb5  cd dd dd   CALL dddd
 ????:
 ddb8  eb         XCHG
-ddb9  cd 27 da   CALL da27
+ddb9  cd 27 da   CALL PRINT_CHAR_BLOCK (da27)
 ddbc  cd 18 f8   CALL PRINT_STRING (f818)
 ????:
 ddbf  3a 93 bf   LDA bf93
@@ -1412,7 +1437,7 @@ ddc2  b7         ORA A
 ddc3  c8         RZ
 ddc4  cd d3 dd   CALL PRINT_CR_LF (ddd3)
 ddc7  01 20 03   LXI BC, 0320
-ddca  cd 27 da   CALL da27
+ddca  cd 27 da   CALL PRINT_CHAR_BLOCK (da27)
 ddcd  cd dd dd   CALL dddd
 ddd0  c3 bf dd   JMP ddbf
 
@@ -1423,6 +1448,8 @@ PRINT_CR_LF:
     ddd8  0e 0a      MVI C, 0a
     ddda  c3 50 de   JMP PUT_CHAR (de50)
 
+; ?????
+; Return ??? in B, and ??? in C
 ????:
 dddd  3a 89 bf   LDA OPCODE_ARG_TYPE (bf89)
 dde0  fe 0c      CPI A, 0c
@@ -1493,7 +1520,7 @@ PRINT_BYTE_HEX:
     de46  c1         POP BC
     de47  c9         RET
 
-; Print 16-bit value as hex, then print a byte in C
+; Print 16-bit value in HL as hex, then print a byte in C
 PRINT_WORD_HEX:
     de48  7c         MOV A, H
     de49  cd 42 de   CALL PRINT_BYTE_HEX (de42)
@@ -1526,7 +1553,7 @@ OUTPUT_HANDLERS_TABLE:
     de6f  82 02     ; arg type 0x0e: DB compiler directive (DB_DW_HANDLER)
     de71  82 02     ; arg type 0x0f: DW compiler directive (DB_DW_HANDLER)
     de73  4d 02     ; arg type 0x10: DS compiler directive (DS_HANDLER)
-    de75  59 02     ; arg type 0x11: EPA compiler directive (EPA_HANDLER)
+    de75  59 02     ; arg type 0x11: EQU compiler directive (EQU_HANDLER)
 
 ; A table that matches register names and return an opcode modifier that corresponds the register
 ;
@@ -1645,7 +1672,7 @@ MNEMONIC_2ND_3RD_LETTER_LUT:
     df02  98 10 00                      ; DS - compiler special instruction, arg code 0x10
     df05  48 00 fb                      ; EI (opcode 0xfb, type=0x00 - no register bits in the opcode)
     df08  71 0d 00                      ; END - compiler special instruction, arg code 0x0d
-    df0b  80 51 00                      ; EPA - compiler special instruction, arg code 0x11
+    df0b  8d 51 00                      ; EQU - compiler special instruction, arg code 0x11
     df0e  65 00 76                      ; HLT (opcode 0x76, type=0x00 - no register bits in the opcode)
     df11  70 04 db                      ; IN (opcode 0xdb, type=0x04 - no register bits, 1-byte immediate value)
     df14  74 82 04                      ; INR (base opcode 0x04, type=0x02 - register coded in 3-5th bits)
@@ -1694,7 +1721,7 @@ MNEMONIC_2ND_3RD_LETTER_LUT:
     df95  82 00 f9                      ; SPHL (opcode 0xf9, type=0x00 - no register bits in the opcode)
     df98  a0 46 32                      ; STA (opcode 0x32, type=0x06 - no register bits, 2-byte immediate value)
     df9b  a6 09 02                      ; STX (STAX) (base opcode 0x02, type=0x09 - reg pair bits)
-    df9e  a0 c0 37                      ; STC (opcode 0x37, type=0x00)
+    df9e  a0 c0 37                      ; STC (opcode 0x37, type=0x00 - no register bits in the opcode)
     dfa1  a8 81 90                      ; SUB (base opcode 0x90, type=0x01 - source register coded in opcode)
     dfa4  aa 44 d6                      ; SUI (opcode 0xd6, type=0x04 - no register bits, 1-byte immediate value)
     dfa7  1a 00 eb                      ; XCHG (opcode 0xeb, type=0x00 - no register bits in the opcode)
