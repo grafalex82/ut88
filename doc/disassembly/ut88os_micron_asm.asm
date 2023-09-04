@@ -10,14 +10,14 @@
 ; - bf83 - current pass number (1, 2 ????)
 ; - bf84 - ???? error type
 ; - bf85 - Current output pointer (starting 0xa000)
-; - bf87 - ?????
+; - bf87 - Current instruction target address
 ; - bf89 - parsed opcode's argument type
 ; - bf8a - register argument bitmask low bits (applied on top of base opcode)
 ; - bf8b - register argument bitmask high bits (applied on top of base opcode)
 ; - bf8c - parsed opcode (base opcode, without register bits applied)
 ; - bf8d - currently selected label record pointer (valid for lines starting with a label)
 ; - bf8f - currently processing line pointer
-; - bf93 - ????
+; - bf93 - temporary variable, meaning depends on the function
 ; - bf94 - working mode ????
 ; - bf95 - ????
 ; - bf98 - ORG offset (difference between ORG target address and target storage address 0xa000)
@@ -98,8 +98,8 @@ EOF_FOUND:
     d861  af         XRA A                      ; ????
     d862  32 84 bf   STA bf84
 
-    d865  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85) ; ????
-    d868  22 87 bf   SHLD bf87
+    d865  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85) ; Save current output pointer as current instruction address
+    d868  22 87 bf   SHLD CUR_OPCODE_TARGET_ADDR (bf87) ; (used for $ arithmetic)
 
     d86b  31 80 bf   LXI SP, EOF_PTR (bf80)     ; ????
 
@@ -121,7 +121,7 @@ EOF_FOUND:
     d884  ca 92 da   JZ da92
 
     d887  e5         PUSH HL
-    d888  cd 12 db   CALL db12
+    d888  cd 12 db   CALL SAVE_LABEL (db12)
     d88b  e1         POP HL
 
     d88c  cd 0a db   CALL SEARCH_NON_SPACE_CHAR (db0a)  ; Look for the instruction start
@@ -140,7 +140,7 @@ EOF_FOUND:
     d89c  cd 0d dd   CALL PARSE_MNEMONIC (dd0d)
     d89f  e1         POP HL
 
-    d8a0  cd b2 db   CALL dbb2                  ; ??? Parse first argument ????
+    d8a0  cd b2 db   CALL PARSE_EXPRESSION (dbb2)   ; ??? Parse first argument ????
 
     d8a3  e5         PUSH HL                    ; Load pointer to output handlers
     d8a4  21 53 de   LXI HL, OUTPUT_HANDLERS_TABLE (de53)
@@ -285,7 +285,7 @@ EQU_HANDLER:
     d93a  c2 92 da   JNZ da92                           ; COPY_WORD_TO_WORK_BUF), then ':' colon. Otherwise error.
 
     d93d  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a); Store EQU value in a temporary variable
-    d940  22 87 bf   SHLD bf87
+    d940  22 87 bf   SHLD CUR_OPCODE_TARGET_ADDR (bf87)
 
     d943  eb         XCHG                               ; Load EQU value to DE as well
 
@@ -735,21 +735,36 @@ SEARCH_NON_SPACE_CHAR:
     db0f  c3 0a db   JMP SEARCH_NON_SPACE_CHAR (db0a)
 
 
-; ???????
+; Create new label record
+;
+; The function searches a slot in the labels area, and creates a new label record there.
+;
+; The label record are has the following structure:
+; - Array of items of the following format:
+;   - 6 char label (padded with spaces, if the label is shorter than 6 chars)
+;   - 2-byte label value
+; - the array is terminated with a zero byte
+;
+; The label value may be used in 2 ways:
+; - target address of the instruction that has a label
+; - value assigned with EQU directive
+;
+; The label is added only during 1st pass. If the label is added more than once, the value is set to 0xffff
+; special value, indicating an error.
 SAVE_LABEL:
     db12  cd 79 db   CALL SEARCH_LABEL_RECORD (db79)    ; Check whether the label with the same name exists ???
 
-    db15  3a 83 bf   LDA PASS_NUMBER (bf83)     ; ????
-    db18  3d         DCR A
-    db19  c2 5e db   JNZ db5e
+    db15  3a 83 bf   LDA PASS_NUMBER (bf83)     ; Store values only during the first pass, on the second pass
+    db18  3d         DCR A                      ; just verify whether the value is correct
+    db19  c2 5e db   JNZ SAVE_LABEL_2ND_PASS (db5e)
 
-    db1c  b9         CMP C                      ; ???? Compare with 6 set by SEARCH_LABEL_RECORD
-    db1d  ca 59 db   JZ db59
+    db1c  b9         CMP C                      ; Check if the label already exists, mark it as incorrect
+    db1d  ca 59 db   JZ CLEAR_LABEL_ADDRESS (db59)
 
-    db20  11 e0 bf   LXI DE, bfe0               ; Copy 6 chars from bfe0 to HL
-    db23  0e 06      MVI C, 06
+    db20  11 e0 bf   LXI DE, bfe0               ; Save the new label - copy 6 chars from bfe0 to HL (next slot
+    db23  0e 06      MVI C, 06                  ; found by the SEARCH_LABEL_RECORD function)
 
-????:
+SAVE_LABEL_COPY_LOOP:
     db25  1a         LDAX DE                    ; Copy symbol
     db26  77         MOV M, A
 
@@ -757,7 +772,7 @@ SAVE_LABEL:
     db28  23         INX HL
 
     db29  0d         DCR C                      ; Repeat for all 6 chars
-    db2a  c2 25 db   JNZ db25
+    db2a  c2 25 db   JNZ SAVE_LABEL_COPY_LOOP (db25)
 
     db2d  22 8d bf   SHLD CUR_LABEL_VALUE_PTR (bf8d)    ; Store the pointer to the label record
     db30  e5         PUSH HL
@@ -778,6 +793,11 @@ SAVE_LABEL:
     db3f  71         MOV M, C
 
 
+; Check if the pointer is within the text size limit
+; If HL is greater than SP-0x10 an error will be fired
+;
+; Argument:
+; HL - pointer to check
 CHECK_TEXT_SIZE:
     db40  eb         XCHG                       ; HL points to a symbol in a text area
     db41  21 f0 ff   LXI HL, fff0               ; DE = stack pointer - 0x10
@@ -789,9 +809,12 @@ CHECK_TEXT_SIZE:
 
     db4a  21 eb df   LXI HL, TOO_LONG_STR (dfeb); Report a 'text too long' error and restart the program
 
+
+; Print an error message pointed by HL, then restart the application
 PRINT_ERROR_AND_RESTART:
     db4d  cd 18 f8   CALL PRINT_STRING (f818)   ; Print the error string, and restart the program
     db50  c3 00 d8   JMP START (d800)
+
 
 ; Compare HL and DE, set Z and C flags accordingly
 CMP_HL_DE:
@@ -802,29 +825,37 @@ CMP_HL_DE:
     db57  bb         CMP E
     db58  c9         RET
 
-????:
-db59  3d         DCR A
-db5a  77         MOV M, A
-db5b  23         INX HL
-db5c  77         MOV M, A
-db5d  c9         RET
+; Special code to 'corrupt' the label value, and set it to 0xffff
+CLEAR_LABEL_ADDRESS:
+    db59  3d         DCR A                      ; Save 0xffff as a label value
+    db5a  77         MOV M, A
+    db5b  23         INX HL
+    db5c  77         MOV M, A
+    db5d  c9         RET
 
-????:
-db5e  46         MOV B, M
-db5f  23         INX HL
-db60  7e         MOV A, M
-db61  fe ff      CPI A, ff
-db63  c0         RNZ
-db64  b8         CMP B
-db65  ca 6e da   JZ da6e
-db68  3d         DCR A
-db69  b8         CMP B
-db6a  ca 73 da   JZ da73
-db6d  c9         RET
+
+; On the second pass the function just checks the value, and reports an error if the value is either
+; 0xffff, or 0xfefe
+SAVE_LABEL_2ND_PASS:
+    db5e  46         MOV B, M                   ; Load the label calue
+    db5f  23         INX HL
+    db60  7e         MOV A, M
+
+    db61  fe ff      CPI A, ff                  ; If it is not a 0xffff - that is a correct value, just return
+    db63  c0         RNZ
+
+    db64  b8         CMP B                      ; Report an error if the value is 0xffff
+    db65  ca 6e da   JZ da6e
+
+    db68  3d         DCR A                      ; Also report an error if the value is 0xfefe
+    db69  b8         CMP B
+    db6a  ca 73 da   JZ da73
+
+    db6d  c9         RET                        ; Otherwise consider it as a normal value
 
 
 ; Search for a label record, and return a label pointer
-GET_LABEL_POINTER:
+GET_LABEL_VALUE:
     db6e  cd 79 db   CALL SEARCH_LABEL_RECORD (db79)    ; Search for a label record
 
     db71  0d         DCR C                      ; If no label record matched - raise an error
@@ -883,105 +914,121 @@ SEARCH_LABEL_RECORD_1:
     db99  c9         RET
 
 
-;????? 2nd reg? or not only reg, but rather all 2nd arguments
-PARSE_2ND_REG_ARG:
-    db9a  7e         MOV A, M                   ; Get back to parsing instruction again. It shall stop at comma
-    db9b  fe 2c      CPI A, 2c                  ; after the first argument - varify this (otherwise show an error)
+; Parse an argument after the comma
+; The function is used to parse second argument for MOV/MVI/LXI instruction, or a next element in the DB/DW
+; comma separated sequence 
+PARSE_2ND_ARG:
+    db9a  7e         MOV A, M                   ; The function expects an expression, but first we need to match
+    db9b  fe 2c      CPI A, 2c                  ; a comma symbol
     db9d  c2 8d da   JNZ da8d
 
-    dba0  23         INX HL                     ; Parse second argument, expect it to be a register
-    dba1  cd b2 db   CALL dbb2
+    dba0  23         INX HL                     ; Parse the expression
+    dba1  cd b2 db   CALL PARSE_EXPRESSION (dbb2)
 
+    dba4  3a 89 bf   LDA OPCODE_ARG_TYPE (bf89) ; Argument type 0x03 is a special case - MOV instruction with two
+    dba7  fe 03      CPI A, 03                  ; register arguments. C has the instruction bytes counter
+    dba9  ca ad db   JZ PARSE_2ND_ARG_1 (dbad)
 
-    dba4  3a 89 bf   LDA OPCODE_ARG_TYPE (bf89) ; Argument type 0x03 is a special case - 2 register arguments
-    dba7  fe 03      CPI A, 03
-    dba9  ca ad db   JZ PARSE_2ND_REG_ARG_1 (dbad)
+    dbac  0d         DCR C                      ; MOV type has less bytes (1 byte) than other similar instructions
 
-    dbac  0d         DCR C                      ; All other types are more than 1 byte long
-
-PARSE_2ND_REG_ARG_1:
+PARSE_2ND_ARG_1:
     dbad  0d         DCR C                      ; Verify the instruction length. Report an error in case of
     dbae  c2 8d da   JNZ da8d                   ; mismatch
 
     dbb1  c9         RET
 
 
+; Parse expression
+;
+; Obviously not all instructions accept full range of features allowed in the expressions. Thus, most of the
+; instructions allows just a register name as an argument. The function tries to match a register name as an
+; expression as a first step.
+;
+; At the same time other instructions may accept immediate values as their arguments (chars, numbers, addresses),
+; and this is where full power of expressions can be used. The expression is a series of 1 or more members,
+; that are added or subtracted. Each member may be a number, label value, or string/char literal (all parsed by
+; PARSE_IMMEDIATE_VALUE function). The function support + and - operations between values. The value may start
+; with an unary + or - as well.
+PARSE_EXPRESSION:
+    dbb2  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)  ; Copy next token to the working buffer
 
-????:
-    dbb2  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)  ; Copy an argument to the working buffer
-
-    dbb5  af         XRA A                      ; Reset some vars????
-    dbb6  32 93 bf   STA bf93
-    dbb9  32 8a bf   STA OPCODE_REGISTER_ARG_LOW (bf8a)
+    dbb5  af         XRA A                      ; Reset variables to be filled while parsing
+    dbb6  32 93 bf   STA ARITHMETIC_OPERATION (bf93)
+    dbb9  32 8a bf   STA OPCODE_REGISTER_ARG_LOW (bf8a) ; This is 2-byte result accumulator
     dbbc  32 8b bf   STA OPCODE_REGISTER_ARG_HIGH (bf8b)
 
-    dbbf  b9         CMP C                      ; Was there any symbol copied???
-    dbc0  ca da db   JZ dbda
+    dbbf  b9         CMP C                      ; Some expressions may start with a + or -, without a first
+    dbc0  ca da db   JZ PARSE_EXPRESSION_NEXT (dbda)    ; member
 
-    dbc3  cd 22 dc   CALL PARSE_REGISTER_NAME (dc22)
+    dbc3  cd 22 dc   CALL PARSE_REGISTER_NAME (dc22)    ; Try matchin a register name first
 
-    dbc6  fe 01      CPI A, 01                  ; Check if the register name was parsed successfully
-    dbc8  c2 d3 db   JNZ dbd3
+    dbc6  fe 01      CPI A, 01                  ; Check if the register name was matched successfully
+    dbc8  c2 d3 db   JNZ PARSE_EXPRESSION_1 (dbd3)
 
     dbcb  4f         MOV C, A                   ; Ensure that argument was fully matched
     dbcc  cd 17 dc   CALL CHECK_END_OF_ARG (dc17)
-    dbcf  c8         RZ
+    dbcf  c8         RZ                         ; Return on success
 
     dbd0  da 8d da   JC da8d                    ; Report an error if argument was not fully parsed
 
-????:
-    dbd3  e5         PUSH HL                    ; Argument is not a register name, probably a label ???
-    dbd4  cd 6e db   CALL GET_LABEL_POINTER (db6e)
-    dbd7  c3 03 dc   JMP dc03
+PARSE_EXPRESSION_1:
+    dbd3  e5         PUSH HL                    ; Argument is not a register name, maybe a label or EQU value
+    dbd4  cd 6e db   CALL GET_LABEL_VALUE (db6e)
 
-????:
+    dbd7  c3 03 dc   JMP PARSE_EXPRESSION_STORE_VALUE (dc03)    ; The function continues elsewhere
+
+
+; Continue parsing the expression, process the next member of the expression
+PARSE_EXPRESSION_NEXT:
     dbda  cd 17 dc   CALL CHECK_END_OF_ARG (dc17)   ; Return if end of arg reached
     dbdd  c8         RZ
 
     dbde  fe 2b      CPI A, 2b                      ; Check if we found a '+'
-    dbe0  ca e8 db   JZ dbe8
+    dbe0  ca e8 db   JZ PARSE_EXPRESSION_2 (dbe8)
 
     dbe3  fe 2d      CPI A, 2d                      ; Chack if we found a '-'
-    dbe5  c2 ec db   JNZ dbec
+    dbe5  c2 ec db   JNZ PARSE_EXPRESSION_3 (dbec)
 
-????:
-    dbe8  32 93 bf   STA bf93
+PARSE_EXPRESSION_2:
+    dbe8  32 93 bf   STA ARITHMETIC_OPERATION (bf93)    ; Store the +/- operation type for future use little below
     dbeb  23         INX HL
 
-????:
-    dbec  cd 58 dc   CALL PARSE_IMMEDIATE_VALUE (dc58)  ; ??? Parse argument?
+PARSE_EXPRESSION_3:
+    dbec  cd 58 dc   CALL PARSE_IMMEDIATE_VALUE (dc58)  ; Parse the next value in the sequence
 
-    dbef  0c         INR C                          ; ???? Check number of bytes
-    dbf0  ca 8d da   JZ da8d
+    dbef  0c         INR C                          ; Check if the value parsed successfully, report an error if
+    dbf0  ca 8d da   JZ da8d                        ; needed
 
-    dbf3  3a 93 bf   LDA bf93                       ; ????
-    dbf6  fe 2d      CPI A, 2d
-    dbf8  c2 02 dc   JNZ dc02
+    dbf3  3a 93 bf   LDA ARITHMETIC_OPERATION (bf93)    ; Recall the arithmetic operation to apply
 
-dbfb  af         XRA A
-dbfc  93         SUB E
-dbfd  5f         MOV E, A
-dbfe  3e 00      MVI A, 00
-dc00  9a         SBB D
-dc01  57         MOV D, A
+    dbf6  fe 2d      CPI A, 2d                      ; Check if it was '-'
+    dbf8  c2 02 dc   JNZ PARSE_EXPRESSION_4 (dc02)
 
-????:
+    dbfb  af         XRA A                          ; Prepare parsed value in DE for subtraction (negate it)
+    dbfc  93         SUB E
+    dbfd  5f         MOV E, A
+    dbfe  3e 00      MVI A, 00
+    dc00  9a         SBB D
+    dc01  57         MOV D, A
+
+PARSE_EXPRESSION_4:
     dc02  e5         PUSH HL
 
-????:
-    dc03  2a 8a bf   LHLD OPCODE_REGISTER_ARGS (bf8a)   ; Store parsed argument values from DE to the var
+PARSE_EXPRESSION_STORE_VALUE:
+    dc03  2a 8a bf   LHLD OPCODE_REGISTER_ARGS (bf8a)   ; Add the parsed value in DE to the result accumulator
     dc06  19         DAD DE
     dc07  22 8a bf   SHLD OPCODE_REGISTER_ARGS (bf8a)
 
     dc0a  e1         POP HL
 
-    dc0b  cd 58 dc   CALL PARSE_IMMEDIATE_VALUE (dc58)  ; ??? Parse another argument?
+    dc0b  cd 58 dc   CALL PARSE_IMMEDIATE_VALUE (dc58)  ; Try parsing if any more data is there
 
     dc0e  0c         INR C                      ; Report a syntax error if unexpected argument is found
     dc0f  c2 8d da   JNZ da8d
 
-    dc12  0e 02      MVI C, 02                  ; ????? Number of bytes?
-    dc14  c3 da db   JMP dbda
+    dc12  0e 02      MVI C, 02                  ; Instruction with immediate value is at least 2-byte instruction
+
+    dc14  c3 da db   JMP PARSE_EXPRESSION_NEXT (dbda)   ; Parse the next member of expression sequence (if any)
 
 
 ; Check if the byte at [HL] is zero (EOL), ',', or ';', indicating end of an instruction argument
@@ -1068,9 +1115,12 @@ PARSE_REGISTER_NAME_EXIT:
 ; - 0ABH    - hex value (must start with decimal digit, and end with H)
 ; - $       - current output address
 ; - 'ch'    - char value in single quotes (may be 1 or 2 chars depending on instruction)
-; - 
+; - <reg>   - register name (for those opcodes that assume it)
+; - <label> - label address or EQU value
 ;
 ; Parsed value is returned in DE
+; 
+; Return number suggested size of the instruction in C, or 0xff in case of error ???? TODO Check
 PARSE_IMMEDIATE_VALUE:
     dc58  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)  ; Copy the argument word to the working buffer
 
@@ -1079,7 +1129,7 @@ PARSE_IMMEDIATE_VALUE:
 
     dc5f  7e         MOV A, M                   ; Check if the argument starts with quote symbol '
     dc60  fe 27      CPI A, 27
-    dc62  ca d2 dc   JZ dcd2
+    dc62  ca d2 dc   JZ PARSE_IMMEDIATE_VALUE_QUOTE (dcd2)
 
     dc65  fe 24      CPI A, 24                  ; Check if the argument is '$' (current address)
     dc67  ca fe dc   JZ PARSE_IMMEDIATE_VALUE_CUR_ADDR (dcfe)
@@ -1206,25 +1256,25 @@ STR_TO_INT_2:
     dccf  c3 b1 dc   JMP STR_TO_INT_LOOP (dcb1)
 
 
-
-????:
+; Parse char or pair of chars in quotes as immediate value
+PARSE_IMMEDIATE_VALUE_QUOTE:
     dcd2  0e 02      MVI C, 02                  ; Opcodes with the arguments are at least 2-byte instructions
 
     dcd4  3a 89 bf   LDA OPCODE_ARG_TYPE (bf89) ; DB directive (type 0x0e) has special processing for symbols
     dcd7  fe 0e      CPI A, 0e
-    dcd9  c2 df dc   JNZ dcdf
+    dcd9  c2 df dc   JNZ PARSE_IMMEDIATE_VALUE_QUOTE_1 (dcdf)
 
-dcdc  33         INX SP
-dcdd  33         INX SP
-dcde  c9         RET
+    dcdc  33         INX SP                     ; Skip returning to parent, return right to the caller's caller
+    dcdd  33         INX SP                     ; Perhaps quoted string in DB directive does not assume any
+    dcde  c9         RET                        ; further arithmetic
 
-????:
+PARSE_IMMEDIATE_VALUE_QUOTE_1:
     dcdf  23         INX HL                     ; Load symbol
     dce0  5e         MOV E, M
-    dce1  23         INX HL                     ; Load second symbol ?
+    dce1  23         INX HL                     ; Load second symbol (applicable for 2-char strings)
     dce2  56         MOV D, M
 
-????:
+PARSE_IMMEDIATE_VALUE_QUOTE_LOOP:
     dce3  7e         MOV A, M                   ; Load next char
     dce4  23         INX HL
 
@@ -1232,11 +1282,12 @@ dcde  c9         RET
     dce6  ca 8d da   JZ da8d
 
     dce9  fe 27      CPI A, 27                  ; Repeat until closing quote is found
-    dceb  c2 e3 dc   JNZ dce3
+    dceb  c2 e3 dc   JNZ PARSE_IMMEDIATE_VALUE_QUOTE_LOOP (dce3)
 
     dcee  c9         RET                        ; Done, return matched symbol(s) in DE
 
 
+; The immediate value is possibly a register name, or a label reference
 PARSE_IMMEDIATE_VALUE_LITERAL:
     dcef  cd 22 dc   CALL PARSE_REGISTER_NAME (dc22)    ; Try matching a register name
 
@@ -1244,16 +1295,16 @@ PARSE_IMMEDIATE_VALUE_LITERAL:
     dcf4  ca 8d da   JZ da8d
 
     dcf7  e5         PUSH HL                    ; If not a register name, then this probably a label
-    dcf8  cd 6e db   CALL GET_LABEL_POINTER (db6e)  ; Parse the label
+    dcf8  cd 6e db   CALL GET_LABEL_VALUE (db6e); Parse the label
 
     dcfb  c3 09 dd   JMP PARSE_IMMEDIATE_VALUE_EXIT_3B (dd09)
 
-
+; Usage of '$' means use target address of the currently parsed instruction
 PARSE_IMMEDIATE_VALUE_CUR_ADDR:
-    dcfe  23         INX HL                     ; ????
+    dcfe  23         INX HL                     ; Advance to the next char
     dcff  e5         PUSH HL
 
-    dd00  2a 87 bf   LHLD bf87                  ; ?????
+    dd00  2a 87 bf   LHLD CUR_OPCODE_TARGET_ADDR (bf87) ; Load current instruction address to DE
     dd03  eb         XCHG
 
     dd04  2a 98 bf   LHLD ORG_OFFSET (bf98)     ; Apply the ORG offset, put result to DE
@@ -1457,7 +1508,7 @@ dde2  c8         RZ
 dde3  fe 0d      CPI A, 0d
 dde5  c8         RZ
 
-dde6  2a 87 bf   LHLD bf87
+dde6  2a 87 bf   LHLD CUR_OPCODE_TARGET_ADDR (bf87)
 dde9  fe 11      CPI A, 11
 ddeb  ca 3d de   JZ de3d
 
@@ -1485,7 +1536,7 @@ de11  05         DCR B
 de12  c2 02 de   JNZ de02
 de15  3a 85 bf   LDA CUR_OUTPUT_PTR (bf85)
 de18  95         SUB L
-de19  22 87 bf   SHLD bf87
+de19  22 87 bf   SHLD CUR_OPCODE_TARGET_ADDR (bf87)
 ????:
 de1c  32 93 bf   STA bf93
 de1f  78         MOV A, B
@@ -1639,8 +1690,8 @@ MNEMONIC_1ST_LETTER_LUT:
 ; - 0x0d - 
 ; - 0x0e - DB compiler directive (data byte)
 ; - 0x0f - DW compiler directive (data word)
-; - 0x10 - DS compiler directive (data string ????)
-; - 0x11 - 
+; - 0x10 - DS compiler directive (data start)
+; - 0x11 - EQU compiler directive
 ;
 MNEMONIC_2ND_3RD_LETTER_LUT:
     deb4  1a 44 ce                      ; ACI (opcode 0xce, type=0x04 - no register bits, 1-byte immediate value)

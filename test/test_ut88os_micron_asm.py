@@ -309,7 +309,10 @@ def test_label(ut88):
 
 def test_arithmetic(ut88):
     asm  = "QQ: NOP\r"
-    asm += "JMP $ - QQ"  # Use arithmetic in immediate value, use label in the arithmetic
+    asm += "JMP $ - QQ\r"   # Use arithmetic in immediate value, use label in the arithmetic
+    asm += "MVI C, -5\r"    # Use <nothing> - 5 expression
+    asm += "SHLD QQ + 5\r"  # Use label in sum expression
+    asm += "SBI '0' + 5\r"  # Use Char as a value
     text = run_assembler(ut88, asm)
     print(text)
 
@@ -319,6 +322,16 @@ def test_arithmetic(ut88):
     assert ut88.get_byte(0xa001) == 0xc3    # JMP
     assert ut88.get_byte(0xa002) == 0x01    # Difference between 2 addresses is 1
     assert ut88.get_byte(0xa003) == 0x00
+
+    assert ut88.get_byte(0xa004) == 0x0e    # MVI C
+    assert ut88.get_byte(0xa005) == 0xfb    # -5
+
+    assert ut88.get_byte(0xa006) == 0x22    # SHLD
+    assert ut88.get_byte(0xa007) == 0x05    # QQ (0xa000) + 5
+    assert ut88.get_byte(0xa008) == 0xa0
+
+    assert ut88.get_byte(0xa009) == 0xde    # SBI
+    assert ut88.get_byte(0xa00a) == 0x35    # '0' + 5
 
 
 def test_equ(ut88):
@@ -334,18 +347,21 @@ def test_equ(ut88):
 
 
 
-# def test_double_label(ut88):
-#     asm  = "QQ: NOP\r"
-#     asm += "QQ: NOP\r"
-#     asm += "JMP QQ"
+def test_double_label(ut88):
+    asm  = "QQ: NOP\r"
+    asm += "QQ: NOP\r"
+    asm += "JMP QQ"
 
-#     text = run_assembler(ut88, asm)
-#     print(text)
+    text = run_assembler(ut88, asm)
+    print(text)
 
-#     # Verify the instruction is assembled
-#     assert ut88.get_byte(0xa000) == 0x00    # 1st NOP
-#     assert ut88.get_byte(0xa001) == 0x00    # 2nd NOP
+    # Verify the instruction is assembled
+    assert ut88.get_byte(0xa000) == 0x00    # 1st NOP
+    assert ut88.get_byte(0xa001) == 0x00    # 2nd NOP
 
-#     assert ut88.get_byte(0xa002) == 0xc3    # CALL
-#     assert ut88.get_byte(0xa003) == 0xff    # Address of the first NOP
-#     assert ut88.get_byte(0xa004) == 0xff
+    assert ut88.get_byte(0xa002) == 0xc3    # CALL
+    assert ut88.get_byte(0xa003) == 0xff    # Address of the label is set to 0xffff
+    assert ut88.get_byte(0xa004) == 0xff
+
+# TODO: Use register name where immediate value is expected
+# TODO: Use a number or a label where register is expected
