@@ -54,7 +54,7 @@ def run_assembler(ut88, text, mode = "1", command = "B"):
 
     # Run the assembler command
     text = run_command(ut88, command, 0xd81f)   # Stop at '?' incorrect mode input
-    return text.replace('\r', '\n')
+    return text.replace('\r\n', '\n')
 
 
 def test_comment(ut88):
@@ -266,12 +266,14 @@ def test_ds(ut88):
     # Use DS directive to set up non-default target location
     asm  = "DS 42H\r"
     asm += "RST 5"
-    text = run_assembler(ut88, asm)
+    text = run_assembler(ut88, asm, mode='2')
     print(text)
 
     # Verify the instruction is assembled
     assert ut88.get_byte(0xa042) == 0xef    # The RST instruction at 0xa000 + 0x42
 
+    # Verify listing output
+    assert 'A000 ( 0042 )    DS 42H' in text    # DS instruction prints storage and storage offset value
 
 def test_org(ut88):
     asm =  "ORG 1234H\r"
@@ -363,5 +365,86 @@ def test_double_label(ut88):
     assert ut88.get_byte(0xa003) == 0xff    # Address of the label is set to 0xffff
     assert ut88.get_byte(0xa004) == 0xff
 
-# TODO: Use register name where immediate value is expected
-# TODO: Use a number or a label where register is expected
+
+def test_syntax_errors(ut88):
+    asm  = "ORG 1234H\r"    # Set target address
+
+    asm += "NOP 0ABCH\r"    # Unexpected immediate value
+    asm += "MVI A, B\r"     # Register name instead of immediate value
+    asm += "ORA 12345"      # Immediate value instead of register name
+
+    text = run_assembler(ut88, asm, mode="2")
+    print(text)
+
+    assert "08*1234             NOP 0ABCH" in text
+    assert "08*1234             MVI A, B" in text
+    assert "08*1234             ORA 12345" in text
+    assert "ERRORS DETECTED:03" in text
+
+
+def test_label_errors(ut88):
+    asm  = "AA NOP\r"       # Syntax error while defining a label
+    asm += "MVI A, BB\r"    # Usage of not defined label
+    asm += "QQ EQU 12345"   # Syntax error in EQU line (missing ':')
+
+    text = run_assembler(ut88, asm, mode="2")
+    print(text)
+
+    assert "04*A000             AA NOP" in text
+    assert "02*A000 3E FE       MVI A, BB" in text
+    assert "04*A002             QQ EQU 12345" in text
+    assert "ERRORS DETECTED:03" in text
+
+
+def test_normal_output(ut88):
+    asm  = "ORG 1234H\r"    # Set target address
+    asm += "NOP\r"          # Just a 'normal' program
+    asm += "QQ: EQU 1234\r" # Use an EQU directive
+    asm += "DB 5, 6, 7, 8, 'ABCD'\r"    # Use some random data
+    asm += "HLT"
+
+    text = run_assembler(ut88, asm, mode="2")
+    print(text)
+
+    assert "                 ORG" in text       # ORG directive does not generate a opcode
+    assert "1234 00          NOP" in text       # Both instructions are in the listing
+    assert "04D2             QQ: EQU 1234" in text  # QQ Label value is in the listing
+    assert "1235 05 06 07 08 DB 5, 6, 7, 8, 'ABCD'" in text  # DB instruction are dumped 4 bytes at a time
+    assert "1239 41 42 43 44" in text           # Remainder of bytes are dumped on the next line
+    assert "123D 76          HLT" in text       # Both instructions have ORG offset applied
+    assert "ERRORS DETECTED:00" in text         # No errors detected
+    assert "123D/A009/" in text                 # Last target and storage addresses are correct
+
+
+def test_use_future_label(ut88):
+    asm  = "JMP QQ\r"       # Use label defined in future
+    asm += "NOP\r"          # Just a spacer instruction
+    asm += "QQ: MOV A, B"   # Define QQ label referenced earlier
+
+    text = run_assembler(ut88, asm, mode="1")
+    print(text)
+
+    assert ut88.get_byte(0xa000) == 0xc3    # JMP
+    assert ut88.get_byte(0xa001) == 0x04    # Future label address calculated correctly
+    assert ut88.get_byte(0xa002) == 0xa0
+    assert ut88.get_byte(0xa003) == 0x00    # NOP
+    assert ut88.get_byte(0xa004) == 0x78    # MOV A, B
+
+
+def test_labels_summary(ut88):
+    asm  = "QQ: EQU 1234H\r"    # An EQU directive
+    asm += "WW: EQU 5678H\r"    # Another EQU directive
+    asm += "EE: NOP\r"          # Normal instruction with a label
+    asm += "RR: NOP"            # Another instruction with a label
+
+    text = run_assembler(ut88, asm, mode="3")
+    print(text)
+
+    assert "QQ    = 1234"
+    assert "WW    = 5678"
+    assert "EE    = A000"
+    assert "RR    = A001"
+    assert "ERRORS DETECTED:00" in text         # No errors detected
+    assert "A001/A001/" in text                 # Last target and storage addresses are correct
+
+    assert False

@@ -1,5 +1,9 @@
 ; Description TBD
 ;
+; Working modes: TBD
+;
+; Error reporting: TBD
+;
 ; Bugs/Inconsistencies:
 ; - This program expects 0x01-0x1f keycodes for Ctrl combinations.
 ;
@@ -8,7 +12,7 @@
 ; - bf80 - end of text pointer
 ; - bf82 - errors counter in BCD form
 ; - bf83 - current pass number (1, 2 ????)
-; - bf84 - ???? error type
+; - bf84 - Error bitmask (each bit indicate a certain type of error)
 ; - bf85 - Current output pointer (starting 0xa000)
 ; - bf87 - Current instruction target address
 ; - bf89 - parsed opcode's argument type
@@ -18,8 +22,8 @@
 ; - bf8d - currently selected label record pointer (valid for lines starting with a label)
 ; - bf8f - currently processing line pointer
 ; - bf93 - temporary variable, meaning depends on the function
-; - bf94 - working mode ????
-; - bf95 - ????
+; - bf94 - working mode (values 0, 1, and 2 for modes 1, 2, and 3 respectively)
+; - bf95 - Flag, indicating that ORG directive was already used in the source code
 ; - bf98 - ORG offset (difference between ORG target address and target storage address 0xa000)
 ; - bfa0 - line buffer (0x40 bytes)
 ; - bfe0 - working buffer for parsing instruction mnemonic or instruction arguments (6 bytes)
@@ -41,7 +45,7 @@ START:
 
     d817  fe 03      CPI A, 03                  ; Chars > '3' are also invalid, restart the program
     d819  32 94 bf   STA WORKING_MODE (bf94)    ; Store the mode
-    d81c  fa 2f d8   JM d82f
+    d81c  fa 2f d8   JM START_PROCESSING (d82f)
 
 PRINT_HINT_AND_RESTART:
     d81f  21 d6 df   LXI HL, PLEASE_1_2_3_STR (dfd6)    ; Print the hint string, and restart the program
@@ -58,9 +62,10 @@ GET_KBD_INPUT:
 
     d82e  c9         RET                        ; Return otherwise
 
-????:
-    d82f  af         XRA A                      ;  ??? Zero something ?
-    d830  32 95 bf   STA bf95
+; Start processing the input source code
+START_PROCESSING:
+    d82f  af         XRA A                      ; Clear flag, indicating that ORG directive is used
+    d830  32 95 bf   STA ORG_DEFINED (bf95)
 
     d833  3c         INR A                      ; Start with pass #1
     d834  32 83 bf   STA PASS_NUMBER (bf83)
@@ -84,7 +89,13 @@ EOF_FOUND:
 
     d84f  36 00      MVI M, 00                  ; Zero the char after the text
 
-????:
+
+; Source code will be processed twice. Each pass will generate opcodes in order to properly calculate
+; all the addresses (primarily label addresses). The goals are
+; - 1st pass is responsible for calculating label addresses, and storing them into labels table
+; - 2nd pass is responsible for actual code generation, all expression values may be calculated with the
+;   correct label values set during the 1st pass
+START_PASS:
     d851  21 00 30   LXI HL, 3000               ; Start processing from the very first line at 0x3000
     d854  22 8f bf   SHLD bf8f
 
@@ -94,14 +105,21 @@ EOF_FOUND:
     d85d  af         XRA A                      ; Reset the error counter
     d85e  32 82 bf   STA ERRORS_COUNT (bf82)
 
-????:
-    d861  af         XRA A                      ; ????
-    d862  32 84 bf   STA bf84
+; Compile a single line
+; This function is responsible for processing a single line. 
+;
+; Algorithm:
+; - The line is copied from the input text into the line buffer.
+; - parse a label definition (if any)
+; - 
+PROCESS_NEXT_LINE:
+    d861  af         XRA A                      ; Reset error bitmask for the line
+    d862  32 84 bf   STA ERROR_BITMASK (bf84)
 
     d865  2a 85 bf   LHLD CUR_OUTPUT_PTR (bf85) ; Save current output pointer as current instruction address
     d868  22 87 bf   SHLD CUR_OPCODE_TARGET_ADDR (bf87) ; (used for $ arithmetic)
 
-    d86b  31 80 bf   LXI SP, EOF_PTR (bf80)     ; ????
+    d86b  31 80 bf   LXI SP, EOF_PTR (bf80)     ; Reset stack pointer (in case if it is corrupted)
 
     d86e  cd 9a da   CALL COPY_LINE_TO_BUF (da9a)   ; Aquire next line into the buffer
 
@@ -114,13 +132,13 @@ EOF_FOUND:
     d87a  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)  ; Copy instruction mnemonic to the working buffer
 
     d87d  fe 3a      CPI A, 3a                  ; Compare with ':'? Is this a label?
-    d87f  c2 9b d8   JNZ d89b
+    d87f  c2 9b d8   JNZ PROCESS_NEXT_LINE_1 (d89b)
 
     d882  af         XRA A                      ; There must be at least a few letters before ':'
     d883  b9         CMP C                      ; Otherwise indicate an error
-    d884  ca 92 da   JZ da92
+    d884  ca 92 da   JZ LABEL_SYNTAX_ERROR_HANDLER (da92)
 
-    d887  e5         PUSH HL
+    d887  e5         PUSH HL                    ; This is definitely a label - store it
     d888  cd 12 db   CALL SAVE_LABEL (db12)
     d88b  e1         POP HL
 
@@ -134,13 +152,15 @@ EOF_FOUND:
 
     d898  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)  ; Otherwise get ready to parse the command
 
-
-????:
+; This part parses the actual instruction mnemonic and its arguments
+; Depending on the instruction (argument) type stated in the instructions table, the function executes a
+; specific parser handler
+PROCESS_NEXT_LINE_1:
     d89b  e5         PUSH HL                    ; Parse instruction mnemonic
     d89c  cd 0d dd   CALL PARSE_MNEMONIC (dd0d)
     d89f  e1         POP HL
 
-    d8a0  cd b2 db   CALL PARSE_EXPRESSION (dbb2)   ; ??? Parse first argument ????
+    d8a0  cd b2 db   CALL PARSE_EXPRESSION (dbb2)   ; Parse the first argument, if specified
 
     d8a3  e5         PUSH HL                    ; Load pointer to output handlers
     d8a4  21 53 de   LXI HL, OUTPUT_HANDLERS_TABLE (de53)
@@ -170,18 +190,20 @@ EOF_FOUND:
     d8c0  3a 8b bf   LDA OPCODE_REGISTER_ARG_HIGH (bf8b)    ; Load the opcode argument in A
     d8c3  c9         RET                        ; Jump to handler
 
+
+; Line parsing is finished with either success or an error. Advance to the next line
 ADVANCE_TO_NEXT_LINE:
-    d8c4  cd 80 dd   CALL dd80                  ; ????
+    d8c4  cd 80 dd   CALL DUMP_LINE (dd80)      ; ????
 
     d8c7  cd 12 f8   CALL MONITOR_IS_BUTTON_PRESSED (f812)  ; Check if a button is pressed
     d8ca  00         NOP
-    d8cb  ca 61 d8   JZ d861
+    d8cb  ca 61 d8   JZ PROCESS_NEXT_LINE (d861)
 
     d8ce  cd 25 d8   CALL GET_KBD_INPUT (d825)  ; If yes - this may be a Ctrl-C
     d8d1  fe 03      CPI A, 03
     d8d3  ca 00 d8   JZ START (d800)            ; Ctrl-C will restart the program
 
-    d8d6  c3 61 d8   JMP d861                   ; If not - process the next line
+    d8d6  c3 61 d8   JMP PROCESS_NEXT_LINE (d861)   ; If not - process the next line
 
 
 OUTPUT_HANDLER_BASE:                            ; Just an anchor, handlers' offsets are calculated from here
@@ -282,7 +304,7 @@ EQU_HANDLER:
     d935  cd cd da   CALL COPY_WORD_TO_WORK_BUF (dacd)  ; value (as it would for other handlers)
 
     d938  fe 3a      CPI A, 3a                          ; The line must start with the label (which is loaded by
-    d93a  c2 92 da   JNZ da92                           ; COPY_WORD_TO_WORK_BUF), then ':' colon. Otherwise error.
+    d93a  c2 92 da   JNZ LABEL_SYNTAX_ERROR_HANDLER (da92); COPY_WORD_TO_WORK_BUF), then ':' colon. Otherwise error
 
     d93d  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a); Store EQU value in a temporary variable
     d940  22 87 bf   SHLD CUR_OPCODE_TARGET_ADDR (bf87)
@@ -293,7 +315,7 @@ EQU_HANDLER:
     d947  3d         DCR A                              ; passes
     d948  c0         RNZ
 
-    d949  3a 84 bf   LDA bf84                           ; ???? Return if error mask is 01, pass otherwise ???
+    d949  3a 84 bf   LDA ERROR_BITMASK (bf84)           ; ???? Return if error mask is 01, pass otherwise ???
     d94c  3d         DCR A
     d94d  c8         RZ
 
@@ -368,12 +390,12 @@ DB_DW_HANDLER_STORE:
 
 ; Process ORG directive, cakculate difference between output storage address and code target address
 ORG_HANDLER:
-    d99a  3a 95 bf   LDA bf95                   ; Allow having only one ORG directive, otherwise return
+    d99a  3a 95 bf   LDA ORG_DEFINED (bf95)     ; Allow having only one ORG directive, otherwise return
     d99d  b7         ORA A
     d99e  c0         RNZ
 
     d99f  3c         INR A                      ; Set the flag that ORG directive was already used
-    d9a0  32 95 bf   STA bf95
+    d9a0  32 95 bf   STA ORG_DEFINED (bf95)
 
     d9a3  21 00 a0   LXI HL, a000               ; Load the default target address 0xa000 to DE
     d9a6  eb         XCHG
@@ -386,58 +408,71 @@ ORG_HANDLER:
 
     d9b0  c9         RET
 
+; Dump labels table
+; The function works only in working mode #3, and dumps the labels table. It iterates over the records in the
+; labels table and prints them in <name>=<value> form
+DUMP_LABELS_TABLE:
+    d9b1  cd 80 dd   CALL DUMP_LINE (dd80)      ; Dump the line, if we are in '2' working mode
 
-????:
-    d9b1  cd 80 dd   CALL dd80                  ; ????
+    d9b4  21 83 bf   LXI HL, PASS_NUMBER (bf83) ; Load the current pass number
+    d9b7  7e         MOV A, M
 
-d9b4  21 83 bf   LXI HL, PASS_NUMBER (bf83)
-d9b7  7e         MOV A, M
+    d9b8  34         INR M                      ; Increment current pass number and restart source code processing
+    d9b9  3d         DCR A
+    d9ba  ca 51 d8   JZ START_PASS (d851)
 
-d9b8  34         INR M                      ; Increment current pass number ????
-d9b9  3d         DCR A                      ; ????
-d9ba  ca 51 d8   JZ d851
+    d9bd  3a 94 bf   LDA WORKING_MODE (bf94)    ; Dumping label values is performed only in working mode #3
+    d9c0  fe 02      CPI A, 02
+    d9c2  c2 fc d9   JNZ PRINT_ERROR_SUMMARY (d9fc)
 
-d9bd  3a 94 bf   LDA WORKING_MODE (bf94)
-d9c0  fe 02      CPI A, 02
-d9c2  c2 fc d9   JNZ d9fc
-
-    d9c5  0e 1f      MVI C, 1f              ; Clear screen
+    d9c5  0e 1f      MVI C, 1f                  ; Clear screen
     d9c7  cd 50 de   CALL PUT_CHAR (de50)
 
-d9ca  2a 80 bf   LHLD EOF_PTR (bf80)
+    d9ca  2a 80 bf   LHLD EOF_PTR (bf80)        ; Position ourselves to the first label
 
-????:
-d9cd  06 06      MVI B, 06
+DUMP_LABELS_TABLE_LOOP:
+    d9cd  06 06      MVI B, 06                  ; Each label is 6 chars
 
-????:
-d9cf  7e         MOV A, M
-d9d0  b7         ORA A
-d9d1  ca fc d9   JZ d9fc
+DUMP_LABELS_TABLE_CHAR_LOOP:
+    d9cf  7e         MOV A, M                   ; Check if the record is valid
+    d9d0  b7         ORA A                      ; If reached the end of the labels table - continue with the 
+    d9d1  ca fc d9   JZ PRINT_ERROR_SUMMARY (d9fc)  ; compilation summary
 
-d9d4  4f         MOV C, A
-d9d5  cd 50 de   CALL PUT_CHAR (de50)
+    d9d4  4f         MOV C, A                   ; Print the next label char
+    d9d5  cd 50 de   CALL PUT_CHAR (de50)
 
-d9d8  05         DCR B
-d9d9  23         INX HL
-d9da  c2 cf d9   JNZ d9cf
-d9dd  0e 3d      MVI C, 3d
-d9df  cd 50 de   CALL PUT_CHAR (de50)
-d9e2  0e 20      MVI C, 20
-d9e4  cd 50 de   CALL PUT_CHAR (de50)
-d9e7  23         INX HL
-d9e8  7e         MOV A, M
-d9e9  cd 42 de   CALL PRINT_BYTE_HEX (de42)
-d9ec  2b         DCX HL
-d9ed  7e         MOV A, M
-d9ee  cd 42 de   CALL PRINT_BYTE_HEX (de42)
-d9f1  23         INX HL
-d9f2  23         INX HL
-d9f3  01 20 04   LXI BC, 0420
-d9f6  cd 27 da   CALL PRINT_CHAR_BLOCK (da27)
-d9f9  c3 cd d9   JMP d9cd
+    d9d8  05         DCR B                      ; Repeat until all 6 label chars are printed
+    d9d9  23         INX HL
+    d9da  c2 cf d9   JNZ DUMP_LABELS_TABLE_CHAR_LOOP (d9cf)
 
-????:
-    d9fc  21 b3 df   LXI HL, ERRORS_STR (dfb3)      ; Print report string
+    d9dd  0e 3d      MVI C, 3d                  ; Print '= '
+    d9df  cd 50 de   CALL PUT_CHAR (de50)
+    d9e2  0e 20      MVI C, 20
+    d9e4  cd 50 de   CALL PUT_CHAR (de50)
+
+    d9e7  23         INX HL                     ; Load and print the label value (high byte)
+    d9e8  7e         MOV A, M
+    d9e9  cd 42 de   CALL PRINT_BYTE_HEX (de42)
+
+    d9ec  2b         DCX HL                     ; Load and print the label value (low byte)
+    d9ed  7e         MOV A, M
+    d9ee  cd 42 de   CALL PRINT_BYTE_HEX (de42)
+
+    d9f1  23         INX HL                     ; Advance to the next table record
+    d9f2  23         INX HL
+
+    d9f3  01 20 04   LXI BC, 0420               ; Print 4 spaces before the next record
+    d9f6  cd 27 da   CALL PRINT_CHAR_BLOCK (da27)
+
+    d9f9  c3 cd d9   JMP DUMP_LABELS_TABLE_LOOP (d9cd)  ; Repeat for the next label record
+
+
+; Print error summary:
+; - Number of errors detected
+; - Print last program byte target address (last storage address with ORG offset applied)
+; - Print last program byte storage address
+PRINT_ERROR_SUMMARY:
+    d9fc  21 b3 df   LXI HL, ERRORS_STR (dfb3)      ; Print error report string
     d9ff  cd 18 f8   CALL PRINT_STRING (f818)
 
     da02  3a 82 bf   LDA ERRORS_COUNT (bf82)        ; Print number of errors
@@ -454,11 +489,12 @@ d9f9  c3 cd d9   JMP d9cd
     da14  0e 2f      MVI C, 2f                      ; Print ??? address followed by '/'
     da16  cd 48 de   CALL PRINT_WORD_HEX (de48)
 
-    da19  eb         XCHG                           ; Print last output address, follower by '/'
+    da19  eb         XCHG                           ; Print last output address, followed by '/'
     da1a  cd 48 de   CALL PRINT_WORD_HEX (de48)
 
     da1d  c3 00 d8   JMP START (d800)               ; Restart the program
 
+; Subtract DE from HL, save result in HL, set CPU flags
 SUB_HL_DE:
     da20  7d         MOV A, L
     da21  93         SUB E
@@ -563,18 +599,25 @@ PARSE_REG_PAIR_BC_DE:
     da6d  c9         RET                        ; Other values are incorrect. Report an error
 
 
-????:
-da6e  06 01      MVI B, 01
-da70  c3 78 da   JMP da78
+; Raise an error indicating label problem (e.g. double label definition)
+LABEL_ERROR_HANDLER:
+    da6e  06 01      MVI B, 01                  ; Set 1st error bit indicating label error
+    da70  c3 78 da   JMP APPLY_ERROR_BITMASK (da78)
 
-????:
-da73  06 02      MVI B, 02
-da75  11 fe ff   LXI DE, fffe
+; Raise an error indicating label not found
+LABEL_NOT_FOUND_ERROR_HANDLER:
+    da73  06 02      MVI B, 02                  ; Set 2nd error bit indicating label not found error
+    
+    da75  11 fe ff   LXI DE, fffe               ; Will also return 0xfffe incorrect label value (if requested)
 
-????:
+
+; Apply error bitmask
+; Arguments:
+; B - error bitmask to apply
+APPLY_ERROR_BITMASK:
     da78  e5         PUSH HL
 
-    da79  21 84 bf   LXI HL, bf84                   ; Apply error type mask
+    da79  21 84 bf   LXI HL, ERROR_BITMASK (bf84)   ; Apply error type mask
     da7c  7e         MOV A, M                       
     da7d  b0         ORA B
     da7e  77         MOV M, A
@@ -588,20 +631,24 @@ da75  11 fe ff   LXI DE, fffe
     da86  e1         POP HL
     da87  c9         RET
 
-; Instruction match error ???? Syntax error ???
-????:
-da88  06 04      MVI B, 04
-da8a  c3 94 da   JMP da94
+; Report unexpected symbol error (e.g. wait a char, but digit is found, or instruction mnemonic is not recognized)
+UNEXPECTED_SYMBOL_ERROR_HANDLER:
+    da88  06 04      MVI B, 04                      ; Apply 3rd bit in the error mask
+    da8a  c3 94 da   JMP GENERAL_SYNTAX_ERROR_HANDLER (da94)
 
-????:
-da8d  06 08      MVI B, 08
-da8f  c3 94 da   JMP da94
+; Report syntax error (incorrect expression structure, unexpected EOL, missing mandatory arguments, etc)
+SYNTAX_ERROR_HANDLER:
+    da8d  06 08      MVI B, 08                      ; Apply 4th bit in the error mask
+    da8f  c3 94 da   JMP GENERAL_SYNTAX_ERROR_HANDLER (da94)
 
-????:
-da92  06 10      MVI B, 10
-????:
-da94  cd 78 da   CALL da78
-da97  c3 c4 d8   JMP ADVANCE_TO_NEXT_LINE (d8c4)
+; Report label related syntax error (e.g. label is not followed by a colon)
+LABEL_SYNTAX_ERROR_HANDLER:
+    da92  06 10      MVI B, 10                      ; Apply 5th bit in the error mask
+
+; Apply error bit mask, and advance to the next line
+GENERAL_SYNTAX_ERROR_HANDLER:
+    da94  cd 78 da   CALL APPLY_ERROR_BITMASK (da78)
+    da97  c3 c4 d8   JMP ADVANCE_TO_NEXT_LINE (d8c4)
 
 
 ; Copy next line from source text area to the line buffer (0xbfa0)
@@ -615,7 +662,7 @@ COPY_LINE_TO_BUF_LOOP:
     daa2  7e         MOV A, M                   ; Load the next symbol from source
 
     daa3  fe ff      CPI A, ff                  ; 0xff EOF marker will stop processing
-    daa5  ca b1 d9   JZ d9b1
+    daa5  ca b1 d9   JZ DUMP_LABELS_TABLE (d9b1)
 
     daa8  fe 0d      CPI A, 0d                  ; 0x0d EOL symbol will finish copying the current line
     daaa  ca c0 da   JZ COPY_LINE_TO_BUF_LINE_COMPLETED (dac0)
@@ -845,11 +892,11 @@ SAVE_LABEL_2ND_PASS:
     db63  c0         RNZ
 
     db64  b8         CMP B                      ; Report an error if the value is 0xffff
-    db65  ca 6e da   JZ da6e
+    db65  ca 6e da   JZ LABEL_ERROR_HANDLER (da6e)
 
     db68  3d         DCR A                      ; Also report an error if the value is 0xfefe
     db69  b8         CMP B
-    db6a  ca 73 da   JZ da73
+    db6a  ca 73 da   JZ LABEL_NOT_FOUND_ERROR_HANDLER (da73)
 
     db6d  c9         RET                        ; Otherwise consider it as a normal value
 
@@ -859,7 +906,7 @@ GET_LABEL_VALUE:
     db6e  cd 79 db   CALL SEARCH_LABEL_RECORD (db79)    ; Search for a label record
 
     db71  0d         DCR C                      ; If no label record matched - raise an error
-    db72  f2 73 da   JP da73
+    db72  f2 73 da   JP LABEL_NOT_FOUND_ERROR_HANDLER (da73)
 
     db75  5e         MOV E, M                   ; Return the label pointer in DE
     db76  23         INX HL
@@ -1188,6 +1235,7 @@ HEX_STR_TO_INT:
     dca4  23         INX HL
     dca5  3e 29      MVI A, 29
 
+
 ; Convert a string to 16-bit integer value
 ;
 ; Algorithm:
@@ -1358,7 +1406,7 @@ PARSE_MNEMONIC_1:
     dd18  3a e0 bf   LDA bfe0                   ; Load the 1st symbol of the mnemonic
 
     dd1b  d6 41      SUI A, 41                  ; Symbols with codes < 'A' are invalid. Report a syntax error
-    dd1d  fa 88 da   JM da88
+    dd1d  fa 88 da   JM UNEXPECTED_SYMBOL_ERROR_HANDLER (da88)
 
     dd20  5f         MOV E, A                   ; Load opcode-'A' to DE
     dd21  16 00      MVI D, 00
@@ -1370,7 +1418,7 @@ PARSE_MNEMONIC_1:
     dd28  23         INX HL                     ; starting this letter (B, F, G, K, Q, T, U, V, W, Y, Z). Report
     dd29  7e         MOV A, M                   ; an error in this case
     dd2a  93         SUB E
-    dd2b  ca 88 da   JZ da88
+    dd2b  ca 88 da   JZ UNEXPECTED_SYMBOL_ERROR_HANDLER (da88)
 
     dd2e  4f         MOV C, A                   ; Store number of instructions that start with this letter in C
     dd2f  c5         PUSH BC
@@ -1386,7 +1434,7 @@ PARSE_MNEMONIC_1:
     dd3c  ca 43 dd   JZ PARSE_MNEMONIC_2 (dd43)
 
     dd3f  91         SUB C                      ; Symbols below 0x40 (letter) is a syntax error
-    dd40  fa 88 da   JM da88
+    dd40  fa 88 da   JM UNEXPECTED_SYMBOL_ERROR_HANDLER (da88)
 
 PARSE_MNEMONIC_2:
     dd43  07         RLC                        ; Shift 2nd char for 3 bits left
@@ -1398,7 +1446,7 @@ PARSE_MNEMONIC_2:
     dd4a  91         SUB C
     dd4b  ca 52 dd   JZ PARSE_MNEMONIC_3 (dd52) 
     dd4e  91         SUB C                      ; Symbols below 'A' are syntax error
-    dd4f  fa 88 da   JM da88
+    dd4f  fa 88 da   JM UNEXPECTED_SYMBOL_ERROR_HANDLER (da88)
 
 PARSE_MNEMONIC_3:
     dd52  0f         RRC                        ; Apply 3 highest bits of the 3rd char (so that result is
@@ -1431,7 +1479,7 @@ PARSE_MNEMONIC_4:
     dd6d  0d         DCR C                      ; Repear for all records associated with the first letter of
     dd6e  c2 5e dd   JNZ PARSE_MNEMONIC_LOOP (dd5e) ; mnemonic
 
-    dd71  c3 88 da   JMP da88                   ; If still no match - report a syntax error
+    dd71  c3 88 da   JMP UNEXPECTED_SYMBOL_ERROR_HANDLER (da88) ; If still no match - report a syntax error
 
 PARSE_MNEMONIC_EXIT:
     dd74  7e         MOV A, M                   ; Lowest 6 bits of the record's 2nd byte are the argument
@@ -1446,51 +1494,81 @@ PARSE_MNEMONIC_EXIT:
 
 
 
-; ???????? Second pass processing ???
+; Dump the line
+; Prints the address and byte codes, followed by the source line text. Some lines/directives do not
+; generate any byte code. In this case only source line is dumped.
 ;
+; If there were errors during the line compilation, the function prints the error bitmask byte prior the
+; line address.
 ;
-????:
+; Example:
+; 02*A000 3E FE       MVI A, BB
+; ^  ^    ^           ^
+; |  |    |           +--------- Original source code line
+; |  |    +--------------------- Generated byte code
+; |  +-------------------------- Target storage address
+; +----------------------------- Syntax error, 'BB' is not a value or a label expected for MVI instruction
+;
+; The function works only in working mode #2, and only during the second pass
+DUMP_LINE:
     dd80  3a 94 bf   LDA WORKING_MODE (bf94)    ; The following code works only for mode 2
     dd83  1f         RAR
     dd84  d0         RNC
 
-dd85  3a 83 bf   LDA PASS_NUMBER (bf83)
-dd88  3d         DCR A
-dd89  c8         RZ
-dd8a  cd d3 dd   CALL PRINT_CR_LF (ddd3)
-dd8d  3a 84 bf   LDA bf84
-dd90  b7         ORA A
-dd91  ca 9f dd   JZ dd9f
-dd94  cd 42 de   CALL PRINT_BYTE_HEX (de42)
-dd97  0e 2a      MVI C, 2a
-dd99  cd 50 de   CALL PUT_CHAR (de50)
-dd9c  c3 a5 dd   JMP dda5
+    dd85  3a 83 bf   LDA PASS_NUMBER (bf83)     ; The code works only for second pass
+    dd88  3d         DCR A
+    dd89  c8         RZ
 
-????:
-dd9f  01 20 03   LXI BC, 0320
-dda2  cd 27 da   CALL PRINT_CHAR_BLOCK (da27)
-????:
-dda5  11 a0 bf   LXI DE, LINE_BUF (bfa0)
-dda8  1a         LDAX DE
-dda9  fe 3b      CPI A, 3b
-ddab  01 20 11   LXI BC, 1120
-ddae  ca b8 dd   JZ ddb8
-ddb1  af         XRA A
-ddb2  32 93 bf   STA bf93
-ddb5  cd dd dd   CALL dddd
-????:
-ddb8  eb         XCHG
-ddb9  cd 27 da   CALL PRINT_CHAR_BLOCK (da27)
-ddbc  cd 18 f8   CALL PRINT_STRING (f818)
-????:
-ddbf  3a 93 bf   LDA bf93
-ddc2  b7         ORA A
-ddc3  c8         RZ
-ddc4  cd d3 dd   CALL PRINT_CR_LF (ddd3)
-ddc7  01 20 03   LXI BC, 0320
-ddca  cd 27 da   CALL PRINT_CHAR_BLOCK (da27)
-ddcd  cd dd dd   CALL dddd
-ddd0  c3 bf dd   JMP ddbf
+    dd8a  cd d3 dd   CALL PRINT_CR_LF (ddd3)    ; Each instruction is printed starting a new line
+
+    dd8d  3a 84 bf   LDA ERROR_BITMASK (bf84)   ; Check if there were any errors during parsing the line
+    dd90  b7         ORA A
+    dd91  ca 9f dd   JZ DUMP_LINE_1 (dd9f)
+
+    dd94  cd 42 de   CALL PRINT_BYTE_HEX (de42) ; Print the error code
+
+    dd97  0e 2a      MVI C, 2a                  ; Print '*' char
+    dd99  cd 50 de   CALL PUT_CHAR (de50)
+
+    dd9c  c3 a5 dd   JMP DUMP_LINE_2 (dda5)     ; Continue printing the line
+
+DUMP_LINE_1:
+    dd9f  01 20 03   LXI BC, 0320               ; Skip printing the error code, pad with 3 spaces
+    dda2  cd 27 da   CALL PRINT_CHAR_BLOCK (da27)
+
+DUMP_LINE_2:
+    dda5  11 a0 bf   LXI DE, LINE_BUF (bfa0)    ; Load the first char in the line
+    dda8  1a         LDAX DE
+
+    dda9  fe 3b      CPI A, 3b                  ; Lines that start with ';' are comments
+    ddab  01 20 11   LXI BC, 1120               ; Skip dumping binary codes (print 17 spaces instead)
+    ddae  ca b8 dd   JZ DUMP_LINE_3 (ddb8)
+
+    ddb1  af         XRA A                      ; Clear the bytes counter
+    ddb2  32 93 bf   STA BYTES_TO_DUMP (bf93)
+
+    ddb5  cd dd dd   CALL DUMP_LINE_OPCODES (dddd)  ; Dump instruction target address and opcode
+
+DUMP_LINE_3:
+    ddb8  eb         XCHG                       ; Print trailing spaces (previous instruction must calculate count)
+    ddb9  cd 27 da   CALL PRINT_CHAR_BLOCK (da27)
+
+    ddbc  cd 18 f8   CALL PRINT_STRING (f818)   ; Print the original source code line after
+
+DUMP_LINE_4:
+    ddbf  3a 93 bf   LDA BYTES_TO_DUMP (bf93)   ; Check if all the bytes were dumped
+    ddc2  b7         ORA A
+    ddc3  c8         RZ
+
+    ddc4  cd d3 dd   CALL PRINT_CR_LF (ddd3)    ; If not, print the new line
+
+    ddc7  01 20 03   LXI BC, 0320               ; Print 3 spaces
+    ddca  cd 27 da   CALL PRINT_CHAR_BLOCK (da27)
+
+    ddcd  cd dd dd   CALL DUMP_LINE_OPCODES (dddd)  ; Print the remaining bytes
+
+    ddd0  c3 bf dd   JMP DUMP_LINE_4 (ddbf)
+
 
 ; Print 0x0d and 0x0a chars
 PRINT_CR_LF:
@@ -1499,70 +1577,97 @@ PRINT_CR_LF:
     ddd8  0e 0a      MVI C, 0a
     ddda  c3 50 de   JMP PUT_CHAR (de50)
 
-; ?????
-; Return ??? in B, and ??? in C
-????:
-dddd  3a 89 bf   LDA OPCODE_ARG_TYPE (bf89)
-dde0  fe 0c      CPI A, 0c
-dde2  c8         RZ
-dde3  fe 0d      CPI A, 0d
-dde5  c8         RZ
 
-dde6  2a 87 bf   LHLD CUR_OPCODE_TARGET_ADDR (bf87)
-dde9  fe 11      CPI A, 11
-ddeb  ca 3d de   JZ de3d
+; Dump the line bytecode
+; The function prints:
+; - current storage address
+; - up to 4 bytes of instruction opcodes or DB/DW data
+; 
+; The function has a few special cases:
+; - ORG and END instructions do not generate any code, and therefore dumping byte code is skipped
+; - EQU instruction does not generate any code as well, but it dumps the label value instead
+; - DS directive prints new target address and address offset/difference
+;
+; Return:
+; B - number of spaces to pad for correct text placement
+; C - does not change, expect to be 0x20 (' ') when function is called
+DUMP_LINE_OPCODES:
+    dddd  3a 89 bf   LDA OPCODE_ARG_TYPE (bf89) ; Check instruction type
+    dde0  fe 0c      CPI A, 0c                  ; ORG and END directives do not generate any code - skip printing
+    dde2  c8         RZ                         ; opcodes
+    dde3  fe 0d      CPI A, 0d
+    dde5  c8         RZ
 
-ddee  f5         PUSH PSW
-ddef  d5         PUSH DE
-ddf0  eb         XCHG
-ddf1  2a 98 bf   LHLD ORG_OFFSET (bf98)
-ddf4  19         DAD DE
-ddf5  cd 48 de   CALL PRINT_WORD_HEX (de48)
-ddf8  eb         XCHG
-ddf9  d1         POP DE
-ddfa  f1         POP PSW
-ddfb  fe 10      CPI A, 10
-ddfd  ca 24 de   JZ de24
-de00  06 04      MVI B, 04
-????:
-de02  3a 85 bf   LDA CUR_OUTPUT_PTR (bf85)
-de05  95         SUB L
-de06  ca 1c de   JZ de1c
-de09  7e         MOV A, M
-de0a  23         INX HL
-de0b  cd 42 de   CALL PRINT_BYTE_HEX (de42)
-de0e  cd 50 de   CALL PUT_CHAR (de50)
-de11  05         DCR B
-de12  c2 02 de   JNZ de02
-de15  3a 85 bf   LDA CUR_OUTPUT_PTR (bf85)
-de18  95         SUB L
-de19  22 87 bf   SHLD CUR_OPCODE_TARGET_ADDR (bf87)
-????:
-de1c  32 93 bf   STA bf93
-de1f  78         MOV A, B
-de20  07         RLC
-de21  80         ADD B
-de22  47         MOV B, A
-de23  c9         RET
+    dde6  2a 87 bf   LHLD CUR_OPCODE_TARGET_ADDR (bf87) ; EQU does not generate code as well - skip printing opcode
+    dde9  fe 11      CPI A, 11
+    ddeb  ca 3d de   JZ DUMP_LINE_OPCODES_EQU (de3d)
 
-????:
+    ddee  f5         PUSH PSW                   ; Load the target storage address to DE
+    ddef  d5         PUSH DE
+    ddf0  eb         XCHG
+
+    ddf1  2a 98 bf   LHLD ORG_OFFSET (bf98)     ; Apply the ORG offset
+    ddf4  19         DAD DE
+
+    ddf5  cd 48 de   CALL PRINT_WORD_HEX (de48) ; Print the storage address of the instruction
+
+    ddf8  eb         XCHG                       ; Restore target address in HL
+    ddf9  d1         POP DE
+    ddfa  f1         POP PSW
+
+    ddfb  fe 10      CPI A, 10                  ; DS directive (instruction type 0x10) has special printer
+    ddfd  ca 24 de   JZ DUMP_LINE_OPCODES_DS (de24)
+
+    de00  06 04      MVI B, 04                  ; The function prints up to 4 bytes in a line
+
+DUMP_LINE_OPCODES_LOOP:
+    de02  3a 85 bf   LDA CUR_OUTPUT_PTR (bf85)  ; Calculate difference between instruction address and currently
+    de05  95         SUB L                      ; printed byte (literally calculate number of bytes to print)
+    de06  ca 1c de   JZ DUMP_LINE_OPCODES_EXIT (de1c)   ; Skip printing if no bytes left
+
+    de09  7e         MOV A, M                   ; Load the next opcode byte
+    de0a  23         INX HL
+
+    de0b  cd 42 de   CALL PRINT_BYTE_HEX (de42) ; Print the opcode byte
+
+    de0e  cd 50 de   CALL PUT_CHAR (de50)       ; Print the space
+
+    de11  05         DCR B                      ; Repeat B times
+    de12  c2 02 de   JNZ DUMP_LINE_OPCODES_LOOP (de02)
+
+    de15  3a 85 bf   LDA CUR_OUTPUT_PTR (bf85)  ; Calculate number of remaining bytes in a line (e.g. DB directive
+    de18  95         SUB L                      ; may have more bytes that can be printed in a single line)
+
+    de19  22 87 bf   SHLD CUR_OPCODE_TARGET_ADDR (bf87) ; Save the next address to dump
+
+DUMP_LINE_OPCODES_EXIT:
+    de1c  32 93 bf   STA BYTES_TO_DUMP (bf93)   ; Save number of bytes remaining in the line
+
+    de1f  78         MOV A, B                   ; Multiply B by 3, which means number of padding spaces
+    de20  07         RLC
+    de21  80         ADD B
+    de22  47         MOV B, A
+
+    de23  c9         RET
+
+DUMP_LINE_OPCODES_DS:
     de24  0e 28      MVI C, 28                  ; Print '('
     de26  cd 50 de   CALL PUT_CHAR (de50)
     de29  0e 20      MVI C, 20                  ; Print ' '
     de2b  cd 50 de   CALL PUT_CHAR (de50)
 
-    de2e  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a)   ; ????? Print 0xbf8a
+    de2e  2a 8a bf   LHLD OPCODE_REGISTER_ARG_LOW (bf8a)   ; Print parsed offset value
     de31  cd 48 de   CALL PRINT_WORD_HEX (de48)
 
     de34  0e 29      MVI C, 29                  ; Print ')'
     de36  cd 50 de   CALL PUT_CHAR (de50)
 
-    de39  01 20 04   LXI BC, 0420               ; ?????
+    de39  01 20 04   LXI BC, 0420               ; Set number of spaces till the instruction text
     de3c  c9         RET
 
-????:
-de3d  06 0c      MVI B, 0c
-de3f  c3 48 de   JMP PRINT_WORD_HEX (de48)
+DUMP_LINE_OPCODES_EQU:
+    de3d  06 0c      MVI B, 0c                  ; Pad EQU value with 12 spaces
+    de3f  c3 48 de   JMP PRINT_WORD_HEX (de48)
 
 ; Print byte as hex
 PRINT_BYTE_HEX:
