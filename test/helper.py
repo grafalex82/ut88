@@ -118,31 +118,31 @@ class EmulatedInstanceWithKeyboard(EmulatedInstance):
 
                 ctrl_str = "Ctrl-" if ctrl_key else ""
                 if ch == '\r' or ch == '\n':
-                    print(f"Emulating {ctrl_str}Return")
+                    print(f"Emulating keypress: {ctrl_str}Return")
                     kbd.emulate_special_key_press(pygame.K_RETURN, ctrl_key)
                 elif ch == '\x0c':
-                    print(f"Emulating {ctrl_str}Home")
+                    print(f"Emulating keypress: {ctrl_str}Home")
                     kbd.emulate_special_key_press(pygame.K_HOME, ctrl_key)
                 elif ch == '\x1f':
-                    print(f"Emulating {ctrl_str}Clear Screen")
+                    print(f"Emulating keypress: {ctrl_str}Clear Screen")
                     kbd.emulate_special_key_press(pygame.K_DELETE, ctrl_key)
                 elif ch == '\x08':
-                    print(f"Emulating {ctrl_str}Left")
+                    print(f"Emulating keypress: {ctrl_str}Left")
                     kbd.emulate_special_key_press(pygame.K_LEFT, ctrl_key)
                 elif ch == '\x18':
-                    print(f"Emulating {ctrl_str}Right")
+                    print(f"Emulating keypress: {ctrl_str}Right")
                     kbd.emulate_special_key_press(pygame.K_RIGHT, ctrl_key)
                 elif ch == '\x19':
-                    print(f"Emulating {ctrl_str}Up")
+                    print(f"Emulating keypress: {ctrl_str}Up")
                     kbd.emulate_special_key_press(pygame.K_UP, ctrl_key)
                 elif ch == '\x1a':
-                    print(f"Emulating {ctrl_str}Down")
+                    print(f"Emulating keypress: {ctrl_str}Down")
                     kbd.emulate_special_key_press(pygame.K_DOWN, ctrl_key)
                 elif ctrl_key and (chd >= 0x41 and chd <= 0x5f or chd == 0x20):
-                    print(f"Emulating Ctrl-{ch}")
+                    print(f"Emulating keypress: Ctrl-{ch}")
                     kbd.emulate_ctrl_key_press(ch)
                 else:
-                    print(f"Emulating '{ch}'")
+                    print(f"Emulating keypress: '{ch}'")
                     kbd.emulate_key_press(ch)
 
                 ctrl_key = False
@@ -150,7 +150,7 @@ class EmulatedInstanceWithKeyboard(EmulatedInstance):
 
             # Further calls of this generator will produce keyboard release
             while True:
-                print(f"Emulating no press")
+                print(f"Emulating key release")
                 kbd.emulate_key_press(None)
                 yield
 
