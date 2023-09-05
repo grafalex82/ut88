@@ -446,5 +446,3 @@ def test_labels_summary(ut88):
     assert "RR    = A001"
     assert "ERRORS DETECTED:00" in text         # No errors detected
     assert "A001/A001/" in text                 # Last target and storage addresses are correct
-
-    assert False
