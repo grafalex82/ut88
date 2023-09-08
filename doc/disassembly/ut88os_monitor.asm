@@ -39,7 +39,7 @@
 ;   - Command M: View and edit memory
 ;       M <addr>                                - View and edit memory starting addr
 ;   - Command K: Calculate and print CRC for a memory range
-;       L <addr1>, <addr2>                      - Calculate CRC for addr1-addr2 range
+;       K <addr1>, <addr2>                      - Calculate CRC for addr1-addr2 range
 ;   - Command C: Memory copy and compare
 ;       C <src_start>, <src_end>, <dst_start>   - Compare memory data between two ranges
 ;       CY <src_start>, <src_end>, <dst_start>  - Copy memory from one memory range to another
@@ -53,7 +53,7 @@
 ;   - Command S: Search string in a memory range
 ;       S maddr1, maddr2, saddr1, saddr2        - Search string located saddr1-saddr2 in a memory range maddr1-maddr2
 ;       S maddr1, maddr2, '<string>'            - Search string specified in single quotes in maddr1-maddr2 memory
-;       S maddr1, maddr2, &<hex>, <hex>,...     - Search string specified in a form of hex sequence in specified
+;       S maddr1, maddr2, &<hex>, <hex>,...     - Search string specified in a form of hex sequence in specified range
 ;   - Command L: List the text from the memory
 ;       L <addr1>[, <addr2>]                    - List text located at addr1-addr2 range
 ;

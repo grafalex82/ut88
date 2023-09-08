@@ -311,13 +311,13 @@ Examples of Radio-86RK games that run on UT-88 are Treasure game ([Disassembly](
 - "Micron" full screen text editor
 - "Micron" assembler
 
-The OS does not offer a specific API layering (like CP/M does). It is still a mix of hardware related functions (keyboard, display, tape recorder), middleware (e.g. line editing function), and high level programs (e.g. interactive assembler). At the same time text editor and assembler are separate programs that can potentially work on other systems.
+The OS does not offer a specific API layering (like CP/M does). It is still a mix of hardware related functions (keyboard, display, tape recorder), middleware (e.g. line editing function), and high level programs (e.g. interactive assembler). At the same time text editor and assembler are separate programs that can potentially work on other systems with minor modifications.
 
-The UT-88 comes as a [single bootstrap binary](tapes/UT88.rku). It assumes that user will switch off Monitor ROM (and other ROMs if any), and enable RAM at the same addresses instead. When the system is reconfigured (on the fly), the bootstrap program will copy OS parts to their dedicated locations. 
+The UT-88 comes as a [single bootstrap binary](tapes/UT88.rku). It assumes that the user will switch off Monitor ROM (and other ROMs, if any), and enable RAM at the same addresses instead. When the system is reconfigured (on the fly), the bootstrap program will copy OS parts to their dedicated locations. 
 
 The following describes memory map in UT-88 OS configuration (assuming OS parts are already loaded by the bootstrap program):
 - `0x0000` - `0xbfff` is general purpose RAM. Some of the parts of this range have special meaning:
-  - `0x3000` - `0x9fff` - text area. Used by Editor for the edited text, and by Assembler for source code.
+  - `0x3000` - `0x9fff` - text area. Used by Editor for the edited text, and by Assemblers for source code.
   - `0xa000` - `0xbfff` - default area for binary code produced by assembler
 - `0xc000`-`0xcaff` - additional part of the Monitor, including some [additional functions](doc/disassembly/ut88os_monitor2.asm), [interactive assembler/disassembler](doc/disassembly/ut88os_asm_disasm.asm), and some other development tools.
 - `0xcb00`-`0xd7ff` - ['Micron' text editor](doc/disassembly/ut88os_editor.asm)
@@ -327,9 +327,11 @@ The following describes memory map in UT-88 OS configuration (assuming OS parts 
 - `0xf600`-`0xf7ff` - Monitor and other UT-88 OS program variables
 - `0xf800`-`0xffff` - [Monitor main part](doc/disassembly/ut88os_monitor.asm), including hardware function, and basic commands processing.
 
-The documentation on the UT-88 OS is very poor. First it has a lot of mistakes in the binary code (0x3c00-0x3fff range of the [UT-88 OS binary code](doc/scans/UT44.djvu) is misplaced with a similar range of [CP/M-35 binary](doc/scans/UT56.djvu)). Some code is obviously wrong (incorrect addresses or values used) and simply will not work out of the box. 
+The documentation on the UT-88 OS is very poor. Programs and commands description is too brief, so it makes almost impossible to understand how to use program or command. Some statements do not match the actually implemeted behavior. There are number of mistakes in command names, key combinations or values through the text.
 
-Second, programs and commands description is too brief, so it makes almost impossible to understand how to use program or command. Some statements do not match the actually implemeted behavior. There are number of mistakes in command names, key combinations or values through the text.
+Published binary codes also contains a lot of mistakes (for example 0x3c00-0x3fff range of the [UT-88 OS binary code](doc/scans/UT44.djvu) is misplaced with a similar range of [CP/M-35 binary](doc/scans/UT56.djvu)). Some code is obviously wrong (incorrect addresses or values used) and simply will not work out of the box. 
+
+Finally there are some incompatibilities between some of the OS components, which makes an impression that the UT-88 is a quickly prepared compilation of several separate programs, that was published without an intensive testing.
 
 The following subchapters describe UT-88 OS software in detail.
 
@@ -348,7 +350,11 @@ The API is narrower, but main entry points remain the same:
 - `0xf815`    - Print a byte in a 2-digit hexadecimal form (A - byte to print)
 - `0xf818`    - print a NULL terminated string at cursor position (HL - pointer to the string)
 
-Character output function is slightly less featured, compared to MonitorF, and does not support Esc-Y cursor positioning sequence. Scrolling the screen when cursor moves down from the last line is working same way as in MonitorF.
+Character output function is slightly less featured, compared to MonitorF, and does not support Esc-Y cursor positioning sequence. Scrolling the screen when cursor moves further down beyond the last line is working same way as in MonitorF. 
+
+There are 2 scroll modes supported:
+ - continuous scroll (similar to MonitorF's one): when the screen is fully filled, it is scrolled one line up, and new line is printed in the freed last line
+ - page turning: when the screen is filled, the Monitor waits for a key press, then clears the page so that new lines are printed on a blank screen.
 
 Character output function support several control symbols:
 - `0x08`  - Move cursor 1 position left
@@ -358,6 +364,124 @@ Character output function support several control symbols:
 - `0x1a`  - Move cursor 1 line down
 - `0x1f`  - Clear screen
 
+There is no Esc-Y direct cursor positioning sequence. Instead, some programs use 0x0c (home cursor) control symbol, followed by certain number of 0x1a (cursor down) and 0x18 (cursor right) chars.
+
+The following commands are supported by the Monitor:
+- Memory commands:
+  - Command M: View and edit memory
+      M `<addr>`                                    - View and edit memory starting `addr`
+  - Command K: Calculate and print CRC for a memory range
+      K `<addr1>`, `<addr2>`                        - Calculate CRC for `addr1`-`addr2` range
+  - Command C: Memory copy and compare
+      C `<src_start>`, `<src_end>`, `<dst_start>`   - Compare memory data between two ranges
+      CY `<src_start>`, `<src_end>`, `<dst_start>`  - Copy memory from one memory range to another
+  - Command F: Fill or verify memory range
+      FY `<addr1>`, `<addr2>`, `<constant>`         - Fill memory range with the constant
+      F `<addr1>`, `<addr2>`, `<constant>`          - Compare memory range with the constant, report differences
+  - Command D: Dump the memory
+      D                                             - Dump 128-byte chunk of memory, starting the user program HL
+      D`<start>`                                    - Dump 128-byte chunk, starting the address provided
+      D`<start>`,`<end>`                            - Dump memory for the specified memory range
+  - Command S: Search string in a memory range
+      S `maddr1`, `maddr2`, `saddr1`, `saddr2`      - Search string located `saddr1`-`saddr2` in a memory range `maddr1`-`maddr2`
+      S `maddr1`, `maddr2`, '`<string>`'            - Search string specified in single quotes in `maddr1`-`maddr2` memory
+      S `maddr1`, `maddr2`, &`<hex>`, `<hex>`,...   - Search string specified in a form of hex sequence in specified memory range
+  - Command L: List the text from the memory
+      L `<addr1>`[, `<addr2>`]                      - List text located at `addr1`-`addr2` range
+- Tape recorder commands:
+  - Command O: Output data to the tape
+      O `<addr1>`,`<addr2>`,`<offset>`[,`<speed>`]  - Output data for `addr1`-`addr2` range, at specified speed. `offset` parameter is not used
+  - Commands I and IY: input data from the tape (IY - data input, I - data verification)
+      I/IY                                          - Data start and end addresses are stored on the tape
+      I/IY`<addr1>`                                 - Search for `addr1` signature on tape, then read `addr2` from the tape
+      I/IY`<addr1>`,`<addr2>`                       - Search `addr1`/`addr2` sequence on the tape
+      I/IY`<space>``<addr1>`                        - Tape data is loaded to address provided as a parameter
+      I/IY`<space>``<addr1>`,`<addr2>`              - Data start and end addresses are specified as parameters. `addr2` can be used to limit amount of data to be loaded.
+  - Command V: Measure tape delay constant
+- Mode and helper commands:
+  - Command R: enable or disable scroll
+      R`<any symbol>`                               - enable scroll
+      R                                             - disable scroll (clear screen if full page is filled)
+  - Command T: trace the command line
+      T`<string>`                                   - print command line string in a hexadecimal form
+  - Command H: Calculate sum and difference between the two 16-bit arguments
+      H `<arg1>`, `<arg2>`                          - Calculate and print sum and difference of 2 args
+- Program execution commands:
+  - Command G: Run user program
+      G `<addr>`                                    - Run user program from `<addr>`
+      GY `<addr>`[,`<bp1>`[,`<bp2>`[,`<cnt>`]]]     - Run user program from `<addr>`, set up to two breakpoints. This command also sets/restores registers previously set by the Command X (edit registers) or captured during breakpoint handling. 
+  - Command X: View and edit CPU registers
+  - Command J: Quick jump
+      J`<addr>`                                     - Set the quick jump address
+      J                                             - Execute from the previously set quick jump address
+- Other programs execution commands (see respective descriptions below)
+  - Command E: run Micron editor
+  - Command B: run Micron assembler
+  - Interactive assembler commands:
+    - Command A: assembler
+    - Command N: interactive assembler
+    - Command @: assembler second pass
+    - Command W: disassembler
+    - Command Z: clear reference/label table
+    - Command P: Relocate program
+
+Refer to a respective monitor disassembly ([1](doc/disassembly/ut88os_monitor.asm), [2](doc/disassembly/ut88os_monitor2.asm)) for a more detailed description of the  commands' parameters and algorithm.
+
+As soon as Monitor is providing hardware abstraction facilities (display printing, keyboard scanning, tape input/output), it worth noting that there are 2 major inconsistencies compared to the original UT-88 MonitorF.
+
+First, the original display module design offer a single 2k video RAM at `0xe800`-`0xef00` range. Each byte's lower 7 bits represent a char code, while the MSB is responsible for symbol highlighting (inversion). As per the UT-88 OS Monitor code, it expects a different hardware design: `0xe800`-`0xef00` range is used for symbol charcodes only, while a parallel range `0xe000`-`0xe700` is used for symbol attributes (only MSB is used, other 7 bits are ignored). There were no alternate schematics published in the magazine, so the published code may not work correctly on the official hardware (though this alternate schematics is implemented in this emulator).
+
+Second issue is related to the Ctrl key combinations. When Ctrl-`<char>` is pressed, the original MonitorF produces the `<char>`-`0x40` code (so that returned char code is in `0x01`-`0x1f` range). On the good side this provides a single keycode for Ctrl-char key combination without having to perform additional actions. On the other side this does not allow distinguishing between, for example, Ctrl-H key combination and Left arrow key press. Surprisingly some of the UT-88 parts (including Monitor itself, but not including Micron assembler) expect a different behavior - symbol keys are returned as is (in 0x41-0x5f range), and additional code reads the keyboard's port C to check whether Ctrl key is pressed. 
+
+
+### Built-it assembler and disassembler
+
+The UT-88 OS comes with a set of development tools, built around a simple assembler and disassembler, and share some internal functions and approaches. The tools are described in details in the [assembler/disassembler disassembly](doc/disassembly/ut88os_asm_disasm.asm).
+
+The package includes:
+- The assembler that compiles source code text located at `0x3000`-`0x9fff`, and stores resulting binary code to `0xa000`+ location. It offers pretty simple syntax, but it should be sufficient for most of the cases. The assembler allows compiling all the i8080 instructions. Immediate values can be presented as decimals or hex numbers, char symbols, or even simple math expressions with + and - operations between them. 
+
+The assembler supports 2 pass processing. The first pass performs the actual compilation, the second is responsible for substituting label references. This makes possible reference labels that are defined later in the code. This, in turn, requires a special way for storing label values between passes. To simplify things, this assembler version uses a concept of numbered labels, rather than named ones. Each label is used as `@<lbl>` syntax, where `lbl` is a 2-digit hex number. The labels are stored in the `0xf400`-`0xf600` dedicated range (2 bytes per label, each record corresponds a label, address calculated based on the label number). 
+
+It is possible to run first or second pass separately, or both passes together. The Command Z allows clearing the labels table befor the compilation or view its values between passes.
+
+- Interactive assembler uses the same compilation engine, but source code is entered interactively line by line. The compilation is also performed in two passes. The used may select doing first, second, or both.
+
+- Interactive disassembler performs disassembly of specified memory range. The disassembly listing is displayed to the user page by page. The program can display up to 2 pages of disassembled program on the screen - on the left and right part of the screen. After each displayed page the disassembler waits for the user input. '1' prints the next page on the left part of the screen, '2' prints the page on the right, a space bar prints next page on the opposite side compared to the previous.
+
+- Program relocator is a special tool that allows relocating a program from one address range to another. The relocator looks to 2- and 3-byte instructions, and if they reference a source memort range these instructions are corrected to the target range.
+
+The relocator always work with the working copy, so that modified code does not impact the source program. Also, the relocator may be used to prepare the relocated program to be used in a memory range, that probably does not exist on this computer. This adds a target memory range to the previously described source and working ranges. This causes usage of up to 5 parameters of the relocator program. Refer to the [relocator command description](doc/disassembly/ut88os_asm_disasm.asm) in the disassembly for more details.
+
+Described tools are accessed using the following monitor commands:
+
+- Command A - Assembler
+  - A[@] [`target start addr`]    - compile text at `0x3000`-`0x9fff` to `0xa000` (or other address, if specified).
+                                  @ modifier runs 2nd pass also (by default only 1st pass is executed)
+
+- Command N - Interactive assembler
+  - N[@] [`addr`]                 - enter program line by line, store compiled program at `0xa000` (or other address if specified). 
+                                  @ modifier runs 2nd pass also after all input lines are entered.
+
+- Command @ - Run assembler 2nd pass explicitly
+  - @ [`addr1`, `addr2`]          - Run assembler 2nd pass for address range (or `0xa000`-`0xaffe`)
+
+- Command W - Interactive disassembler
+  - W <`start`>[, <`end>`]        - Run interactive disassembler for memory range 
+
+- Command Z - View or clean labels area
+  - Z                             - Show `0xf400`-`0xf600` labels area, list current values of each label
+  - Z0                            - Zero all labels
+
+- Command P - relocate program from one memory range to another
+  - P[N] `<w1>`,`<w2>`,`<s1>`,`<s2>`,`<t>`  - Relocate program from `s1`-`s2` range to the `<t>` target address range, using `w1`-`w2` as a working copy (source program is not modified, only a working copy is modified)
+  - P@ `<s1>`,`<s2>`,`<t>`                  - Adjust addresses in `0xf400`-`0xf600` labels area
+
+
+Refer to the [assembler tools disassembly](doc/disassembly/ut88os_asm_disasm.asm) for assembler syntax details, command arguments descriptions, and implementation notes
+
+
+### 'Micron' Editor
 
 
 
