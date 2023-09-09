@@ -161,6 +161,7 @@
 ; - bfe0 - working buffer for parsing instruction mnemonic or instruction arguments (6 bytes)
 
 ; Entry point
+COMMAND_B_MICRON_ASSEMBLER:
 START:
     d800  31 80 bf   LXI SP, bf80               ; Set up own stack
 

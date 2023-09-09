@@ -530,6 +530,34 @@ Refer to the [editor disassembly](doc/disassembly/ut88os_editor.asm) for more de
 
 ### 'Micron' assembler
 
+This program is another assembler utility in the UT-88 OS Bundle. It provides little bit more mature assembling
+facilities, compared to built-in assembler, such as more precise control on the target address (using ORG and DS directives), and labels improvements. Unlike built-in version of the assembler which is using numbered labels, this version allows defining 6-char long symbolic labels, which definitely improves source code readability. As for the general i8080 assembler syntax it provides pretty much standard capabilities of expressions, such as using decimal and hex digits, symbol char codes, and $ as current address, etc.
+
+On start the program expects the User to enter working mode. The following working modes are supported:
+- '1' - silent mode. The source code is simply compiled. No detailed error reporting is provided.
+- '2' - verbose mode. The compiler dumps the source code, and annotates every line with the obtained target address, byte code generated, EQU and label values. In case of a compilation error, the dumped line will contain error code.
+- '3' - label values. Same as silent mode, but dumps label and EQU values
+
+Regardless of the mode, the program dumps general stats of the compiled program. The stats include:
+- Number of detected errors
+- Compiled program last byte execution address
+- Compiled program last byte storage address
+
+In the verbose mode the assembler provides error codes if any syntax errors are found during the compilation. The error code is a bitmask of possible errors:
+- 0x01    - label problem (e.g. double label definition)
+- 0x02    - label not found
+- 0x04    - unexpected symbol error (e.g. wait a char, but digit is found, or invalid instruction mnemonic)
+- 0x08    - syntax error (incorrect expression structure, unexpected EOL, missing mandatory arguments, etc)
+- 0x10    - label related syntax error (e.g. label is not followed by a colon)
+
+Compilation is performed in 2 passes:
+- 1st pass is responsible for calculating label addresses, and storing them into labels table
+- 2nd pass is responsible for actual code generation, all expression values may be calculated with the correct label values set during the 1st pass
+
+There is no way to contain number of passes to execute (unlike built-in assembler). Both passes are executed during the compile process.
+
+Detailed description of the assembler syntax, as well as implementation details can be found in the [assembler disassembly](doc/disassembly/ut88os_micron_asm.asm).
+
 
 
 ## CP/M Operating System and Quasi Disk

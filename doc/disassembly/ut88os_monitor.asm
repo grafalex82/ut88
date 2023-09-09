@@ -2278,7 +2278,7 @@ COMMANDS_TABLE:
     ffdb  5a eb c1      db 'Z', COMMAND_Z_ZERO_RANGE (c1eb)
     ffde  50 27 c2      db 'P', COMMAND_P_RELOCATE (c227)
     ffe1  1f e9 f9      db 0x1f, f9e9
-    ffe4  42 00 d8      db 'B', d800
+    ffe4  42 00 d8      db 'B', COMMAND_B_MICRON_ASSEMBLER (d800)
     ffe7  00            db 0x00
 
 REGISTER_LETTERS:
