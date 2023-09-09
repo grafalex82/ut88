@@ -433,6 +433,7 @@ First, the original display module design offer a single 2k video RAM at `0xe800
 
 Second issue is related to the Ctrl key combinations. When Ctrl-`<char>` is pressed, the original MonitorF produces the `<char>`-`0x40` code (so that returned char code is in `0x01`-`0x1f` range). On the good side this provides a single keycode for Ctrl-char key combination without having to perform additional actions. On the other side this does not allow distinguishing between, for example, Ctrl-H key combination and Left arrow key press. Surprisingly some of the UT-88 parts (including Monitor itself, but not including Micron assembler) expect a different behavior - symbol keys are returned as is (in 0x41-0x5f range), and additional code reads the keyboard's port C to check whether Ctrl key is pressed. 
 
+The emulator is using [fixed version](tapes/ut88os_monitor.rku) of the editor by default. [Difference with original version](tapes/ut88os_monitor.diff) are explained in details.
 
 ### Built-it assembler and disassembler
 
@@ -482,6 +483,52 @@ Refer to the [assembler tools disassembly](doc/disassembly/ut88os_asm_disasm.asm
 
 
 ### 'Micron' Editor
+
+The 'Micron' Editor application comes as a part of UT-88 OS package and offers the following features:
+- Full screen text editing
+- Supports editing up to 28k of text (`0x3000`-`0x9fff` memory range), each line up to 63 chars. Lines split with \r char, text ends with a symbol with code >= `0x80`
+- Insert or overwrite mode
+- Insert/Delete char under cursor with Ctrl-Left/Right. Insert/Delete a line with Ctrl-A/Ctrl-D key combinations.
+- Handy navigation with arrow buttons, as well as Page Up/Down (with Ctrl-Up/Down keys)
+- Search a substring in the text
+- Selectable tab size (4 or 8 chars). Tabs are entered with Ctrl-Space key combination.
+- Input and output text from/to the tape recorder, verify text in memory against the tape
+- Appending a file from tape to the text currently loaded in memory
+
+There are no features, that offer a typical modern editor:
+- Copy/Paste
+- Line wrapping
+- Undo/Redo
+
+When running the Editor program it starts with a prompt, and waits for a command. It is possible to load an existing text from tape (Ctrl-I), or create a new one (Ctrl-N). If the text was already loaded in any other way, the User can switch from prompt to text editing mode using Up or Down keys. 
+
+Due to performance reasons, the editor works with one line at a time. When line editing is finished, the line is submitted to the text. Unfortunately there is no way to split a single line into several lines.
+
+Keys and key combinations that are supported in the Editor:
+- Alpha-numeric or symbol keys perform entering a character to the text. Depending on insert/overwrite mode a new symbol will be inserted at the cursor position (and remaining of the line will be shifted right), or the new char will overwrite symbol at cursor position (line size will remain the same). Ctrl-Y key combination toggles insert/overwrite mode.
+- Ctrl-Space key combination add spaces up to the next 4-char or 8-char tab stop (Ctrl-W command toggles the tab width)
+- Ctrl-Left/Ctrl-Right perform deletion/insertion of a symbol at cursor position. Insertion is performed even in overwrite mode.
+- Up/Down/Left/Right arrows move the cursor on the screen. If cursor reaches top or bottom of the screen it is   scrolled for 1 line.
+- Ctrl-Up/Ctrl-Down performs page up or down
+- Ctrl-L searches a substring in entire text file
+- Ctrl-X searches a substring from the current line till the end of the file
+- Ctrl-D is intended to delete one or more lines. The command works only at the beginning of the line. When   Ctrl-D combination is pressed, the line is marked with # symbol indicating a range start. User may navigate to a point later in the file with Up/Down arrows or Ctrl-Up/Down keys selecting the end range to delete.  It is possible to select only entire lines, deleting part of the line with Ctrl-D is not possible. When the range is selected another Ctrl-D press perform the deletion. Clear Screen button exits the range selection, and cancels the mode.
+- Ctrl-A adds a new line after the current line. The command works only at the beginning of the line. When line is added, the user can enter text to a new line. The command allows adding multiple lines. Return key submits the added line. Clear Screen key exits the mode.
+- Ctrl-T command is similar, but text is added at the end of the text file.
+- Ctrl-N creates a new empty text file. Previous text is cleared.
+- Ctrl-F prints the current text file size and free memory stats
+- Ctrl-O outputs current text to the tape. User enters the file name, which is stored to the tape in the file header. Storage format is slightly different, compared to the format used by Monitor. This makes impossible to load in Monitor text files exported from the Editor. And vice versa, loading binary data as a text is not allowed. The format uses a different pilot tone so that text and binary can be distinguished audibly.
+- Ctrl-I loads a text from the tape. The user enters expected file name, and the function will search the matched file name on the tape.
+- Ctrl-V is similar to the previous command, but instead of loading a text data from the tape, it verifies that text in memory matches the text on the tape.
+- Ctrl-M appends a file on tape to the current text.
+- Ctrl-R toggles the default Monitor's tape delay constants with a shorter ones, so that text is saved at a faster speed.
+- Clear Screen key exits to the Monitor
+
+Perhaps this editor is a quick and dirty port from some other system. The editor is supposed to run on a system with a 32-line screen, while UT-88 provides only 28-line screen. This causes very odd drawing, which pretty much impossible to use for a real text editing. Number of places had to be corrected to run the editor on the UT-88 display. Another compatibility issue is how Ctrl symbols are handled by the monitor. The editor expects a symbol to be returned normally (in a 0x20-0x7f range), and reading Keyboard Port C allows checking Ctrl key state. Since the Monitor behaves differently, the editor code requires patched Monitor that return normal char codes even when pressed in combination with Ctrl.
+
+Refer to the [editor disassembly](doc/disassembly/ut88os_editor.asm) for more detailed description. The emulator is using [fixed version](tapes/ut88os_editor.rku) of the editor by default. [Difference with original version](tapes/ut88os_editor.diff) are explained in details.
+
+### 'Micron' assembler
 
 
 

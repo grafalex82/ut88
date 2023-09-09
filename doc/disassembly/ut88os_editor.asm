@@ -56,7 +56,7 @@
 ; - Ctrl-N creates a new empty text file. Previous text is cleared.
 ; - Ctrl-F prints the current text file size and free memory stats
 ; - Ctrl-O outputs current text to the tape. User enters the file name, which is stored to the tape in the file
-;   header. Storage format is slightly different, compared to format used by Monitor. This, which makes impossible
+;   header. Storage format is slightly different, compared to format used by Monitor. This makes impossible
 ;   to load in Monitor text files exported from the Editor. And vice versa, loading binary data as a text is not
 ;   allowed. The format uses a different pilot tone so that text and binary can be distinguished audibly.
 ; - Ctrl-I loads a text from the tape. The user enters expected file name, and the function will search the
