@@ -303,6 +303,13 @@ Additional RAM allows running programs in other address ranges. It is claimed th
 
 Examples of Radio-86RK games that run on UT-88 are Treasure game ([Disassembly](doc/disassembly/klad.asm)), and 2048 game ([Disassembly](doc/disassembly/2048.asm)) which was (surprinsingly) developed recently.
 
+## ROM flasher addon
+
+One of the addons offered in the magazine was a ROM flasher - a i8255 based device that allows programming 573RF2 and 573RF5 2k ROM chips (both are claimed as Intel 2716 analogs). 
+
+The [device schematics](doc/scans/UT60.djvu) is pretty straightforward, but it worth noting that CE and OE lines were interchanged, compared to how they are referenced in the code. The device is supported with a [flasher program](doc/disassembly/flasher.asm) that allows reading and writing the ROM. 
+
+
 ## UT-88 OS
 
 64k RAM configuration with some minor modifications allows running so called UT-88 OS. It is presented as an operating system specifically designed for UT-88. In fact this is not an operating system in classical meaning, but rather a package of programs:
