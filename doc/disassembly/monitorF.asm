@@ -68,10 +68,11 @@
 ;   - R <start>, <end>, <dst>   - Import <start>-<end> data range from external ROM
 ;
 ; The last command requires connection of an external ROM via additional i8255 interface, where
-; two ports output the address to the ROM, and 3rd ports input the data. Unfortunately this ROM
-; and its connection was never described in the magazine. Perhaps this part of the Monitor was
-; stolen from the Radio-86RK computer, that shares most of the schematics and software with UT-88.
-; Anyhow, the code in Monitor F does not look correct.
+; ports B and C output the address to the ROM, and port A inputs the data. Unfortunately the implementation
+; somewhat contradicts with the scuematics published 2 years later. First, initialization of the i8255 port
+; is obviously does not match the schematics. Second, is that implementation in this monitor can read only
+; up to 256 bytes from the ROM, while the ROM itself allows reading 2k. The second is obviously an issue in
+; this monitor code (fortunately this can be easily fixed).
 ;
 ; As for the tape recording format. It uses the same 2-phase encoding as the Monitor 0 with a small
 ; differences:
@@ -164,6 +165,10 @@ START:
 
     f83a  3e 82      MVI A, 82                  ; Set up external ROM over i8255 controller
     f83c  d3 fb      OUT fb                     ; Ports A and C as output (address), Port B - input (data)
+                                                ; BUG: The external ROM controller published in 1990 has ports
+                                                ; B and C dedicated to address, and port A is used for data input
+                                                ; (on ROM reading). This means that initialization code must be
+                                                ; 0x90, and not 0x82. Command R handler also use this configuration
     
     f83e  31 af f7   LXI SP, f7af               ; Initial stack pointer set up
 
@@ -754,14 +759,12 @@ RUN_PROGRAM:
 ; It is supposed that the ROM is connected via a i8255 controller, where ROM address lines are
 ; connected to ports B (low byte) and C (high byte), while data is read over port A.
 ;
-; Note: the magazine never published the external ROM schematics, so described connection is just
-; a guess, based on the code below. Moreover it contradicts with the i8255 setup above, which for some
-; reason configures ports A and C as output, and B as input.
+; Note: the magazine published the external ROM schematics 2 years after the main article. The 
+; initialization code above contradicts with the schematics, and shall initialize ports differently.
 ;
-; Note: it is not clear what type of ROM is connected, and what its size. The code below reads up to 
-; 256 bytes, but there is no technical limitation to read a larger ROM. Probably this code is taken
-; from Radio-86RK Monitor, but there there is no 256 byte limitation, and it can read more than 256
-; bytes normally.
+; Note: The code below reads up to 256 bytes, but there is no technical limitation to read a larger 
+; ROM. Probably this code is taken from Radio-86RK Monitor, but there there is no 256 byte limitation,
+; and it can read more than 256 bytes normally.
 ;
 ; Arguments:
 ; - ROM start address (HL)
