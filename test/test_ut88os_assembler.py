@@ -38,7 +38,7 @@ def run_command(ut88, cmd):
 def run_assembler(ut88, text, command = "A"):
     # Set the source code to assemble
     addr = 0x3000
-    for c in text:
+    for c in text + '\r':
         ut88.set_byte(addr, ord(c))
         addr += 1
     
@@ -52,7 +52,7 @@ def run_assembler(ut88, text, command = "A"):
 
 def test_assembler_comment(ut88):
     # Symbols after semicolon are ignored
-    asm = "    ; ABCDEF  \r"    
+    asm = "    ; ABCDEF"    
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -61,7 +61,7 @@ def test_assembler_comment(ut88):
 
 def test_assembler_set_label(ut88):
     # Set the label #12 for an instruction
-    asm = "@12: MOV  A,B\r"
+    asm = "@12: MOV  A,B"
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -73,7 +73,7 @@ def test_assembler_set_label(ut88):
 
 def test_assembler_1b_instruction_no_arg(ut88):
     # Assemble a single 1-byte instruction
-    asm = "EI  \r"      # Implementation is buggy, and does not accept 2-char instruction without spaces at end
+    asm = "EI  "      # Implementation is buggy, and does not accept 2-char instruction without spaces at end
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -82,7 +82,7 @@ def test_assembler_1b_instruction_no_arg(ut88):
 
 def test_assembler_2b_instruction_immediate(ut88):
     # Assemble a single 2-byte instruction without register specification
-    asm = "    ADI      42    \r"   # Add some extra spaces
+    asm = "    ADI      42    "   # Add some extra spaces
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -92,7 +92,7 @@ def test_assembler_2b_instruction_immediate(ut88):
 
 def test_assembler_2b_instruction_symb_arg(ut88):
     # Assemble a single 2-byte instruction with a symbol as immediate argument
-    asm = "    ADI      'Q'\r"
+    asm = "    ADI      'Q'"
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -102,7 +102,7 @@ def test_assembler_2b_instruction_symb_arg(ut88):
 
 def test_assembler_2b_instruction_decimal_arg(ut88):
     # Assemble a single 2-byte instruction with a decimal number as an immediate argument
-    asm = "    ADI      #123\r"
+    asm = "    ADI      #123"
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -112,7 +112,7 @@ def test_assembler_2b_instruction_decimal_arg(ut88):
 
 def test_assembler_3b_instruction_immediate(ut88):
     # Assemble a single 3-byte instruction without register specification
-    asm = "JMP 1234\r"   # Add some extra spaces
+    asm = "JMP 1234"   # Add some extra spaces
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -123,7 +123,7 @@ def test_assembler_3b_instruction_immediate(ut88):
 
 def test_assembler_3b_instruction_decimal_arg(ut88):
     # Assemble a single 3-byte instruction with a decimal number as an immediate argument
-    asm = "JMP #12345\r"
+    asm = "JMP #12345"
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -140,7 +140,7 @@ def test_assembler_3b_instruction_label_ref_arg(ut88):
     # Assemble a single 3-byte instruction with a label reference as an argument
     # If a label reference is the only argument provided, the target instruction will contain
     # reference address, to be processed during phase2.
-    asm = "JMP @12\r"
+    asm = "JMP @12"
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -157,7 +157,7 @@ def test_assembler_3b_instruction_arithmetic_arg(ut88):
     # Assemble a single 3-byte instruction with a label reference as well as some arithmetic
     # If a label reference is a part of arithmetic expression, the reference value will be loaded from
     # reference area, and the expression will be calculated in runtime (see previous test for other behavior)
-    asm = "JMP @12 + 5\r"
+    asm = "JMP @12 + 5"
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -168,7 +168,7 @@ def test_assembler_3b_instruction_arithmetic_arg(ut88):
 
 def test_assembler_3b_instruction_immediate_cur_addr(ut88):
     # Use $ to refer current instruction address
-    asm = "JMP $\r"
+    asm = "JMP $"
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -179,7 +179,7 @@ def test_assembler_3b_instruction_immediate_cur_addr(ut88):
 
 def test_assembler_1b_instruction_src_reg(ut88):
     # Assemble a single 1-byte instruction that refers to a source register
-    asm = "ADC D\r"      
+    asm = "ADC D"      
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -188,7 +188,7 @@ def test_assembler_1b_instruction_src_reg(ut88):
 
 def test_assembler_1b_instruction_regpair(ut88):
     # Assemble a single 1-byte instruction that refers to a register pair
-    asm = "DAD B\r"
+    asm = "DAD B"
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -197,7 +197,7 @@ def test_assembler_1b_instruction_regpair(ut88):
 
 def test_assembler_1b_instruction_dst_reg(ut88):
     # Assemble a single 1-byte instruction that refers to a destination register
-    asm = "DCR C\r"
+    asm = "DCR C"
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -206,7 +206,7 @@ def test_assembler_1b_instruction_dst_reg(ut88):
 
 def test_assembler_1b_instruction_dst_regpair(ut88):
     # Assemble a single 1-byte instruction that refers to a destination register pair
-    asm = "LDAX D\r"
+    asm = "LDAX D"
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -215,7 +215,7 @@ def test_assembler_1b_instruction_dst_regpair(ut88):
 
 def test_assembler_mov(ut88):
     # Assemble a single 1-byte instruction that refers to src and dest registers (MOV)
-    asm = "MOV M, E\r"
+    asm = "MOV M, E"
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -224,7 +224,7 @@ def test_assembler_mov(ut88):
 
 def test_assembler_lxi(ut88):
     # Assemble a single 3-byte instruction that refers to a register pair and immediate 16-bit value (LXI)
-    asm = "LXI S, 1234\r"
+    asm = "LXI S, 1234"
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -235,7 +235,7 @@ def test_assembler_lxi(ut88):
 
 def test_assembler_mvi(ut88):
     # Assemble a single 2-byte instruction that refers to a register and immediate 8-bit value (MVI)
-    asm = "MVI M, 42\r"
+    asm = "MVI M, 42"
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -245,7 +245,7 @@ def test_assembler_mvi(ut88):
 
 def test_assembler_db(ut88):
     # Assemble a single data byte
-    asm = "DB   34\r"   # Extra spaces after 'DB', otherwise 2-char directive is not matched
+    asm = "DB   34"   # Extra spaces after 'DB', otherwise 2-char directive is not matched
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -254,7 +254,7 @@ def test_assembler_db(ut88):
 
 def test_assembler_db_multiple_bytes(ut88):
     # Assemble a several data bytes
-    asm = "DB   12, 34, 56, EF\r"   # Extra spaces after 'DB', otherwise 2-char directive is not matched
+    asm = "DB   12, 34, 56, EF"   # Extra spaces after 'DB', otherwise 2-char directive is not matched
     run_assembler(ut88, asm)
 
     # Verify the data bytes are placed accordingly
@@ -268,7 +268,7 @@ def test_assembler_db_arithmetic(ut88):
     # Use arithmetic
     asm =  "DB   12+34\r"   # Extra spaces after 'DB', otherwise 2-char directive is not matched
     asm += "DB   78-56\r"
-    asm += "DB   12+34-56+78\r"
+    asm += "DB   12+34-56+78"
     run_assembler(ut88, asm)
 
     # Verify the data bytes are placed accordingly
@@ -282,7 +282,7 @@ def test_assembler_db_symbolic(ut88):
     asm =  "DB   'A'\r"         # Single char
     asm += "DB   'BCD'\r"       # String
     asm += "DB   'EF', 'GH'\r"  # Several strings
-    asm += "DB   '''\r"         # Tripple single quote
+    asm += "DB   '''"           # Tripple single quote
 
     run_assembler(ut88, asm)
 
@@ -307,7 +307,7 @@ def test_assembler_db_ref(ut88):
     ut88.set_byte(0xf425, 0x56)
 
     # data byte is the reference
-    asm = "DB   @12\r"   # Extra spaces after 'DB', otherwise 2-char directive is not matched
+    asm = "DB   @12"    # Extra spaces after 'DB', otherwise 2-char directive is not matched
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -317,7 +317,7 @@ def test_assembler_db_ref(ut88):
 
 def test_assembler_dw(ut88):
     # Assemble a single data word (2 bytes)
-    asm = "DW   1234\r"   # Extra spaces after 'DB', otherwise 2-char directive is not matched
+    asm = "DW   1234"   # Extra spaces after 'DB', otherwise 2-char directive is not matched
     run_assembler(ut88, asm)
 
     # Verify the bytes are assembled
@@ -327,7 +327,7 @@ def test_assembler_dw(ut88):
 
 def test_assembler_dw_multiple(ut88):
     # Assemble several data words
-    asm =  "DW   1234, 5678\r"   # Extra spaces after 'DW', otherwise 2-char directive is not matched
+    asm =  "DW   1234, 5678"   # Extra spaces after 'DW', otherwise 2-char directive is not matched
     run_assembler(ut88, asm)
 
     # Verify the bytes are assembled
@@ -343,7 +343,7 @@ def test_assembler_dw_ref(ut88):
     ut88.set_byte(0xf425, 0x56)
 
     # data byte is the reference
-    asm = "DW   @12\r"   # Extra spaces after 'DW', otherwise 2-char directive is not matched
+    asm = "DW   @12"   # Extra spaces after 'DW', otherwise 2-char directive is not matched
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
@@ -354,7 +354,7 @@ def test_assembler_dw_ref(ut88):
 def test_assembler_org(ut88):
     # Assemble several data words
     asm =  "ORG 1234\r"     # Set the ORG
-    asm += "JMP $\r"        # JMP instruction refers to self
+    asm += "JMP $"        # JMP instruction refers to self
     print(run_assembler(ut88, asm))
 
     # Verify the instruction is assembled at address specified in ORG instruction
@@ -365,7 +365,7 @@ def test_assembler_org(ut88):
 
 def test_assembler_equ(ut88):
     # Assign label #12 a value of 5678
-    asm =  "@12:    EQU   5678\r"
+    asm =  "@12:    EQU   5678"
     run_assembler(ut88, asm)
 
     # Check the value at labels area
@@ -375,7 +375,7 @@ def test_assembler_equ(ut88):
 
 def test_assembler_dir(ut88):
     # Execute Monitor's Dump command right while processing assembler source
-    asm =  "DIR  DF800,F807\r"
+    asm =  "DIR  DF800,F807"
     text = run_assembler(ut88, asm)
 
     assert "F800 C3 1B F8 C3 6B F8 C3 36" in text
@@ -384,7 +384,7 @@ def test_assembler_dir(ut88):
 def test_assembler_two_pass_sequentally(ut88):
     # JUMP to a label located further in code
     asm =  "JMP  @12\r"
-    asm += "@12: NOP \r"
+    asm += "@12: NOP "
     run_assembler(ut88, asm)
 
     # Check the value at labels area
@@ -405,7 +405,7 @@ def test_assembler_two_pass_sequentally(ut88):
 def test_assembler_two_pass_together(ut88):
     # Jump to a label declared later in code
     asm =  "JMP  @12\r"
-    asm += "@12:    NOP \r"
+    asm += "@12:    NOP "
     run_assembler(ut88, asm, "A@")  # A@ command runs both assembler passes
 
     # Check the value at labels area

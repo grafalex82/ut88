@@ -16,6 +16,7 @@ sys.path.append('../misc')
 from cpm_helper import CPM
 from quasidisk import QuasiDisk
 from cpmdisk import *
+from helper import str2bytes, bytes2str
 
 
 @pytest.fixture
@@ -65,14 +66,6 @@ def fill_fcb(cpm, addr, filename):
     ext = f"{filename.split('.')[1]:3s}"
     for i in range(3):
         cpm.set_byte(addr + 9 + i, ord(ext[i]))
-
-
-def bin2str(data):
-    return ''.join(chr(code) for code in data)
-
-
-def str2bin(data):
-    return bytearray(data.encode('ascii'))
 
 
 def write_protect_disk(cpm, disk_no):
@@ -299,7 +292,7 @@ def test_search_by_pattern(cpm, disk):
     assert index == 1   # Index of the first match
 
     index = search_next(cpm)
-    assert index == 2   # Index of the first match
+    assert index == 2   # Index of the second match
 
 # TODO: delete the file, and see that search with '?' as a drive code returns all the entries
 
@@ -344,14 +337,14 @@ def test_write_file_sequentally(cpm, data_size, disk):
     assert create_file(cpm, 'FOO.TXT') != 0xff
 
     content = gen_content(data_size)
-    write_file_sequentally(cpm, str2bin(content))
+    write_file_sequentally(cpm, str2bytes(content))
     
     assert close_file(cpm) != 0xff
 
     # Check the content
     disk.flush()
     loader = CPMDisk(disk.filename, params=UT88DiskParams)
-    read_str = bin2str(loader.read_file('FOO.TXT'))
+    read_str = bytes2str(loader.read_file('FOO.TXT'))
     assert read_str == content
 
 
@@ -359,7 +352,7 @@ def test_open_file(cpm, disk):
     content = gen_content(8)
 
     writer = CPMDisk(disk.filename, params=UT88DiskParams)
-    writer.write_file('FOO.TXT', str2bin(content))
+    writer.write_file('FOO.TXT', str2bytes(content))
     writer.flush()
     disk.reload()
 
@@ -378,12 +371,12 @@ def test_read_file_sequentally(cpm, data_size, disk):
     content = gen_content(data_size)
 
     writer = CPMDisk(disk.filename, params=UT88DiskParams)
-    writer.write_file('FOO.TXT', str2bin(content))
+    writer.write_file('FOO.TXT', str2bytes(content))
     writer.flush()
     disk.reload()
 
     assert open_file(cpm, 'FOO.TXT') == 0
-    data = bin2str(read_file_sequentally(cpm, len(content)))
+    data = bytes2str(read_file_sequentally(cpm, len(content)))
     assert content == data
 
 
@@ -391,7 +384,7 @@ def test_read_eof(cpm, disk):
     # Write file of 2 sectors
     content = gen_content(16)
     writer = CPMDisk(disk.filename, params=UT88DiskParams)
-    writer.write_file('FOO.TXT', str2bin(content))
+    writer.write_file('FOO.TXT', str2bytes(content))
     writer.flush()
     disk.reload()
 
@@ -405,7 +398,7 @@ def test_read_file_random(cpm, disk):
     # Prepare a file on disk
     content = gen_content(2048)
     writer = CPMDisk(disk.filename, params=UT88DiskParams)
-    writer.write_file('FOO.TXT', str2bin(content))
+    writer.write_file('FOO.TXT', str2bytes(content))
     writer.flush()
 
     # Load the new disk content, and reset disk in CPM so that it loads the directory
@@ -414,7 +407,7 @@ def test_read_file_random(cpm, disk):
 
     # Open the file, and read a sector in the middle
     open_file(cpm, 'FOO.TXT')
-    data = bin2str(read_file_random(cpm, 0x2000, 256))   # Read 2 sectors at offset 0x2000
+    data = bytes2str(read_file_random(cpm, 0x2000, 256))   # Read 2 sectors at offset 0x2000
     assert data == gen_content(16, 512) # 16 records == 256 bytes read, 512 records match requested offset
 
 
@@ -422,7 +415,7 @@ def test_write_file_random(cpm, disk):
     # Prepare a file on disk
     wcontent = gen_content(2048)
     writer = CPMDisk(disk.filename, params=UT88DiskParams)
-    writer.write_file('FOO.TXT', str2bin(wcontent))
+    writer.write_file('FOO.TXT', str2bytes(wcontent))
     writer.flush()
 
     # Load the new disk content, and reset disk in CPM so that it loads the directory
@@ -432,13 +425,13 @@ def test_write_file_random(cpm, disk):
     # Open the file, and write a sector in the middle
     open_file(cpm, 'FOO.TXT')
     insert = gen_content(16, 4096)
-    write_file_random(cpm, 0x2000, str2bin(insert))   # Write 2 sectors at offset 0x2000
+    write_file_random(cpm, 0x2000, str2bytes(insert))   # Write 2 sectors at offset 0x2000
     close_file(cpm)
 
     # Read the file, and check that content has overwritten sectors
     disk.flush()
     check = CPMDisk(disk.filename, params=UT88DiskParams)
-    rcontent = bin2str(check.read_file('FOO.TXT'))
+    rcontent = bytes2str(check.read_file('FOO.TXT'))
     wcontent = wcontent[:0x2000] + insert + wcontent[0x2000 + 256:]
     assert rcontent == wcontent
 
@@ -447,7 +440,7 @@ def test_write_file_zero_fill(cpm, disk):
     # Prepare a file on disk
     wcontent = gen_content(2048)
     writer = CPMDisk(disk.filename, params=UT88DiskParams)
-    writer.write_file('FOO.TXT', str2bin(wcontent))
+    writer.write_file('FOO.TXT', str2bytes(wcontent))
     writer.flush()
 
     # Load the new disk content, and reset disk in CPM so that it loads the directory
@@ -458,24 +451,24 @@ def test_write_file_zero_fill(cpm, disk):
     open_file(cpm, 'FOO.TXT')
     insert = gen_content(16, 4096)
     # Write 2 sectors at offset 0x8100, but whole 1k block 0x8000-0x8400 will be erased first
-    write_file_random(cpm, 0x8100, str2bin(insert), zero_fill=True)
+    write_file_random(cpm, 0x8100, str2bytes(insert), zero_fill=True)
     close_file(cpm)
 
     # Read the file, and check that content has overwritten sectors
     disk.flush()
     check = CPMDisk(disk.filename, params=UT88DiskParams)
     rcontent = check.read_file('FOO.TXT')
-    assert bin2str(rcontent[0 : 0x8000]) == wcontent    # Original content is unchanged
+    assert bytes2str(rcontent[0 : 0x8000]) == wcontent    # Original content is unchanged
     assert rcontent[0x8000:0x8100] == bytearray(256)    # Beginning of block is zeroed
     assert len(rcontent) == 0x8200                      # No data after the written records
-    assert bin2str(rcontent[0x8100 : 0x8200]) == insert # 2 sectors in the middle have content
+    assert bytes2str(rcontent[0x8100 : 0x8200]) == insert # 2 sectors in the middle have content
 
 
 def test_get_file_size(cpm, disk):
     # Prepare a file on disk
     wcontent = gen_content(2160)    # Create a file of an odd size - 270 sectors (34 blocks, last not full)
     writer = CPMDisk(disk.filename, params=UT88DiskParams)
-    writer.write_file('FOO.TXT', str2bin(wcontent))
+    writer.write_file('FOO.TXT', str2bytes(wcontent))
     writer.flush()
 
     # Load the new disk content, and reset disk in CPM so that it reloads the directory
@@ -490,7 +483,7 @@ def test_get_file_position(cpm, disk):
     # Create file large enough
     content = gen_content(1789)     # Just random size between 1 and 2 full extents
     writer = CPMDisk(disk.filename, params=UT88DiskParams)
-    writer.write_file('FOO.TXT', str2bin(content))
+    writer.write_file('FOO.TXT', str2bytes(content))
     writer.flush()
     disk.reload()
 

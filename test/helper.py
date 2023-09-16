@@ -8,6 +8,15 @@ from machine import Machine
 from emulator import Emulator
 from keyboard import Keyboard
 
+# Convert bytes array into a string
+def bytes2str(data):
+    return ''.join(chr(code) for code in data)
+
+# Convert a string to a bytearray
+def str2bytes(data):
+    return bytearray(data.encode('ascii'))
+
+
 class EmulatedInstance:
     def __init__(self):
         self._machine = self._create_machine()

@@ -9,6 +9,7 @@ import sys
 sys.path.append('../misc')
 
 from cpmdisk import *
+from helper import bytes2str, str2bytes
 
 @pytest.fixture
 def tmp_disk_file(tmp_path):
@@ -30,14 +31,6 @@ def gen_content(lines_count):
     return res
 
 
-def bin2str(data):
-    return ''.join(chr(code) for code in data)
-
-
-def str2bin(data):
-    return bytearray(data.encode('ascii'))
-
-
 def test_create_disk(tmp_disk_file):
     # Create an empty disk
     disk = CPMDisk(tmp_disk_file)
@@ -51,10 +44,6 @@ def test_create_disk(tmp_disk_file):
 def test_list_dir_raw(standard_disk_file):
     disk = CPMDisk(standard_disk_file)
     entries = disk.list_dir_raw()
-
-    # for entry in entries:
-    #     print(entry)
-    # assert False
 
     entry2 = entries[1]
     assert entry2['name'] == 'OS2CCP'
@@ -78,7 +67,7 @@ def test_list_dir(standard_disk_file):
 
 def test_read_small_file(standard_disk_file):
     disk = CPMDisk(standard_disk_file)
-    data = bin2str(disk.read_file('OS5TRINT.SRC'))
+    data = bytes2str(disk.read_file('OS5TRINT.SRC'))
 
     print(data)
     assert "PIP INTERFACE" in data
@@ -87,7 +76,7 @@ def test_read_small_file(standard_disk_file):
 
 def test_read_big_file(standard_disk_file):
     disk = CPMDisk(standard_disk_file)
-    data = bin2str(disk.read_file('OS3BDOS.ASM'))
+    data = bytes2str(disk.read_file('OS3BDOS.ASM'))
 
     print(data)
     assert "Bdos Interface, Bdos, Version 2.2 Feb, 1980" in data        # A line at the beginning
@@ -124,11 +113,11 @@ def test_write_file(tmp_disk_file, data_size):
 
     # Create the disk, and write the content to a new file
     disk = CPMDisk(tmp_disk_file)
-    disk.write_file('TEST.TXT', str2bin(content))
+    disk.write_file('TEST.TXT', str2bytes(content))
     disk.flush()
 
     # Read the file and check the content
-    data = bin2str(disk.read_file('TEST.TXT'))
+    data = bytes2str(disk.read_file('TEST.TXT'))
     assert content == data
 
 
@@ -138,12 +127,12 @@ def test_write_with_padding(tmp_disk_file):
 
     # Create the disk, and write the content to a new file
     disk = CPMDisk(tmp_disk_file)
-    disk.write_file('TEST.TXT', str2bin(content))
+    disk.write_file('TEST.TXT', str2bytes(content))
     disk.flush()
 
     # Read the file and check the content
     data = disk.read_file('TEST.TXT')
-    assert bin2str(data[0:32]) == content           # First bytes match the generated content
+    assert bytes2str(data[0:32]) == content           # First bytes match the generated content
     assert data[32:128] == bytearray([0x1a] * 96)   # Remainder of the sector was padded with EOF bytes
 
 
@@ -153,9 +142,9 @@ def test_create_file_with_user_code(tmp_disk_file):
 
     # Create the disk, and write several files on the disk with different error codes
     disk = CPMDisk(tmp_disk_file)
-    disk.write_file('TEST1.TXT', str2bin(content), 1)
-    disk.write_file('TEST2.TXT', str2bin(content), 2)
-    disk.write_file('TEST3.TXT', str2bin(content), 3)
+    disk.write_file('TEST1.TXT', str2bytes(content), 1)
+    disk.write_file('TEST2.TXT', str2bytes(content), 2)
+    disk.write_file('TEST3.TXT', str2bytes(content), 3)
     disk.flush()
 
     # Check that all these files have correct user codes
@@ -173,7 +162,7 @@ def test_delete_small_file(tmp_disk_file, data_size):
     # Create a file on the disk
     disk = CPMDisk(tmp_disk_file)
     content = gen_content(data_size)
-    disk.write_file('TEST.TXT', str2bin(content))
+    disk.write_file('TEST.TXT', str2bytes(content))
 
     # Check the file is on the disk
     entries = disk.list_dir()
@@ -191,14 +180,14 @@ def test_overwrite_file(tmp_disk_file):
     # Create a file
     disk = CPMDisk(tmp_disk_file)
     content = gen_content(8)
-    disk.write_file('TEST.TXT', str2bin(content))
+    disk.write_file('TEST.TXT', str2bytes(content))
 
     # Verify its size
     assert disk.list_dir()['TEST.TXT']['num_records'] == 1
 
     # Write another file with the same name
     content = gen_content(512)
-    disk.write_file('TEST.TXT', str2bin(content))
+    disk.write_file('TEST.TXT', str2bytes(content))
 
     # Verify the file was overwrittent
     for entry in disk.list_dir_raw():
@@ -206,4 +195,4 @@ def test_overwrite_file(tmp_disk_file):
 
     assert len(disk.list_dir()) == 1
     assert disk.list_dir()['TEST.TXT']['num_records'] == 64
-    assert bin2str(disk.read_file('TEST.TXT')) == content
+    assert bytes2str(disk.read_file('TEST.TXT')) == content
