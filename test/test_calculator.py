@@ -5,6 +5,11 @@
 # These tests run emulation of some functions from the calculator firmware, feed it some 
 # values, and check results. This is easier than manually enter arguments to required
 # memory cells, run some calculator functions, and then check memory for a result
+#
+# The calculator functions expect arguments and produce results in a predefined locations
+# in 0xc361-0xc378 range. Refer to function description for details on these addresses.
+# The functions themselves also have pre-defined entry points, directly executed in these
+# tests.
 
 import pytest
 import sys
@@ -41,14 +46,17 @@ class Calculator(EmulatedInstance):
 
 
     def _get_sp(self):
+        # Set stack area in a safe place below Monitor's variables
         return 0xc3ee
 
-    def _convert_byte(self, value): # Convert the value from Sign-Magnitude to Two's Complement or back
+    """ Convert the value from Sign-Magnitude to Two's Complement or back """
+    def _convert_byte(self, value): 
         if value >= 0x80 or value < 0:
             value = (~value + 1) & 0xff
             return value | 0x80
         return value
 
+    """ Set a Sign-Magnitude 8-bit value to the specified address"""
     def set_byte_argument(self, addr, value):
         if value >= 0x80 or value < 0:
             value = (~value + 1) & 0xff
@@ -58,6 +66,7 @@ class Calculator(EmulatedInstance):
 
         self.set_byte(addr, value)
 
+    """ Get a 8-bit value from the specified address, convert from Sign-Magnitude coding """
     def get_byte_result(self, addr):
         value = self.get_byte(addr)
         print(f"Getting value {value:02x} from {addr:04x}")
@@ -69,6 +78,7 @@ class Calculator(EmulatedInstance):
         print(f"Returning value {value}")
         return value
     
+    """ Set 2-byte value to the specified memory address. Convert the value to Sign-Magnitude first """
     def set_word_argument(self, addr, value):
         if value >= 0x8000 or value < 0:
             value = (~value + 1) & 0xff
@@ -79,6 +89,7 @@ class Calculator(EmulatedInstance):
         self.set_byte(addr, (value >> 8) & 0xff) # High byte first
         self.set_byte(addr + 1, value & 0xff)
 
+    """ Retrieve 2-byte integer value from specified address, convert from Sign-Magnitude """
     def get_word_result(self, addr):
         value = self.get_byte(addr) << 8   # High byte first
         value |= self.get_byte(addr + 1)
@@ -91,6 +102,9 @@ class Calculator(EmulatedInstance):
         print(f"Returning value {value}")
         return value
     
+    """ Set floating point value to the specified address in memory. Convert the value from normal float 
+        to 3-byte float
+    """
     def set_float_argument(self, addr, value):
         f = Float(float(value))
         fbytes = f.to_3_byte()
@@ -101,6 +115,9 @@ class Calculator(EmulatedInstance):
         self.set_byte(addr + 1, (fbytes >> 8) & 0xff)
         self.set_byte(addr + 2, fbytes & 0xff)
 
+    """ Retrieve floating point value from the specified address in memory. Convert the received 3-byte float
+        to normal float format
+    """
     def get_float_result(self, addr):
         fbytes = self.get_byte(addr) << 16   # High byte first
         fbytes |= self.get_byte(addr + 1) << 8
@@ -244,7 +261,9 @@ def test_log(calculator, arg, res):
 
 @pytest.mark.parametrize("arg, res", log_numbers)
 def test_log_python(arg, res):
-    def my_log(arg):        # Python version of the firmware logarithm implementation
+    # Python version of the firmware logarithm implementation
+    # Used to understand the algorithm, and for reference purposes
+    def py_log(arg):        
         a = (arg - 1) / (arg + 1)
         print(f"X = {arg}")
         print(f"A = {a}")
@@ -258,7 +277,7 @@ def test_log_python(arg, res):
             print(f"Res = {res}")
         return res * 2
     
-    assert pytest.approx(my_log(arg), 0.0000001) == res
+    assert pytest.approx(py_log(arg), 0.0000001) == res
 
 # arg, factorial result
 fact_numbers = [

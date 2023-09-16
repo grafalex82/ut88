@@ -37,8 +37,11 @@ class CPM(EmulatedInstanceWithKeyboard):
         return UT88Machine()
 
     def _get_sp(self):
+        # Set SP in some safe area in the Monitor memory below Monitor's variables
         return 0xf6ee
 
     def _install_keybord_generator(self, g):
+        # Install keyboard generation hooks in the keyboard scanning function, so that each call
+        # of the CPM's READ_CONSOLE_BUFFER function will return the next emulated keypress
         self._emulator.add_breakpoint(0xcde1, lambda: g.__next__())
         self._emulator.add_breakpoint(0xcdf4, lambda: g.__next__())

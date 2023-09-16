@@ -18,6 +18,46 @@ from quasidisk import QuasiDisk
 from cpmdisk import *
 from helper import str2bytes, bytes2str
 
+# Standard entry point for all BDOS functions
+# The function number is passed to the function in the C register
+BDOS_ENTRY_POINT                = 0xcc06
+
+# All CP/M BDOS file related functions use File Control Block (FCB) structure to pass parameters to
+# the function, get results, as well as store intermediate data between calls to BDOS. Tests below
+# use an FCB located at 0x1000
+FCB                             = 0x1000
+
+
+# Most of the file functions use the default 128-byte data buffer at 0x0080
+DATA_BUF                        = 0x0080
+
+# The BDOS holds the bitmask of write protected disks currently installed in the system
+BDOS_READ_ONLY_VECTOR           = 0xd9ad
+
+# The BIOS contains a structure that contains currently selected disk parameters. The structure is filled
+# during selecting the disk. One of the fields represents current entries count (Note: this value is set 
+# to maximum when the disk is marked as read only)
+BDOS_LAST_ENTRY_NUMBER          = 0xda35
+
+
+# BDOS always 'knows' internally which sector is currently selected. Although BIOS provides a concept of
+# track/sector, the BDOS internally calculates sectors absolutely, starting from non-reserved tracks.
+BDOS_CURRENT_SECTOR             = 0xd9e5
+
+# When BDOS wants to read a file or a directory sector, it performs a seek operation. This operation 
+# translates currently selected absolute sector number into track/sector pair, taking into account
+# tracks-pre-sector number, and reserved tracks count. Seek function is internal BDOS function, and shall
+# not be executed directly. It is used in tests just to trigger some functionality of the function.
+BDOS_SEEK_FUNCTION              = 0xcfd1
+
+
+# BDOS counts sectors using an absolute number (similar to LBA in modern systems). At the same time
+# BIOS exposes tracks/sector interface. More overs. UT-88 quasi disk adds a concept of a memory page,
+# which is another parameter to control. The following variables represent BIOS variables that specify
+# which page/track/sector is currently selected for reading
+BIOS_DISK_PAGE                  = 0xdbec
+BIOS_DISK_TRACK                 = 0xdbed
+BIOS_DISK_SECTOR                = 0xdbee
 
 @pytest.fixture
 def cpm():
@@ -39,10 +79,10 @@ def disk(tmp_path, cpm):
 
 
 def call_bdos_function(cpm, func, arg = 0):
-    cpm.cpu._c = func
+    cpm.cpu.c = func
     cpm.cpu.de = arg
-    cpm.run_function(0xcc06)
-    return (cpm.cpu._b << 8) | cpm.cpu._a
+    cpm.run_function(BDOS_ENTRY_POINT)
+    return (cpm.cpu.b << 8) | cpm.cpu.a
 
 
 def gen_content(lines_count, start = 0):
@@ -68,8 +108,8 @@ def fill_fcb(cpm, addr, filename):
         cpm.set_byte(addr + 9 + i, ord(ext[i]))
 
 
-def write_protect_disk(cpm, disk_no):
-    call_bdos_function(cpm, 0x1c, 0)
+def write_protect_disk(cpm):
+    call_bdos_function(cpm, 0x1c)
 
 
 def disk_system_reset(cpm):
@@ -97,31 +137,31 @@ def switch_off_drive(cpm, drive):
 
 
 def create_file(cpm, name):
-    fill_fcb(cpm, 0x1000, name)
-    return call_bdos_function(cpm, 0x16, 0x1000)
+    fill_fcb(cpm, FCB, name)
+    return call_bdos_function(cpm, 0x16, FCB)
 
 
 def open_file(cpm, name):
-    fill_fcb(cpm, 0x1000, name)
-    return call_bdos_function(cpm, 0x0f, 0x1000)
+    fill_fcb(cpm, FCB, name)
+    return call_bdos_function(cpm, 0x0f, FCB)
 
 
 def close_file(cpm):
-    return call_bdos_function(cpm, 0x10, 0x1000)
+    return call_bdos_function(cpm, 0x10, FCB)
 
 
 def search_first(cpm, name):
-    fill_fcb(cpm, 0x1000, name)
-    return call_bdos_function(cpm, 0x11, 0x1000)
+    fill_fcb(cpm, FCB, name)
+    return call_bdos_function(cpm, 0x11, FCB)
 
 
 def search_next(cpm):
-    return call_bdos_function(cpm, 0x12, 0x1000)
+    return call_bdos_function(cpm, 0x12, FCB)
 
 
 def delete_file(cpm, name):
-    fill_fcb(cpm, 0x1000, name)
-    return call_bdos_function(cpm, 0x13, 0x1000)
+    fill_fcb(cpm, FCB, name)
+    return call_bdos_function(cpm, 0x13, FCB)
 
 
 def write_file_sequentally(cpm, data):
@@ -130,11 +170,11 @@ def write_file_sequentally(cpm, data):
         i = 0
         chunk_len = min(128, len(data))
         for b in data[0 : chunk_len]:
-            cpm.set_byte(0x0080 + i, b)
+            cpm.set_byte(DATA_BUF + i, b)
             i += 1
 
         # Call the sector write function
-        call_bdos_function(cpm, 0x15, 0x1000)
+        call_bdos_function(cpm, 0x15, FCB)
         data = data[chunk_len:]
 
 
@@ -142,10 +182,10 @@ def read_file_sequentally(cpm, size):
     offset = 0
     res = []
     while offset < size:
-        call_bdos_function(cpm, 0x14, 0x1000)
+        call_bdos_function(cpm, 0x14, FCB)
 
         for i in range(128):
-            res.append(cpm.get_byte(0x0080 + i))
+            res.append(cpm.get_byte(DATA_BUF + i))
 
         offset += 128
 
@@ -159,14 +199,14 @@ def read_file_random(cpm, pos, size):
 
     while size > 0:
         # Set read position
-        cpm.set_word(0x1021, pos & 0xffff)
-        cpm.set_byte(0x1023, (pos >> 16) & 0xff) # Should be zero for normal files under 8Mb
+        cpm.set_word(FCB + 0x21, pos & 0xffff)
+        cpm.set_byte(FCB + 0x23, (pos >> 16) & 0xff) # Should be zero for normal files under 8Mb
 
         # Read sector
-        call_bdos_function(cpm, 0x21, 0x1000)
+        call_bdos_function(cpm, 0x21, FCB)
 
         for i in range(128):
-            res.append(cpm.get_byte(0x0080 + i))
+            res.append(cpm.get_byte(DATA_BUF + i))
 
         size -= 128
         pos += 1
@@ -179,21 +219,21 @@ def write_file_random(cpm, pos, data, zero_fill=False):
 
     while len(data) > 0:
         # Set read position
-        cpm.set_word(0x1021, pos & 0xffff)
-        cpm.set_byte(0x1023, (pos >> 16) & 0xff) # Should be zero for normal files under 8Mb
+        cpm.set_word(FCB + 0x21, pos & 0xffff)
+        cpm.set_byte(FCB + 0x23, (pos >> 16) & 0xff) # Should be zero for normal files under 8Mb
 
         # Fill the 128-byte default disk buffer at 0x0080
         i = 0
         chunk_len = min(128, len(data))
         for b in data[0 : chunk_len]:
-            cpm.set_byte(0x0080 + i, b)
+            cpm.set_byte(DATA_BUF + i, b)
             i += 1
 
         # Call the sector write function
         if zero_fill:
-            call_bdos_function(cpm, 0x28, 0x1000)
+            call_bdos_function(cpm, 0x28, FCB)
         else:
-            call_bdos_function(cpm, 0x22, 0x1000)
+            call_bdos_function(cpm, 0x22, FCB)
 
         # Advance to the next sector
         data = data[chunk_len:]
@@ -201,22 +241,22 @@ def write_file_random(cpm, pos, data, zero_fill=False):
 
 
 def rename_file(cpm, oldname, newname):
-    fill_fcb(cpm, 0x1000, oldname)  # Old name in the first 16 bytes of FCB
-    fill_fcb(cpm, 0x1010, newname)  # New name in the second 16 bytes
-    return call_bdos_function(cpm, 0x17, 0x1000)
+    fill_fcb(cpm, FCB, oldname)  # Old name in the first 16 bytes of FCB
+    fill_fcb(cpm, FCB + 0x10, newname)  # New name in the second 16 bytes
+    return call_bdos_function(cpm, 0x17, FCB)
 
 
 def get_file_size(cpm, filename):
-    fill_fcb(cpm, 0x1000, filename)
-    call_bdos_function(cpm, 0x23, 0x1000)
-    assert cpm.get_byte(0x1023) == 0    # No file size overflows
-    return cpm.get_word(0x1021)
+    fill_fcb(cpm, FCB, filename)
+    call_bdos_function(cpm, 0x23, FCB)
+    assert cpm.get_byte(FCB + 0x23) == 0    # No file size overflows
+    return cpm.get_word(FCB + 0x21)
 
 
 def get_file_position(cpm):
-    call_bdos_function(cpm, 0x24, 0x1000)
-    assert cpm.get_byte(0x1023) == 0    # No file size overflows
-    return cpm.get_word(0x1021)
+    call_bdos_function(cpm, 0x24, FCB)
+    assert cpm.get_byte(FCB + 0x23) == 0    # No file size overflows
+    return cpm.get_word(FCB + 0x21)
 
 
 
@@ -226,40 +266,39 @@ def test_reset_disk_system(cpm, disk):
 
 def test_write_protect_disk(cpm, disk):
     # Check starting conditions
-    assert cpm.get_word(0xd9ad) == 0x0000   # Write protect bit is not set for any disk
+    assert cpm.get_word(BDOS_READ_ONLY_VECTOR) == 0x0000   # Write protect bit is not set for any disk
     assert get_disk_read_only_vector(cpm) == 0x0000
 
-    # Write protect disk A (0)
-    write_protect_disk(cpm, 0)
+    # Write protect currently selected disk
+    write_protect_disk(cpm)
 
     # Check new conditions
-    assert cpm.get_word(0xd9ad) == 0x0001   # Write protect bit is set for disk A
-    assert cpm.get_word(0xda35) == 32       # Last entry number is set to maximum dir entries number
+    assert cpm.get_word(BDOS_READ_ONLY_VECTOR) == 0x0001   # Write protect bit is set for disk A
+    assert cpm.get_word(BDOS_LAST_ENTRY_NUMBER) == 32      # Last entry number is set to maximum dir entries number
     assert get_disk_read_only_vector(cpm) == 0x0001
 
 
 def test_seek(cpm, disk):
     # Seek in forward direction, compared to current track
-    cpm.set_word(0xd9e5, 0x0342)    # Set expected sector number to 0x342
-    cpm.run_function(0xcfd1)        # Call seek function
+    cpm.set_word(BDOS_CURRENT_SECTOR, 0x0342)   # Set expected sector number to 0x342
+    cpm.run_function(BDOS_SEEK_FUNCTION)      # Call seek function
 
     # Sector #0x342 is located on track 0x68 having 8 sectors per track. Disk is split into four
     # pages 0x40 tracks each. So track #0x68 is located on page 1, track 0x28.
     # Also, the disk has 6 reserved tracks, so the physical track number will be 0x28 + 6 = 0x2e
     # Sector number is 0x342 % 8 = 2. This is a logical sector number, whick will be renumbered
     # to #3 physical sector number.
-    assert cpm.get_byte(0xdbec) == 0xfd # Page 2
-    assert cpm.get_byte(0xdbed) == 0x2e # Logical Track 0x28 (Physical track = 0x28 + 6 reserved tracks)
-    assert cpm.get_byte(0xdbee) == 0x03 # Sector #3 (Logical track #2, physical track #3 since 1-based)
-
+    assert cpm.get_byte(BIOS_DISK_PAGE) == 0xfd     # Page 2
+    assert cpm.get_byte(BIOS_DISK_TRACK) == 0x2e    # Logical Track 0x28 (Physical track = 0x28 + 6 reserved tracks)
+    assert cpm.get_byte(BIOS_DISK_SECTOR) == 0x03   # Sector #3 (Logical track #2, physical track #3 since 1-based)
 
     # Seek in backward direction, compared to current track
-    cpm.set_word(0xd9e5, 0x073)     # Set expected sector number to 0x342
-    cpm.run_function(0xcfd1)        # Call seek function
+    cpm.set_word(BDOS_CURRENT_SECTOR, 0x073)    # Set expected sector number to 0x342
+    cpm.run_function(BDOS_SEEK_FUNCTION)      # Call seek function
 
-    assert cpm.get_byte(0xdbec) == 0xfe
-    assert cpm.get_byte(0xdbed) == 0x14
-    assert cpm.get_byte(0xdbee) == 0x04
+    assert cpm.get_byte(BIOS_DISK_PAGE) == 0xfe
+    assert cpm.get_byte(BIOS_DISK_TRACK) == 0x14
+    assert cpm.get_byte(BIOS_DISK_SECTOR) == 0x04
 
 
 def test_create_file(cpm, disk):
@@ -389,9 +428,9 @@ def test_read_eof(cpm, disk):
     disk.reload()
 
     assert open_file(cpm, 'FOO.TXT') == 0
-    assert call_bdos_function(cpm, 0x14, 0x1000) == 0   # First read shall succeed
-    assert call_bdos_function(cpm, 0x14, 0x1000) == 0   # Second read will succeed too
-    assert call_bdos_function(cpm, 0x14, 0x1000) == 1   # Third will indicate end of file
+    assert call_bdos_function(cpm, 0x14, FCB) == 0   # First read shall succeed
+    assert call_bdos_function(cpm, 0x14, FCB) == 0   # Second read will succeed too
+    assert call_bdos_function(cpm, 0x14, FCB) == 1   # Third will indicate end of file
 
 
 def test_read_file_random(cpm, disk):
@@ -529,6 +568,6 @@ def test_search_by_user_code(cpm, disk):
     assert search_first(cpm, 'TEST2.TXT') == 0xff
     assert search_first(cpm, 'TEST3.TXT') == 2
 
-    fill_fcb(cpm, 0x1000, 'TEST1.TXT')              # Special trick - put '?' in the FCB user code field and 
-    cpm.set_byte(0x1000, ord('?'))                  # see files for all users
-    assert call_bdos_function(cpm, 0x11, 0x1000) == 0
+    fill_fcb(cpm, FCB, 'TEST1.TXT')              # Special trick - put '?' in the FCB user code field and 
+    cpm.set_byte(FCB, ord('?'))                  # see files for all users
+    assert call_bdos_function(cpm, 0x11, FCB) == 0
