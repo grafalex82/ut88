@@ -128,12 +128,12 @@ RST4:
 
 ; Command 6 - Start the program from 0xc000
 CMD_6:
-    0025  c3 00 c0   JMP c000               ; Direct jump to the starting address
+    0025  c3 00 c0   JMP RAM_START (c000)   ; Direct jump to the starting address
 
 ; RST5 - display HL and A values on the LCD
 RST5:
-    0028  32 00 90   STA 9000               ; Write A and HL to respective LCD address
-    002b  22 01 90   SHLD 9001              
+    0028  32 00 90   STA LCD_A (9000)       ; Write A and HL to respective LCD address
+    002b  22 01 90   SHLD LCD_HL (9001)
     002e  c9         RET
     002f  00         NOP
 
@@ -158,7 +158,7 @@ RST0_CONT:
     003b  fb         EI                     ; Continue initial initialization, enable interrputs
 
     ; Print 11 (ready sign) on the LCD (0x9000)
-    003c  32 00 90   STA 9000
+    003c  32 00 90   STA LCD_A (9000)
     003f  e7         RST 4                  ; Wait for a command
 
     0040  c6 f3      ADI f3                 ; The array at 0x00f3 has addresses of the command handlers
@@ -176,11 +176,11 @@ RST2_CONT:
 
     004a  b2         ORA D                  ; Temporary Store entered half a byte in D
     004b  57         MOV D, A
-    004c  32 00 90   STA 9000               ; And display it on the screen
+    004c  32 00 90   STA LCD_A (9000)       ; And display it on the screen
 
     004f  e7         RST 4                  ; Enter second half a byte
     0050  b2         ORA D                  ; Add the previous half of the byte
-    0051  32 00 90   STA 9000               ; And display it on the screen
+    0051  32 00 90   STA LCD_A (9000)       ; And display it on the screen
 
     0054  d1         POP DE                 ; Return the entered byte in A
     0055  c9         RET    
@@ -189,7 +189,7 @@ RST3_CONT:
     0056  2b         DCX HL                 ; Decrement HL...
     0057  7d         MOV A, L
     0058  b4         ORA H
-    0059  c2 d1 c9   JNZ 0056               ; ... until it is zero
+    0059  c2 d1 c9   JNZ RST3_CONT (0056)   ; ... until it is zero
 
     005c  f1         POP PSW                ; Restore registers and exit
     005d  e1         POP HL
@@ -198,7 +198,7 @@ RST3_CONT:
 RST4_CONT:
     005f  db a0      IN a0                  ; Read the keyboard port
     0061  c6 00      ADI 00                 ; Wait for a button to be pressed
-    0063  ca 5f 00   JZ 005f
+    0063  ca 5f 00   JZ RST4_CONT (005f)
 
     0066  fe 80      CPI 80                 ; Check for step back button
     0068  ca 6e 00   JZ BACK_BTN (006e)
@@ -219,11 +219,11 @@ RAM_WRITE:
     0075  df         RST 3                  ; and let it be displed for a second
 
     0076  23         INX HL                 ; Then move to the next byte
-    0077  c3 71 00   JMP 0071    
+    0077  c3 71 00   JMP RAM_WRITE (0071)
 
 ; Command 2 - read memory starting from address 0xc000
 CMD_2:
-    007a  21 00 c0   LXI HL, c000           ; Load the starting address
+    007a  21 00 c0   LXI HL, RAM_START (c000)   ; Load the starting address
 
 RAM_READ:
     007d  e7         RST 4                  ; Wait for the button press
@@ -232,7 +232,7 @@ RAM_READ:
     007f  ef         RST 5
 
     0080  23         INX HL                 ; Advance the address and repeat
-    0081  c3 7d 00   JMP 007d
+    0081  c3 7d 00   JMP RAM_READ (007d)
 
 
 ; Command 7 - Start the program starting the given address
@@ -248,7 +248,7 @@ RUN_PROG:
     0089  e9         PCHL                   ; Execute the program starting the given address
 
 CMD_1:
-    008a  21 00 c0   LXI HL, c000           ; Load 0xc000 as a starting address
+    008a  21 00 c0   LXI HL, RAM_START (c000)   ; Load 0xc000 as a starting address
     008d  c3 71 00   JMP RAM_WRITE (0071)   ; And jump to the RAM manual write function
 
 
@@ -280,7 +280,7 @@ CMD_3_DISPLAY_DIGIT:
 
 ; Command 4 - test RAM
 CMD_4:
-    00a3  21 00 c0   LXI HL, c000           ; Load RAM start address (0xc000)
+    00a3  21 00 c0   LXI HL, RAM_START (c000)   ; Load RAM start address (0xc000)
 
 CMD_4_LOOP:
     00a6  af         XRA A                  ; Store a 0x00 value
@@ -314,8 +314,8 @@ TIMER_INT:
     00c4  d5         PUSH DE
     00c5  e5         PUSH HL
 
-    00c6  21 e4 00   LXI HL, 00e4           ; Maximum for corresponding value
-    00c9  11 fd c3   LXI DE, c3fd           ; Start with seconds
+    00c6  21 e4 00   LXI HL, MAX_TIME (00e4); Maximum for corresponding value
+    00c9  11 fd c3   LXI DE, CUR_TIME (c3fd); Start with seconds
     00cc  06 03      MVI B, 03              ; 3 values to increment
 
 TIMER_ADV:
@@ -325,7 +325,7 @@ TIMER_ADV:
     00d1  12         STAX DE
 
     00d2  be         CMP M                  ; Check if maximum reached
-    00d3  c2 de 00   JNZ 00de
+    00d3  c2 de 00   JNZ TIMER_EXIT (00de)
 
     00d6  af         XRA A                  ; Zero and store the value if maximum reached
     00d7  12         STAX DE
@@ -336,6 +336,7 @@ TIMER_ADV:
     00da  05         DCR B                  ; Repeat for seconds, minutes, and hours
     00db  c2 ce 00   JNZ TIMER_ADV (00ce)
 
+TIMER_EXIT:
     00de  e1         POP HL                 ; Restore registers and interrupts
     00df  d1         POP DE
     00e0  c1         POP BC
@@ -343,6 +344,7 @@ TIMER_ADV:
     00e2  fb         EI
     00e3  c9         RET
 
+MAX_TIME:
     00e4             60, 60, 24             ; Maximum values for seconds, minutes, and hours
 
 
@@ -446,7 +448,7 @@ WAIT_NEXT_PHASE:
     014d  c2 57 01   JNZ TRY_SYNC_NEGATIVE (0157)
 
     0150  af         XRA A                  ; Synchronization happen in positive polarity
-    0151  32 fc c3   STA c3fc               ; Remember this fact in 0xc3fc, no bytes inversion will be performed
+    0151  32 fc c3   STA TAPE_POLARITY (c3fc)   ; Remember this fact in 0xc3fc, no bytes inversion will be performed
     0154  c3 61 01   JMP IN_SYNCHRONIZED (0161)
 
 TRY_SYNC_NEGATIVE:
@@ -454,16 +456,16 @@ TRY_SYNC_NEGATIVE:
     0159  c2 30 01   JNZ IN_NEXT_BIT (0130) ; If sync has not happen - wait for the next bit
 
     015c  3e ff      MVI A, ff              ; Synchronization happened in reverse polarity
-    015e  32 fc c3   STA c3fc               ; Remember this in 0xc3fc, and invert all received bytes
+    015e  32 fc c3   STA TAPE_POLARITY (c3fc)   ; Remember this in 0xc3fc, and invert all received bytes
 
 IN_SYNCHRONIZED:
     0161  16 09      MVI D, 09              ; Prepare for receiving a real data byte
  
 BIT_RECEIVED:
     0163  15         DCR D                  ; Repeat until all bits are received
-    0164  c2 30 01   JNZ 0130
+    0164  c2 30 01   JNZ IN_NEXT_BIT (0130)
 
-    0167  3a fc c3   LDA c3fc               ; Apply inverting if necessary
+    0167  3a fc c3   LDA TAPE_POLARITY (c3fc)   ; Invert polarity if necessary
     016a  a9         XRA C
 
     016b  d1         POP DE                 ; Return received byte in A
@@ -515,6 +517,7 @@ CRC_NEXT:
     0192  c1         POP BC
     0193  c7         RST 0    
 
+; Compare BC and DE, set Z flag if register pairs are equal
 CMP_BC_DE:
     0194  7a         MOV A, D               ; Compare D and B
     0195  b8         CMP B
@@ -591,16 +594,16 @@ CMD_A_CONT:
     01d3  4d         MOV C, L
     01d4  c5         PUSH BC                
 
-    01d5  cd ee 01   CALL 01ee              ; Read end address to HL
+    01d5  cd ee 01   CALL IN_NEXT_BYTE (01ee)   ; Read end address to HL
     01d8  67         MOV H, A
-    01d9  cd ee 01   CALL 01ee    
+    01d9  cd ee 01   CALL IN_NEXT_BYTE (01ee)
     01dc  6f         MOV L, A
 
     01dd  19         DAD DE                 ; And apply offset as well
     01de  eb         XCHG                   ; Store the calculated end address at DE
 
 IN_LOOP:
-    01df  cd ee 01   CALL 01ee              ; Read and store the data byte
+    01df  cd ee 01   CALL IN_NEXT_BYTE (01ee)   ; Read and store the data byte
     01e2  02         STAX B
     01e3  cd 94 01   CALL CMP_BC_DE (0194)  ; Continue until all the data bytes received
     01e6  03         INX B
@@ -617,8 +620,8 @@ IN_NEXT_BYTE:
     01f4  00         NOP
 
 CMD_B_CONT:
-    01f5  2a fe c3   LHLD c3fe              ; Load minutes and hours to HL
-    01f8  3a fd c3   LDA c3fd               ; Load seconds to A
+    01f5  2a fe c3   LHLD CUR_TIME+1 (c3fe) ; Load minutes and hours to HL
+    01f8  3a fd c3   LDA CUR_TIME (c3fd)    ; Load seconds to A
     01fb  ef         RST 5                  ; Display the time
 
     01fc  df         RST 3                  ; Repeat after a pause

@@ -19,12 +19,13 @@
 ; Depending on the entered parameters, the program can copy data
 ; up or down. Overlapped regions are supported (will be overwritten)
 MEM_COPY:
-    0200  cd 24 02   CALL 0224                  ; Enter and validate addresses
+    0200  cd 24 02   CALL ENTER_ADDR (0224)     ; Enter and validate addresses
 
-    0203  da 0a 02   JC 020a                    ; Copy down up?
+    0203  da 0a 02   JC MEM_COPY_1 (020a)       ; Copy down up?
     0206  cd 0e 02   CALL MEM_COPY_DOWN (020e)
     0209  c7         RST 0                      ; The end (reset)
 
+MEM_COPY_1:
     020a  cd 19 02   CALL MEM_COPY_UP (0219)
     020d  c7         RST 0                      ; The end (reset)
 
@@ -79,14 +80,14 @@ ENTER_ADDR:
     0225  d5         PUSH DE
     0226  f7         RST 6                  ; Enter source end address to HL
     0227  eb         XCHG
-    0228  22 f2 c3   SHLD c3f2              ; Store source end address at 0xc3f2
+    0228  22 f2 c3   SHLD SRC_END (c3f2)    ; Store source end address at 0xc3f2
 
     022b  e1         POP HL
-    022c  22 f0 c3   SHLD c3f0              ; Store source start address at 0xc3f0
+    022c  22 f0 c3   SHLD SRC_START (c3f0)  ; Store source start address at 0xc3f0
 
     022f  f7         RST 6                  ; Enter destination start address to HL
     0230  eb         XCHG
-    0231  22 f4 c3   SHLD c3f4              ; Store destination start address at 0xc3f4
+    0231  22 f4 c3   SHLD DST_START (c3f4)  ; Store destination start address at 0xc3f4
 
     0234  7d         MOV A, L               ; HL = <dest start> - <source start>
     0235  93         SUB E
@@ -94,20 +95,20 @@ ENTER_ADDR:
     0237  7c         MOV A, H
     0238  9a         SBB D
     0239  67         MOV H, A
-    023a  22 f8 c3   SHLD c3f8              ; Store difference at 0xc3f8
+    023a  22 f8 c3   SHLD PTR_DIFF (c3f8)   ; Store difference at 0xc3f8
 
     023d  4d         MOV C, L               ; Calculate destination end address
     023e  44         MOV B, H
-    023f  2a f2 c3   LHLD c3f2
+    023f  2a f2 c3   LHLD SRC_END (c3f2)
     0242  e5         PUSH HL
     0243  09         DAD BC                 ; Store destination end addr at 0xc3f6
-    0244  22 f6 c3   SHLD c3f6
+    0244  22 f6 c3   SHLD DST_END (c3f6)
 
-    0247  2a f0 c3   LHLD c3f0              ; Load source start address to BC
+    0247  2a f0 c3   LHLD SRC_START (c3f0)  ; Load source start address to BC
     024a  4d         MOV C, L
     024b  44         MOV B, H
     024c  d1         POP DE                 ; Load source end address to DE
-    024d  2a f4 c3   LHLD c3f4              ; Load destination start address to HL
+    024d  2a f4 c3   LHLD DST_START (c3f4)  ; Load destination start address to HL
 
     0250  7d         MOV A, L               ; Compare HL and BC
     0251  91         SUB C
@@ -116,7 +117,7 @@ ENTER_ADDR:
 
     0254  d8         RC                     ; If dest addr < source addr -> carry bit is on, HL=dest start addr
 
-    0255  2a f6 c3   LHLD c3f6              ; Otherwise carry bit is off, HL=dest end addr
+    0255  2a f6 c3   LHLD DST_END (c3f6)    ; Otherwise carry bit is off, HL=dest end addr
     0258  c9         RET
 
 ; Compare DE and HL register pairs, set Z if equeal
@@ -143,7 +144,7 @@ MEM_CORR:
     0265  c7         RST 0                  ; The end (reset)
 
 DO_MEM_CORR:
-    0266  2a f4 c3   LHLD c3f4              ; Load destination start address in HL
+    0266  2a f4 c3   LHLD DST_START (c3f4)  ; Load destination start address in HL
 
 MEM_CORR_LOOP:
     0269  56         MOV D, M               ; Load next byte and match it with an opcode
@@ -165,21 +166,21 @@ MEM_CORR_LOOP:
     027a  2b         DCX HL
     027b  e5         PUSH HL
 
-    027c  2a f0 c3   LHLD c3f0              ; Compare instruction argument with 
+    027c  2a f0 c3   LHLD SRC_START (c3f0)  ; Compare instruction argument with 
     027f  79         MOV A, C               ; the source start. Skip patching if
     0280  95         SUB L                  ; the argument is below source start address
     0281  78         MOV A, B
     0282  9c         SBB H
     0283  da a3 02   JC MEM_CORR_1 (02a3)
 
-    0286  2a f2 c3   LHLD c3f2              ; Compare instruction argument with the
+    0286  2a f2 c3   LHLD SRC_END (c3f2)    ; Compare instruction argument with the
     0289  7d         MOV A, L               ; Source end address. Skip patching if the
     028a  91         SUB C                  ; argument is above source end address
     028b  7c         MOV A, H
     028c  98         SBB B
     028d  da a3 02   JC MEM_CORR_1 (02a3)
 
-    0290  2a f8 c3   LHLD c3f8              ; Load the source-destination address difference to HL
+    0290  2a f8 c3   LHLD PTR_DIFF (c3f8)   ; Load the source-destination address difference to HL
     0293  7d         MOV A, L               ; Add the difference to instruction argument
     0294  81         ADD C
     0295  5f         MOV E, A               ; Store result to DE
@@ -192,8 +193,8 @@ MEM_CORR_LOOP:
     029b  23         INX H
     029c  72         MOV M, D
     029d  23         INX H
-    02be  33         INX SP
-    02bf  33         INX SP
+    029e  33         INX SP
+    029f  33         INX SP
 
     02a0  c3 ab 02   JMP MEM_CORR_NEXT (02ab)   ; Advance to the next instruction
 
@@ -212,7 +213,7 @@ MEM_CORR_L:
 MEM_CORR_NEXT:
     02ab  5d         MOV E, L               ; Repeat until destination address is reached
     02ac  54         MOV D, H
-    02ad  2a f6 c3   LHLD c3f6
+    02ad  2a f6 c3   LHLD DST_END (c3f6)
     02b0  23         INX HL
     02b1  cd 59 02   CALL CMD_DE_HL (0259)
     02b4  eb         XCHG
@@ -225,7 +226,7 @@ MEM_CORR_NEXT:
 ; Z=0 if no match
 MATCH_OPCODE:
     02b9  01 06 03   LXI BC, 0306           ; Start with 3-byte instructions, 6 types
-    02bc  21 d3 02   LXI HL, 02d3           ; Load opcode mask table address
+    02bc  21 d3 02   LXI HL, INSTRUCTION_MASK_3B (02d3) ; Load opcode mask table address
 
 MATCH_LOOP:
     02bf  7a         MOV A, D               ; Check whether the given byte matches instruction
@@ -242,10 +243,11 @@ MATCH_LOOP:
     02cb  05         DCR B
     02cc  78         MOV A, B
     02cd  fe 01      CPI 01
-    02cf  c2 bf 02   JNZ 02bf    
+    02cf  c2 bf 02   JNZ MATCH_LOOP (02bf)
     02d2  c9         RET                    ; Zero Z flag means no match
 
     ; 3-byte instructions masks
+    INSTRUCTION_MASK_3B:
     02d3 ff cd                              ; Match for CALL opcode
     02d5 c7 c4                              ; Match for conditional CALL opcodes
     02d7 ff c3                              ; Match for JMP opcode
@@ -254,6 +256,7 @@ MATCH_LOOP:
     02dd cf 01                              ; Match for LXI opcodes
     
     ; 2-byte instructions masks
+    INSTRUCTION_MASK_2B:
     02df c7 06                              ; Match for MVI opcodes
     02e1 c7 c6                              ; Match for ADI, ACI, SUI, SBI, ANI, XRI, ORI and CPI instructions
     02e3 f7 d3                              ; Match for IN and OUT instructions
@@ -278,18 +281,18 @@ MATCH_LOOP:
 SUPER_CORR:
     02e5  f7         RST 6                  ; Enter start addr, and store it to 0xc3f0 and 0xc3f4
     02e6  eb         XCHG
-    02e7  22 f0 c3   SHLD c3f0
-    02ea  22 f4 c3   SHLD c3f4
+    02e7  22 f0 c3   SHLD SRC_START (c3f0)
+    02ea  22 f4 c3   SHLD DST_START (c3f4)
     02ed  e5         PUSH HL
 
     02ee  f7         RST 6                  ; Enter end addr, and store it to 0xc3f2 and 0xc3f6
     02ef  eb         XCHG
-    02f0  22 f2 c3   SHLD c3f2
-    02f3  22 f6 c3   SHLD c3f6
+    02f0  22 f2 c3   SHLD SRC_END (c3f2)
+    02f3  22 f6 c3   SHLD DST_END (c3f6)
 
     02f6  f7         RST 6                  ; Enter target address, and store it to 0xc3fa
     02f7  eb         XCHG
-    02f8  22 fa c3   SHLD c3fa
+    02f8  22 fa c3   SHLD TARGET_ADDR (c3fa)
 
     02fb  d1         POP DE                 ; Restore start address
     02fc  7d         MOV A, L               ; Calculate difference between original address
@@ -298,7 +301,7 @@ SUPER_CORR:
     02ff  7c         MOV A, H
     0300  9a         SBB D
     0301  67         MOV H, A               ; Store the difference to 0xc3f8
-    0302  22 f8 c3   SHLD c3f8
+    0302  22 f8 c3   SHLD PTR_DIFF (c3f8)
 
     0305  cd 66 02   CALL DO_MEM_CORR (0266); Perform the actual correction
     0308  c7         RST 0                  ; The end (Reset)
@@ -317,17 +320,17 @@ REPLACE_ADDR:
     030a  d5         PUSH DE
     030b  f7         RST 6                  ; Enter end address and store to 0xc3f2      
     030c  eb         XCHG
-    030d  22 f2 c3   SHLD c3f2
+    030d  22 f2 c3   SHLD SRC_END (c3f2)
 
     0310  f7         RST 6                  ; Enter address to match and store to 0xc3fa
     0311  eb         XCHG
-    0312  22 fa c3   SHLD c3fa             
+    0312  22 fa c3   SHLD MATCH_ADDR (c3fa)
     0315  f7         RST 6                  ; Enter replacement address and store to 0xc3ee
     0316  eb         XCHG
-    0317  22 ee c3   SHLD c3ee
+    0317  22 ee c3   SHLD REPL_ADDR (c3ee)
 
     031a  e1         POP HL                 ; Start address in HL (store it to 0xc3f0)
-    031b  22 f0 c3   SHLD c3f0
+    031b  22 f0 c3   SHLD SRC_START (c3f0)
 
 REPLACE_LOOP:
     031e  56         MOV D, M               ; Load the next byte
@@ -348,11 +351,11 @@ REPLACE_LOOP:
 
     032f  2b         DCX HL
     0330  e5         PUSH HL
-    0331  2a fa c3   LHLD c3fa              ; Check the argument equals to the address to replace
+    0331  2a fa c3   LHLD MATCH_ADDR (c3fa) ; Check the argument equals to the address to replace
     0334  cd 59 02   CALL CMD_DE_HL (0259)
     0337  c2 48 03   JNZ REPLACE_1 (0348)
 
-    033a  2a ee c3   LHLD c3ee              ; Replace argument with the replacement address
+    033a  2a ee c3   LHLD REPL_ADDR (c3ee)  ; Replace argument with the replacement address
     033d  eb         XCHG
     033e  e1         POP HL
     033f  73         MOV M, E
@@ -379,7 +382,7 @@ REPLACE_L:
 REPLACE_NEXT:
     0350  5d         MOV E, L               ; Repeat until end address reached
     0351  54         MOV D, H
-    0352  2a f2 c3   LHLD c3f2
+    0352  2a f2 c3   LHLD SRC_END (c3f2)
     0355  23         INX HL                 ; Advance to the next instruction
     0356  cd 59 02   CALL CMD_DE_HL (0259)
     0359  eb         XCHG
@@ -399,17 +402,17 @@ REPLACE_NEXT:
 INSERT_BYTE:
     035e  f7         RST 6                  ; Enter insert location and store in 0xc3f0
     035f  eb         XCHG
-    0360  22 f0 c3   SHLD c3f0
+    0360  22 f0 c3   SHLD SRC_START (c3f0)
     0363  4d         MOV C, L               ; And BC
     0364  44         MOV B, H
 
     0365  f7         RST 6                  ; Enter end address and store it to 0xc3f2
     0366  6b         MOV L, E
     0367  62         MOV H, D
-    0368  22 f2 c3   SHLD c3f2
+    0368  22 f2 c3   SHLD SRC_END (c3f2)
 
     036b  23         INX HL                 ; Prepare destination end address in 0xc3f6
-    036c  22 f6 c3   SHLD c3f6              ; (1 byte higher than source start address)
+    036c  22 f6 c3   SHLD DST_END (c3f6)    ; (1 byte higher than source start address)
 
     036f  cd 0e 02   CALL MEM_COPY_DOWN (020e)  ; Execute the memory copying
 
@@ -433,8 +436,8 @@ INSERT_BYTE:
 DELETE_BYTE:
     0388  f7         RST 6                  ; Enter start address, and store it to 0xc3f0 and 0xc3f4
     0389  eb         XCHG
-    038a  22 f0 c3   SHLD c3f0
-    038d  22 f4 c3   SHLD c3f4
+    038a  22 f0 c3   SHLD SRC_START (c3f0)
+    038d  22 f4 c3   SHLD DST_START (c3f4)
     0390  4d         MOV C, L               ; ... And BC
     0391  44         MOV B, H
     0392  e5         PUSH HL
@@ -442,7 +445,7 @@ DELETE_BYTE:
     0393  f7         RST 6                  ; Enter end address, and store it to 0xc3f2
     0394  6b         MOV L, E
     0395  62         MOV H, D
-    0396  22 f2 c3   SHLD c3f2
+    0396  22 f2 c3   SHLD SRC_END (c3f2)
     0399  e1         POP HL
 
     039a  c5         PUSH BC
@@ -453,10 +456,10 @@ DELETE_BYTE:
     03a0  77         MOV M, A
 
     03a1  2b         DCX HL                 ; Store the target mem end address at 0xc3f6
-    03a2  22 f6 c3   SHLD c3f6
+    03a2  22 f6 c3   SHLD DST_END (c3f6)
 
     03a5  21 ff ff   LXI HL, ffff           ; Set the difference as -1 byte and store it to 0xc3f8
-    03a8  22 f8 c3   SHLD c3f8
+    03a8  22 f8 c3   SHLD PTR_DIFF (c3f8)
     03ab  cd 66 02   CALL DO_MEM_CORR (0266); Do the address corrections within the moved range
 
     03ae  e1         POP HL                 ; Go to RAM read routine
