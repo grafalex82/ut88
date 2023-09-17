@@ -8,9 +8,21 @@
 # Tests run an emulator, load UT-88 OS components, and run required functions with certain arguments.
 
 import pytest
-import pygame
 
 from ut88os_helper import UT88OS
+
+# Monitor function addresses
+MONITOR_FUNC_PUT_CHAR       = 0xf9f0
+MONITOR_FUNC_PROCESS_CMD    = 0xf84f
+
+# Monitor variables used in tests
+MONITOR_INPUT_LINE_BUFFER   = 0xf77b
+MONITOR_COMMANDS_TABLE      = 0xff9c
+
+# Input and output data
+INPUT_TEXT_PTR              = 0x3000
+OUTPUT_BYTECODE_PTR         = 0xa000
+LABEL_12_PTR                = 0xf424    # A test label used in tests (0xf400 + 2 * 0x12)
 
 @pytest.fixture
 def ut88():
@@ -24,12 +36,14 @@ def set_text(ut88, addr, text):
 
 
 def run_command(ut88, cmd):
+    # A hook to get text output to the test
     text = []
-    ut88.emulator.add_breakpoint(0xf9f0, lambda: text.append(chr(ut88.cpu.c)))
+    ut88.emulator.add_breakpoint(MONITOR_FUNC_PUT_CHAR, lambda: text.append(chr(ut88.cpu.c)))
 
-    set_text(ut88, 0xf77b, cmd + "\r")
-    ut88.cpu.hl = 0xff9c
-    ut88.run_function(0xf84f)
+    # Jump directly to the command processing routine
+    set_text(ut88, MONITOR_INPUT_LINE_BUFFER, cmd + "\r")
+    ut88.cpu.hl = MONITOR_COMMANDS_TABLE
+    ut88.run_function(MONITOR_FUNC_PROCESS_CMD)
 
     text = "".join(text)
     return text
@@ -37,7 +51,7 @@ def run_command(ut88, cmd):
 
 def run_assembler(ut88, text, command = "A"):
     # Set the source code to assemble
-    addr = 0x3000
+    addr = INPUT_TEXT_PTR
     for c in text + '\r':
         ut88.set_byte(addr, ord(c))
         addr += 1
@@ -56,7 +70,7 @@ def test_assembler_comment(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0x00   # No any bytes in the output
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0x00   # No any bytes in the output
 
 
 def test_assembler_set_label(ut88):
@@ -65,10 +79,10 @@ def test_assembler_set_label(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0x78    # Instruction opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0x78    # Instruction opcode
 
-    assert ut88.get_byte(0xf424) == 0x00    # Item #12 in the labels table (0xf400 + 12*2 = 0xf424) contains
-    assert ut88.get_byte(0xf425) == 0xa0    # the instruction address
+    assert ut88.get_byte(LABEL_12_PTR) == 0x00      # Item #12 in the labels table contains
+    assert ut88.get_byte(LABEL_12_PTR + 1) == 0xa0  # the instruction address
 
 
 def test_assembler_1b_instruction_no_arg(ut88):
@@ -77,7 +91,7 @@ def test_assembler_1b_instruction_no_arg(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0xfb   # EI instruction code
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0xfb   # EI instruction code
 
 
 def test_assembler_2b_instruction_immediate(ut88):
@@ -86,8 +100,8 @@ def test_assembler_2b_instruction_immediate(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0xc6   # ADI opcode
-    assert ut88.get_byte(0xa001) == 0x42   # Immediate operand
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0xc6       # ADI opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x42   # Immediate operand
 
 
 def test_assembler_2b_instruction_symb_arg(ut88):
@@ -96,8 +110,8 @@ def test_assembler_2b_instruction_symb_arg(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0xc6        # ADI opcode
-    assert ut88.get_byte(0xa001) == ord('Q')    # immediate argument
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0xc6           # ADI opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == ord('Q')   # immediate argument
 
 
 def test_assembler_2b_instruction_decimal_arg(ut88):
@@ -106,8 +120,8 @@ def test_assembler_2b_instruction_decimal_arg(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0xc6    # ADI opcode
-    assert ut88.get_byte(0xa001) == 123     # immediate argument
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0xc6       # ADI opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 123    # immediate argument
 
 
 def test_assembler_3b_instruction_immediate(ut88):
@@ -116,9 +130,9 @@ def test_assembler_3b_instruction_immediate(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0xc3   # JMP opcode
-    assert ut88.get_byte(0xa001) == 0x34   # Immediate operand low byte
-    assert ut88.get_byte(0xa002) == 0x12   # Immediate operand high byte
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0xc3       # JMP opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x34   # Immediate operand low byte
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 2) == 0x12   # Immediate operand high byte
 
 
 def test_assembler_3b_instruction_decimal_arg(ut88):
@@ -127,15 +141,15 @@ def test_assembler_3b_instruction_decimal_arg(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0xc3    # JMP opcode
-    assert ut88.get_byte(0xa001) == 0x39    # 12345 dec = 0x3039 hex
-    assert ut88.get_byte(0xa002) == 0x30
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0xc3       # JMP opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x39   # 12345 dec = 0x3039 hex
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 2) == 0x30
 
 
 def test_assembler_3b_instruction_label_ref_arg(ut88):
     # Fill the reference #12
-    ut88.set_byte(0xf424, 0x34)
-    ut88.set_byte(0xf425, 0x56)
+    ut88.set_byte(LABEL_12_PTR, 0x34)
+    ut88.set_byte(LABEL_12_PTR + 1, 0x56)
 
     # Assemble a single 3-byte instruction with a label reference as an argument
     # If a label reference is the only argument provided, the target instruction will contain
@@ -144,15 +158,15 @@ def test_assembler_3b_instruction_label_ref_arg(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0xc3    # JMP opcode
-    assert ut88.get_byte(0xa001) == 0x24    # Argument is a reference address (0xf400 + 12*2 = 0xf424)
-    assert ut88.get_byte(0xa002) == 0xf4
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0xc3       # JMP opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x24   # Argument is a reference address 
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 2) == 0xf4   # (0xf400 + 12*2 = 0xf424)
 
 
 def test_assembler_3b_instruction_arithmetic_arg(ut88):
     # Fill the reference #12
-    ut88.set_byte(0xf424, 0x34)
-    ut88.set_byte(0xf425, 0x56)
+    ut88.set_byte(LABEL_12_PTR, 0x34)
+    ut88.set_byte(LABEL_12_PTR + 1, 0x56)
 
     # Assemble a single 3-byte instruction with a label reference as well as some arithmetic
     # If a label reference is a part of arithmetic expression, the reference value will be loaded from
@@ -161,9 +175,9 @@ def test_assembler_3b_instruction_arithmetic_arg(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0xc3    # JMP opcode
-    assert ut88.get_byte(0xa001) == 0x39    # If the reference is used in arithmetic, the reference value will
-    assert ut88.get_byte(0xa002) == 0x56    # be substituted at compile time (0x5634 + 5 = 0x5639)
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0xc3       # JMP opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x39   # If the reference is used in arithmetic, the reference value will
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 2) == 0x56   # be substituted at compile time (0x5634 + 5 = 0x5639)
 
 
 def test_assembler_3b_instruction_immediate_cur_addr(ut88):
@@ -172,9 +186,9 @@ def test_assembler_3b_instruction_immediate_cur_addr(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0xc3   # JMP opcode
-    assert ut88.get_byte(0xa001) == 0x00   # Instruction address
-    assert ut88.get_byte(0xa002) == 0xa0
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0xc3       # JMP opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x00   # Instruction address
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 2) == 0xa0
 
 
 def test_assembler_1b_instruction_src_reg(ut88):
@@ -183,7 +197,7 @@ def test_assembler_1b_instruction_src_reg(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0x8a   # ADC D instruction opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0x8a   # ADC D instruction opcode
 
 
 def test_assembler_1b_instruction_regpair(ut88):
@@ -192,7 +206,7 @@ def test_assembler_1b_instruction_regpair(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0x09   # DAD B instruction opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0x09   # DAD B instruction opcode
 
 
 def test_assembler_1b_instruction_dst_reg(ut88):
@@ -201,7 +215,7 @@ def test_assembler_1b_instruction_dst_reg(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0x0d   # DCR C instruction opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0x0d   # DCR C instruction opcode
 
 
 def test_assembler_1b_instruction_dst_regpair(ut88):
@@ -210,7 +224,7 @@ def test_assembler_1b_instruction_dst_regpair(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0x1a   # LDAX D instruction opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0x1a   # LDAX D instruction opcode
 
 
 def test_assembler_mov(ut88):
@@ -219,7 +233,7 @@ def test_assembler_mov(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0x73   # MOV M, E instruction opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0x73   # MOV M, E instruction opcode
 
 
 def test_assembler_lxi(ut88):
@@ -228,9 +242,9 @@ def test_assembler_lxi(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0x31   # LXI SP instruction opcode
-    assert ut88.get_byte(0xa001) == 0x34   # Immediate operand low byte
-    assert ut88.get_byte(0xa002) == 0x12   # Immediate operand high byte
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0x31   # LXI SP instruction opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x34   # Immediate operand low byte
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 2) == 0x12   # Immediate operand high byte
 
 
 def test_assembler_mvi(ut88):
@@ -239,8 +253,8 @@ def test_assembler_mvi(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0x36   # MVI M instruction opcode
-    assert ut88.get_byte(0xa001) == 0x42   # Immediate operand low byte
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0x36       # MVI M instruction opcode
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x42   # Immediate operand low byte
 
 
 def test_assembler_db(ut88):
@@ -249,7 +263,7 @@ def test_assembler_db(ut88):
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0x34   # just data byte
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0x34   # just data byte
 
 
 def test_assembler_db_multiple_bytes(ut88):
@@ -258,10 +272,10 @@ def test_assembler_db_multiple_bytes(ut88):
     run_assembler(ut88, asm)
 
     # Verify the data bytes are placed accordingly
-    assert ut88.get_byte(0xa000) == 0x12
-    assert ut88.get_byte(0xa001) == 0x34
-    assert ut88.get_byte(0xa002) == 0x56
-    assert ut88.get_byte(0xa003) == 0xef
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0x12
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x34
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 2) == 0x56
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 3) == 0xef
 
 
 def test_assembler_db_arithmetic(ut88):
@@ -272,9 +286,9 @@ def test_assembler_db_arithmetic(ut88):
     run_assembler(ut88, asm)
 
     # Verify the data bytes are placed accordingly
-    assert ut88.get_byte(0xa000) == 0x12 + 0x34
-    assert ut88.get_byte(0xa001) == 0x78 - 0x56
-    assert ut88.get_byte(0xa002) == 0x12 + 0x34 - 0x56 + 0x78
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR) == 0x12 + 0x34
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x78 - 0x56
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 2) == 0x12 + 0x34 - 0x56 + 0x78
 
 
 def test_assembler_db_symbolic(ut88):
@@ -287,32 +301,32 @@ def test_assembler_db_symbolic(ut88):
     run_assembler(ut88, asm)
 
     # Verify the data bytes are placed accordingly
-    assert ut88.get_byte(0xa000) == ord('A')    # Single char
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 0) == ord('A')    # Single char
 
-    assert ut88.get_byte(0xa001) == ord('B')    # String
-    assert ut88.get_byte(0xa002) == ord('C')
-    assert ut88.get_byte(0xa003) == ord('D')
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == ord('B')    # String
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 2) == ord('C')
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 3) == ord('D')
 
-    assert ut88.get_byte(0xa004) == ord('E')    # Several strings
-    assert ut88.get_byte(0xa005) == ord('F')
-    assert ut88.get_byte(0xa006) == ord('G')
-    assert ut88.get_byte(0xa007) == ord('H')
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 4) == ord('E')    # Several strings
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 5) == ord('F')
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 6) == ord('G')
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 7) == ord('H')
 
-    assert ut88.get_byte(0xa008) == ord("'")    # Single quote symbol
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 8) == ord("'")    # Single quote symbol
 
 
 def test_assembler_db_ref(ut88):
     # Fill the reference #12
-    ut88.set_byte(0xf424, 0x34)
-    ut88.set_byte(0xf425, 0x56)
+    ut88.set_byte(LABEL_12_PTR, 0x34)
+    ut88.set_byte(LABEL_12_PTR + 1, 0x56)
 
     # data byte is the reference
     asm = "DB   @12"    # Extra spaces after 'DB', otherwise 2-char directive is not matched
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0x34   # Low byte of the reference is added
-    assert ut88.get_byte(0xa001) == 0x00   # High byte is NOT added (remains zero)
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 0) == 0x34   # Low byte of the reference is added
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x00   # High byte is NOT added (remains zero)
 
 
 def test_assembler_dw(ut88):
@@ -321,8 +335,8 @@ def test_assembler_dw(ut88):
     run_assembler(ut88, asm)
 
     # Verify the bytes are assembled
-    assert ut88.get_byte(0xa000) == 0x34   # low byte
-    assert ut88.get_byte(0xa001) == 0x12   # high byte
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 0) == 0x34   # low byte
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x12   # high byte
 
 
 def test_assembler_dw_multiple(ut88):
@@ -331,24 +345,24 @@ def test_assembler_dw_multiple(ut88):
     run_assembler(ut88, asm)
 
     # Verify the bytes are assembled
-    assert ut88.get_byte(0xa000) == 0x34   # low byte
-    assert ut88.get_byte(0xa001) == 0x12   # high byte
-    assert ut88.get_byte(0xa002) == 0x78   # low byte
-    assert ut88.get_byte(0xa003) == 0x56   # high byte
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 0) == 0x34   # low byte
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x12   # high byte
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 2) == 0x78   # low byte
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 3) == 0x56   # high byte
 
 
 def test_assembler_dw_ref(ut88):
     # Fill the reference #12
-    ut88.set_byte(0xf424, 0x34)
-    ut88.set_byte(0xf425, 0x56)
+    ut88.set_byte(LABEL_12_PTR, 0x34)
+    ut88.set_byte(LABEL_12_PTR + 1, 0x56)
 
     # data byte is the reference
     asm = "DW   @12"   # Extra spaces after 'DW', otherwise 2-char directive is not matched
     run_assembler(ut88, asm)
 
     # Verify the instruction is assembled
-    assert ut88.get_byte(0xa000) == 0x34   # Low byte of the reference is added
-    assert ut88.get_byte(0xa001) == 0x56   # High byte of the reference is there as well
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 0) == 0x34   # Low byte of the reference is added
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x56   # High byte of the reference is there as well
 
 
 def test_assembler_org(ut88):
@@ -369,8 +383,8 @@ def test_assembler_equ(ut88):
     run_assembler(ut88, asm)
 
     # Check the value at labels area
-    assert ut88.get_byte(0xf424) == 0x78    # Item #12 in the labels table (0xf400 + 12*2 = 0xf424) contains
-    assert ut88.get_byte(0xf425) == 0x56    # the value assigned with EQU directive
+    assert ut88.get_byte(LABEL_12_PTR) == 0x78      # Item #12 in the labels table contains the value
+    assert ut88.get_byte(LABEL_12_PTR + 1) == 0x56  # assigned with EQU directive
 
 
 def test_assembler_dir(ut88):
@@ -388,18 +402,18 @@ def test_assembler_two_pass_sequentally(ut88):
     run_assembler(ut88, asm)
 
     # Check the value at labels area
-    assert ut88.get_byte(0xf424) == 0x03    # Value of the label #12 (0xa003 - location where @12: found)
-    assert ut88.get_byte(0xf425) == 0xa0
+    assert ut88.get_byte(LABEL_12_PTR) == 0x03          # Value of the label #12 (OUTPUT_BYTECODE_PTR + 3 is a
+    assert ut88.get_byte(LABEL_12_PTR + 1) == 0xa0      # location where @12: found)
 
-    assert ut88.get_byte(0xa000) == 0xc3    # JMP
-    assert ut88.get_byte(0xa001) == 0x24    # Reference to label #12
-    assert ut88.get_byte(0xa002) == 0xf4
-    assert ut88.get_byte(0xa003) == 0x00    # NOP
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 0) == 0xc3    # JMP
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x24    # Reference to label #12
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 2) == 0xf4
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 3) == 0x00    # NOP
 
     run_command(ut88, "@ A000,A003")
 
-    assert ut88.get_byte(0xa001) == 0x03    # Reference substituted with actual value
-    assert ut88.get_byte(0xa002) == 0xa0
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x03    # Reference substituted with actual value
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 2) == 0xa0
 
 
 def test_assembler_two_pass_together(ut88):
@@ -409,10 +423,10 @@ def test_assembler_two_pass_together(ut88):
     run_assembler(ut88, asm, "A@")  # A@ command runs both assembler passes
 
     # Check the value at labels area
-    assert ut88.get_byte(0xf424) == 0x03    # Value of the label #12 (0xa003 - location where @12: found)
-    assert ut88.get_byte(0xf425) == 0xa0
+    assert ut88.get_byte(LABEL_12_PTR) == 0x03      # Value of the label #12 (0xa003 - location where @12: found)
+    assert ut88.get_byte(LABEL_12_PTR + 1) == 0xa0
 
-    assert ut88.get_byte(0xa000) == 0xc3    # JMP
-    assert ut88.get_byte(0xa001) == 0x03    # Reference substituted with actual value
-    assert ut88.get_byte(0xa002) == 0xa0
-    assert ut88.get_byte(0xa003) == 0x00    # NOP
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 0) == 0xc3    # JMP
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 1) == 0x03    # Reference substituted with actual value
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 2) == 0xa0
+    assert ut88.get_byte(OUTPUT_BYTECODE_PTR + 3) == 0x00    # NOP

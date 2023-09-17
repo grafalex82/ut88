@@ -11,6 +11,19 @@ from utils import *
 from quasidisk import QuasiDisk
 from ram import RAM
 
+# The Port 0x40 is a configuration port. Writing 0xfe, 0xfd, 0xfb, or 0xf7 to this port will enable
+# 1st, 2nd, 3rd, or 4th page respectively, so that subsequent stack operations will read or write data
+# to/from the quasi disk page. Writing 0xff to the port disables the quasi disk access, and stack 
+# operations are routed to the main memory
+CONFIG_PORT = 0x40
+
+# Constants that select a quasi disk page
+QUASI_DISK_PAGE_0   = 0xfe
+QUASI_DISK_PAGE_1   = 0xfd
+QUASI_DISK_PAGE_2   = 0xfb
+QUASI_DISK_PAGE_3   = 0xf7
+QUASI_DISK_DISABLE  = 0xff
+
 @pytest.fixture
 def diskfile(tmp_path):
     f = tmp_path / "test.bin"
@@ -29,19 +42,19 @@ def test_creation(quasidisk):
 
 
 def test_page_selection(quasidisk):
-    quasidisk.write_io(0x40, 0xfe)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_PAGE_0)
     assert quasidisk._page == 0
 
-    quasidisk.write_io(0x40, 0xfd)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_PAGE_1)
     assert quasidisk._page == 1
 
-    quasidisk.write_io(0x40, 0xfb)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_PAGE_2)
     assert quasidisk._page == 2
 
-    quasidisk.write_io(0x40, 0xf7)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_PAGE_3)
     assert quasidisk._page == 3
 
-    quasidisk.write_io(0x40, 0xff)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_DISABLE)
     assert quasidisk._page == None
 
 
@@ -54,7 +67,7 @@ def test_incorrect_port(quasidisk):
 def test_incorrect_page_selection(quasidisk):
     # Try writing incorrect page index
     with pytest.raises(IOError):
-        quasidisk.write_io(0x40, 0x42)
+        quasidisk.write_io(CONFIG_PORT, 0x42)
 
 
 def test_page_not_selected(quasidisk):
@@ -67,7 +80,7 @@ def test_page_not_selected(quasidisk):
 
 def test_read_write(quasidisk):
     # Select a page
-    quasidisk.write_io(0x40, 0xf7)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_PAGE_3)
 
     # Write then read on the same page
     quasidisk.write_stack(0x4000, 0x4242)
@@ -76,11 +89,11 @@ def test_read_write(quasidisk):
 
 def test_read_write_different_pages(quasidisk):
     # Write on page 4
-    quasidisk.write_io(0x40, 0xf7)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_PAGE_3)
     quasidisk.write_stack(0x4000, 0x4242)
 
     # Try reading from a different page
-    quasidisk.write_io(0x40, 0xfe)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_PAGE_0)
     assert quasidisk.read_stack(0x4000) == 0x0000
 
 
@@ -100,13 +113,13 @@ def test_read_data(tmp_path):
     quasidisk = QuasiDisk(f)
 
     # Validate data on the disk
-    quasidisk.write_io(0x40, 0xfe)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_PAGE_0)
     assert quasidisk.read_stack(0x1234) == 0x12
-    quasidisk.write_io(0x40, 0xfd)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_PAGE_1)
     assert quasidisk.read_stack(0x2345) == 0x34
-    quasidisk.write_io(0x40, 0xfb)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_PAGE_2)
     assert quasidisk.read_stack(0x3456) == 0x56
-    quasidisk.write_io(0x40, 0xf7)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_PAGE_3)
     assert quasidisk.read_stack(0x4567) == 0x78
 
 
@@ -115,13 +128,13 @@ def test_read_data(diskfile):
     quasidisk = QuasiDisk(diskfile)
 
     # Write some data on the disk
-    quasidisk.write_io(0x40, 0xfe)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_PAGE_0)
     quasidisk.write_stack(0x1234, 0x12)
-    quasidisk.write_io(0x40, 0xfd)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_PAGE_1)
     quasidisk.write_stack(0x2345, 0x34)
-    quasidisk.write_io(0x40, 0xfb)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_PAGE_2)
     quasidisk.write_stack(0x3456, 0x56)
-    quasidisk.write_io(0x40, 0xf7)
+    quasidisk.write_io(CONFIG_PORT, QUASI_DISK_PAGE_3)
     quasidisk.write_stack(0x4567, 0x78)
 
     # Ensure data is dumped to the host system file
@@ -145,7 +158,7 @@ def ut88(quasidisk):
 
 def test_read_write_via_machine(ut88):
     # Enable quasi disk
-    ut88.write_io(0x40, 0xfe)
+    ut88.write_io(CONFIG_PORT, QUASI_DISK_PAGE_0)
     ut88.write_stack(0xbeef, 0x42)
 
     assert ut88.read_stack(0xbeef) == 0x42
@@ -164,11 +177,11 @@ def test_select_between_disk_and_memory(ut88):
     ut88.add_memory(RAM(0x0000, 0xffff))
 
     # Write RAM, read QuasiDisk
-    ut88.write_io(0x40, 0xff)
+    ut88.write_io(CONFIG_PORT, QUASI_DISK_DISABLE)
     ut88.write_stack(0xbeef, 0x1234)            # RAM write
-    ut88.write_io(0x40, 0xfe)
+    ut88.write_io(CONFIG_PORT, QUASI_DISK_PAGE_0)
     ut88.write_stack(0xbeef, 0x4321)            # Quasi Disk write
 
     assert ut88.read_stack(0xbeef) == 0x4321    # Quasi disk read
-    ut88.write_io(0x40, 0xff)
+    ut88.write_io(CONFIG_PORT, QUASI_DISK_DISABLE)
     assert ut88.read_stack(0xbeef) == 0x1234    # RAM read

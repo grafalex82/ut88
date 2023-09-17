@@ -13,7 +13,19 @@ import pygame
 
 from ut88os_helper import UT88OS
 
+# These tests run various monitor functions listed below
+MONITOR_FUNC_WAIT_KBD   = 0xf803
+MONITOR_FUNC_PUT_CHAR   = 0xf809
+MONITOR_FUNC_INPUT_LINE = 0xfa8b
+
+# The following variables are checked in the tests
+INPUT_LINE_BUF_PTR      = 0xf77b
+
+# Monitor internally maintains a variable that is the cursor pointer within the Video RAM
 CURSOR_POS_ADDR = 0xf75a
+
+# PUT_CHAR function is supposed to output data to the display, and particularly to the video RAM
+# The Video RAM is organized in 28 lines 64 bytes each, starting from top-left corner
 VIDEO_MEM_ADDR = 0xe800
 
 
@@ -28,19 +40,19 @@ def ut88():
 
 def put_char(ut88, c):
     ut88.cpu.c = ord(c) if isinstance(c, str) else c
-    ut88.run_function(0xf809)
+    ut88.run_function(MONITOR_FUNC_PUT_CHAR)
 
 
 def wait_kbd(ut88):
-    ut88.run_function(0xf803)
+    ut88.run_function(MONITOR_FUNC_WAIT_KBD)
     return ut88.cpu.a
 
 
 def input_line(ut88):
-    ut88.run_function(0xfa8b)
+    ut88.run_function(MONITOR_FUNC_INPUT_LINE)
 
     res = ""
-    for addr in range(0xf77b, 0xf77b + 0x40):
+    for addr in range(INPUT_LINE_BUF_PTR, INPUT_LINE_BUF_PTR + 0x40):
         ch = ut88.get_byte(addr)
 
         if ch == 0x0d:
