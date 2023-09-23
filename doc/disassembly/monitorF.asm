@@ -26,7 +26,8 @@
 ; - f824    - Load a program from tape (HL - offset, returns CRC in BC)
 ; - f827    - Output a program to the tape (HL - start address, DE - end address, BC - CRC)
 ; - f82a    - Calculate CRC for a memory range (HL - start address, DE - end address, Result in BC)
-; - f830 and f833 - 2 unclear functions that get and set some variable, which is never used
+; - f830 and f833 - 2 unclear functions that get and set some variable, which is never used (perhaps exist for
+;                   compatibility with other Monitors in Radio-86RK computers family)
 ;
 ; Character output function performs printing in a terminal mode, when the symbol is printed at the
 ; cursor position, and cursor advances to the next position. If the cursor reaches the end of line, it
@@ -69,7 +70,7 @@
 ;
 ; The last command requires connection of an external ROM via additional i8255 interface, where
 ; ports B and C output the address to the ROM, and port A inputs the data. Unfortunately the implementation
-; somewhat contradicts with the scuematics published 2 years later. First, initialization of the i8255 port
+; somewhat contradicts with the schematics published 2 years later. First, initialization of the i8255 port
 ; is obviously does not match the schematics. Second, is that implementation in this monitor can read only
 ; up to 256 bytes from the ROM, while the ROM itself allows reading 2k. The second is obviously an issue in
 ; this monitor code (fortunately this can be easily fixed).
@@ -102,7 +103,7 @@
 ; f7b4 - User program PC register (when stopping at breakpoint)
 ; f7b6 - User program HL register (when stopping at breakpoint)
 ; f7b8 - User program BC register (when stopping at breakpoint)
-; f7bA - User program DE register (when stopping at breakpoint)
+; f7ba - User program DE register (when stopping at breakpoint)
 ; f7bc - User program SP register (when stopping at breakpoint)
 ; f7be - User program AF register (when stopping at breakpoint)
 ; f7c0 - A temporary placeholder for the SP register in tape in/out routines
@@ -170,15 +171,15 @@ START:
                                                 ; (on ROM reading). This means that initialization code must be
                                                 ; 0x90, and not 0x82. Command R handler also use this configuration
     
-    f83e  31 af f7   LXI SP, f7af               ; Initial stack pointer set up
+    f83e  31 af f7   LXI SP, MONITOR_STACK (f7af)   ; Initial stack pointer set up
 
-    f841  21 b0 f7   LXI HL, f7b0               ; Clear Monitor's variables
-    f844  11 ff f7   LXI DE, f7ff
+    f841  21 b0 f7   LXI HL, CURSOR_POS (f7b0)  ; Clear Monitor's variables
+    f844  11 ff f7   LXI DE, RAM_END (f7ff)
     f847  0e 00      MVI C, 00
     f849  cd e7 f9   CALL MEMSET (f9e7)
 
-    f84c  21 af f7   LXI HL, f7af               ; SP when running a user program (Command G)
-    f84f  22 bc f7   SHLD f7bc                  
+    f84c  21 af f7   LXI HL, MONITOR_STACK (f7af)   ; SP when running a user program (Command G)
+    f84f  22 bc f7   SHLD USER_SP (f7bc)
 
     f852  21 d3 fa   LXI HL, HELLO_STR (fad3)   ; Print the Hello string ("*UT-88*")
     f855  cd 1f f9   CALL PRINT_STR (f91f)
@@ -191,13 +192,13 @@ START:
     f85e  22 d1 f7   SHLD f7d1
 
     f861  21 2a 1d   LXI HL, 1d2a               ; Precalculated tape delay constants (0x2a for loading,
-    f864  22 cf f7   SHLD f7cf                  ; and 0x1d for saving)
+    f864  22 cf f7   SHLD TAPE_IN_DELAY (f7cf)  ; and 0x1d for saving)
 
     f867  3e c3      MVI A, c3                  ; JMP instruction code, f7c7 contains the entered address
-    f869  32 c6 f7   STA f7c6                   ; Used to jump to the user program (Command G)
+    f869  32 c6 f7   STA USER_PRG_JMP (f7c6)    ; Used to jump to the user program (Command G)
 
 ENTER_NEXT_COMMAND:
-    f86c  31 af f7   LXI SP, f7af               ; Some subroutines will jump directly here. Reset the SP
+    f86c  31 af f7   LXI SP, MONITOR_STACK (f7af)   ; Some subroutines will jump directly here. Reset the SP
 
     f86f  21 7f fe   LXI HL, PROMPT_STR (fe7f)
     f872  cd 1f f9   CALL PRINT_STR (f91f)
@@ -209,10 +210,10 @@ ENTER_NEXT_COMMAND:
 
     f879  cd eb f8   CALL INPUT_LINE (f8eb)     ; Input the monitor command
 
-    f87c  21 6c f8   LXI HL, f86c               ; Push ENTER_NEXT_COMMAND address to stack, so commands
+    f87c  21 6c f8   LXI HL, ENTER_NEXT_COMMAND (f86c)  ; Push ENTER_NEXT_COMMAND address to stack, so commands
     f87f  e5         PUSH HL                    ; may just return to the next command routine
 
-    f880  21 d3 f7   LXI HL, f7d3               ; Load the first character in the command buffer
+    f880  21 d3 f7   LXI HL, LINE_BUF (f7d3)    ; Load the first character in the command buffer
     f883  7e         MOV A, M
 
     f884  fe 58      CPI 58                     ; Handle command 'X'
@@ -224,14 +225,14 @@ ENTER_NEXT_COMMAND:
     f88e  f5         PUSH PSW                   ; Other commands may require parsing arguments
     f88f  cd 29 f9   CALL PARSE_ARGUMENTS (f929)
 
-    f892  2a cb f7   LHLD f7cb                  ; Load 3rd argument into BC
+    f892  2a cb f7   LHLD ARG3 (f7cb)           ; Load 3rd argument into BC
     f895  4d         MOV C, L
     f896  44         MOV B, H
 
-    f897  2a c9 f7   LHLD f7c9                  ; Load 2nd argument into DE
+    f897  2a c9 f7   LHLD ARG2 (f7c9)           ; Load 2nd argument into DE
     f89a  eb         XCHG
 
-    f89b  2a c7 f7   LHLD f7c7                  ; Load 1st argument into HL
+    f89b  2a c7 f7   LHLD ARG1 (f7c7)           ; Load 1st argument into HL
 
     f89e  f1         POP PSW
     f89f  fe 44      CPI 44                     ; Handle Command 'D'
@@ -300,7 +301,7 @@ HANDLE_BACKSPACE:
 ; - If the user enters more than 32 symbols, the input is abandoned as well.
 
 INPUT_LINE:
-    f8eb  21 d3 f7   LXI HL, f7d3               ; Set the buffer address to HL
+    f8eb  21 d3 f7   LXI HL, LINE_BUF (f7d3)    ; Set the buffer address to HL
 
 INPUT_LINE_RESET:
     f8ee  06 00      MVI B, 00
@@ -337,7 +338,7 @@ INPUT_LINE_ENTER:
     f917  78         MOV A, B                   ; Move B state to carry flag
     f918  17         RAL
 
-    f919  11 d3 f7   LXI DE, f7d3               ; Return buffer address in DE
+    f919  11 d3 f7   LXI DE, LINE_BUF (f7d3)    ; Return buffer address in DE
     f91c  06 00      MVI B, 00
     f91e  c9         RET
 
@@ -367,31 +368,31 @@ PRINT_STR:
 ; 
 ; Unused arguments are zeroed
 PARSE_ARGUMENTS:
-    f929  21 c7 f7   LXI HL, f7c7               ; Zero all arguments
-    f92c  11 cd f7   LXI DE, f7cd
+    f929  21 c7 f7   LXI HL, ARG1 (f7c7)        ; Zero all arguments
+    f92c  11 cd f7   LXI DE, HAS_MANY_ARGS (f7cd)
     f92f  0e 00      MVI C, 00
     f931  cd e7 f9   CALL MEMSET (f9e7)
 
-    f934  11 d4 f7   LXI DE, f7d4               ; Start parsing from the first symbol after command char
+    f934  11 d4 f7   LXI DE, LINE_BUF + 1 (f7d4)    ; Start parsing from the first symbol after command char
     f937  cd 57 f9   CALL PARSE_ADDR (f957)
 
-    f93a  22 c7 f7   SHLD f7c7                  ; Store first parsed parameter at f7c7
-    f93d  22 c9 f7   SHLD f7c9
+    f93a  22 c7 f7   SHLD ARG1 (f7c7)           ; Store first parsed parameter at f7c7
+    f93d  22 c9 f7   SHLD ARG2 (f7c9)
 
     f940  d8         RC                         ; Return if end of line reached
     
     f941  3e ff      MVI A, ff                  ; Indicate that we have more than 1 parameters
-    f943  32 cd f7   STA f7cd
+    f943  32 cd f7   STA HAS_MANY_ARGS (f7cd)
 
     f946  cd 57 f9   CALL PARSE_ADDR (f957)
 
-    f949  22 c9 f7   SHLD f7c9                  ; Store second parsed parameter at f7c9
+    f949  22 c9 f7   SHLD ARG2 (f7c9)           ; Store second parsed parameter at f7c9
 
     f94c  d8         RC                         ; Return if end of line reached
 
     f94d  cd 57 f9   CALL PARSE_ADDR (f957)
 
-    f950  22 cb f7   SHLD f7cb                  ; Store 3rd parsed parameter at f7cb
+    f950  22 cb f7   SHLD ARG3 (f7cb)           ; Store 3rd parsed parameter at f7cb
 
     f953  d8         RC                         ; Return if end of line reached
 
@@ -724,10 +725,10 @@ COMMAND_G:
     fa3c  ca 54 fa   JZ RUN_PROGRAM (fa54)
 
     fa3f  eb         XCHG                       ; Store breakpoint address at f7c3 in order to
-    fa40  22 c3 f7   SHLD f7c3                  ; restore original program later
+    fa40  22 c3 f7   SHLD BREAKPOINT_ADDR (f7c3); restore original program later
 
     fa43  7e         MOV A, M                   ; Load byte under break point and store it at f7c5
-    fa44  32 c5 f7   STA f7c5
+    fa44  32 c5 f7   STA ORIGINAL_OPCODE (f7c5)
 
     fa47  36 f7      MVI M, f7                  ; Put RST 6 instruction instead
 
@@ -737,7 +738,7 @@ COMMAND_G:
     fa51  22 31 00   SHLD 0031
 
 RUN_PROGRAM:
-    fa54  31 b8 f7   LXI SP, f7b8               ; Restore registers previously saved to f7b4-f7bf 
+    fa54  31 b8 f7   LXI SP, USER_BC (f7b8)     ; Restore registers previously saved to f7b4-f7bf 
     fa57  c1         POP BC                     ; by the breakpoint handler
     fa58  d1         POP DE
     fa59  e1         POP HL
@@ -745,9 +746,9 @@ RUN_PROGRAM:
 
     fa5b  f9         SPHL                       ; Restore SP
 
-    fa5c  2a b6 f7   LHLD f7b6                  ; Restore HL
+    fa5c  2a b6 f7   LHLD USER_HL (f7b6)        ; Restore HL
 
-    fa5f  c3 c6 f7   JMP f7c6                   ; Jump to the user program (f7c6 contains JMP instruction
+    fa5f  c3 c6 f7   JMP USER_PRG_JMP (f7c6)    ; Jump to the user program (f7c6 contains JMP instruction
                                                 ; opcode, f7c7 contains the command argument with the user
                                                 ; program address)
 
@@ -788,7 +789,7 @@ COMMAND_R_LOOP:
 
 ; Get current cursor position
 GET_CURSOR_POS:
-    fa72  2a b0 f7   LHLD f7b0                  ; Load cursor position to HL
+    fa72  2a b0 f7   LHLD CURSOR_POS (f7b0)     ; Load cursor position to HL
     fa75  c9         RET
 
 ; Get symbol at cursor position
@@ -802,7 +803,7 @@ GET_CURSOR_POS:
 ; which is absolute address of the cursor.
 GET_CHAR_AT_CURS:
     fa76  e5         PUSH HL                    ; Get character under cursor
-    fa77  2a b0 f7   LHLD f7b0
+    fa77  2a b0 f7   LHLD CURSOR_POS (f7b0)
     fa7a  7e         MOV A, M
     fa7b  e1         POP HL
     fa7c  c9         RET
@@ -814,12 +815,12 @@ GET_CHAR_AT_CURS:
 ; - Offset (HL)
 ; - (Optional) Tape constant (E)
 COMMAND_I:
-    fa7d  3a cd f7   LDA f7cd                   ; Check if tape constant is set
+    fa7d  3a cd f7   LDA HAS_MANY_ARGS (f7cd)   ; Check if tape constant is set
     fa80  b7         ORA A
     fa81  ca 88 fa   JZ COMMAND_I_1 (fa88)
 
     fa84  7b         MOV A, E                   ; Save tape constant at 0xf7cf
-    fa85  32 cf f7   STA f7cf
+    fa85  32 cf f7   STA TAPE_IN_DELAY (f7cf)
 
 COMMAND_I_1:
     fa88  cd ad fa   CALL IN_PROGRAM (faad)     ; Load the program from tape
@@ -980,7 +981,7 @@ COMMAND_O:
     fb09  b7         ORA A
     fb0a  ca 10 fb   JZ COMMAND_O_1 (fb10)
 
-    fb0d  32 d0 f7   STA f7d0                   ; Store the constant at 0xf7d0
+    fb0d  32 d0 f7   STA TAPE_OUT_DELAY (f7d0)  ; Store the constant at 0xf7d0
 
 COMMAND_O_1:
     fb10  e5         PUSH HL                    ; Calculate CRC
@@ -1110,7 +1111,7 @@ IN_BYTE_1:
     fb75  21 00 00   LXI HL, 0000               ; Save SP at f7c0, and set SP to 0000
     fb78  39         DAD SP
     fb79  31 00 00   LXI SP, 0000
-    fb7c  22 c0 f7   SHLD f7c0
+    fb7c  22 c0 f7   SHLD SAVE_SP (f7c0)
 
     fb7f  0e 00      MVI C, 00                  ; Reset byte accumulator
 
@@ -1143,7 +1144,7 @@ IN_BYTE_WAIT:
     fb9c  4f         MOV C, A
 
     fb9d  15         DCR D
-    fb9e  3a cf f7   LDA f7cf
+    fb9e  3a cf f7   LDA TAPE_IN_DELAY (f7cf)
     fba1  c2 a6 fb   JNZ IN_BYTE_DELAY (fba6)
 
     fba4  d6 12      SUI 12                     ; Compensate the delay between bytes
@@ -1170,7 +1171,7 @@ IN_BYTE_DELAY_LOOP:
     fbba  c2 c4 fb   JNZ IN_BYTE_2 (fbc4)
 
     fbbd  af         XRA A                      ; Save the input polarity
-    fbbe  32 ce f7   STA f7ce
+    fbbe  32 ce f7   STA TAPE_POLARITY (f7ce)
     fbc1  c3 ce fb   JMP IN_BYTE_3 (fbce)
 
 IN_BYTE_2:
@@ -1178,7 +1179,7 @@ IN_BYTE_2:
     fbc6  c2 86 fb   JNZ IN_BYTE_NEXT_BIT (fb86); Wait until a sync byte is received
 
     fbc9  3e ff      MVI A, ff                  ; Save the input polarity
-    fbcb  32 ce f7   STA f7ce
+    fbcb  32 ce f7   STA TAPE_POLARITY (f7ce)
 
 IN_BYTE_3:
     fbce  16 09      MVI D, 09                  ; Now we can receive 8 data bits
@@ -1187,16 +1188,16 @@ IN_BYTE_4:
     fbd0  15         DCR D
     fbd1  c2 86 fb   JNZ IN_BYTE_NEXT_BIT (fb86)
 
-    fbd4  2a c0 f7   LHLD f7c0                  ; Restore SP
+    fbd4  2a c0 f7   LHLD SAVE_SP (f7c0)        ; Restore SP
     fbd7  f9         SPHL
 
-    fbd8  3a ce f7   LDA f7ce                   ; Apply tape polarity constant
+    fbd8  3a ce f7   LDA TAPE_POLARITY (f7ce)   ; Apply tape polarity constant
     fbdb  a9         XRA C
     fbdc  c3 70 ff   JMP OUT_BYTE_OUTRO (ff70)
 
 
 IN_BYTE_ERROR:
-    fbdf  2a c0 f7   LHLD f7c0                  ; Restore SP
+    fbdf  2a c0 f7   LHLD SAVE_SP (f7c0)        ; Restore SP
     fbe2  f9         SPHL
     fbe3  7a         MOV A, D
     fbe4  b7         ORA A
@@ -1258,7 +1259,7 @@ OUT_BYTE_NEXT_BIT:
     fc02  d3 a1      OUT a1
 
     fc04  00         NOP                        ; Do a short delay (specified in tape constant at f7d0)
-    fc05  3a d0 f7   LDA f7d0
+    fc05  3a d0 f7   LDA TAPE_OUT_DELAY (f7d0)
     fc08  47         MOV B, A
 
 OUT_BYTE_DELAY_1:
@@ -1272,7 +1273,7 @@ OUT_BYTE_DELAY_1:
 
     fc13  00         NOP                        ; Prepare for delay after positive pulse
     fc14  15         DCR D
-    fc15  3a d0 f7   LDA f7d0
+    fc15  3a d0 f7   LDA TAPE_OUT_DELAY (f7d0)
     fc18  c2 1d fc   JNZ OUT_BYTE_1 (fc1d)
 
     fc1b  d6 0e      SUI 0e                     ; Do a shorter delay between bytes
@@ -1364,7 +1365,7 @@ PUT_CHAR_C:
     fc45  d5         PUSH DE
     fc46  f5         PUSH PSW
 
-    fc47  2a b2 f7   LHLD f7b2                  ; Load current cursor location address
+    fc47  2a b2 f7   LHLD CURSOR_PTR (f7b2)     ; Load current cursor location address
 
     fc4a  23         INX HL                     ; Remove highlight at the cursor location
     fc4b  7e         MOV A, M
@@ -1376,7 +1377,7 @@ PUT_CHAR_C:
     fc50  11 ba fc   LXI DE, PUT_CHAR_RETURN (fcba) ; Returning address after a special symbol is processed
     fc53  d5         PUSH DE
     
-    fc54  3a f8 f7   LDA f7f8                   ; Check the direct movement flag state
+    fc54  3a f8 f7   LDA CUR_DIRECT_MOVE (f7f8) ; Check the direct movement flag state
     fc57  3d         DCR A
     fc58  fa 74 fc   JM PRINT_NORMAL_CHAR (fc74); If it is 0 - normal char print
     fc5b  ca 34 fd   JZ MOVE_CUR_DIRECT_B1 (fd34) ; If it is 1 - expect 'Y' as a second byte of the sequence
@@ -1396,7 +1397,7 @@ MOVE_CUR_DIRECT_RESET:
     fc6f  af         XRA A                      ; Reset direct movement flag
 
 MOVE_CUR_DIRECT_STORE:
-    fc70  32 f8 f7   STA f7f8                   ; Store direct movement flag
+    fc70  32 f8 f7   STA CUR_DIRECT_MOVE (f7f8) ; Store direct movement flag
     fc73  c9         RET
 
 PRINT_NORMAL_CHAR:
@@ -1445,7 +1446,7 @@ DO_PUT_CHAR:
     fcb9  d1         POP DE                     ; Just discard return address previously stored on stack
 
 PUT_CHAR_RETURN:
-    fcba  22 b2 f7   SHLD f7b2                  ; Store the new cursor memory location
+    fcba  22 b2 f7   SHLD CURSOR_PTR (f7b2)     ; Store the new cursor memory location
 
     fcbd  23         INX HL                     ; Invert/Highlight the next symbol
     fcbe  7e         MOV A, M
@@ -1454,7 +1455,7 @@ PUT_CHAR_RETURN:
 
     fcc2  11 00 18   LXI DE, 1800               ; Store the cursor position
     fcc5  19         DAD DE
-    fcc6  22 b0 f7   SHLD f7b0
+    fcc6  22 b0 f7   SHLD CURSOR_POS (f7b0)
 
     fcc9  f1         POP PSW
     fcca  d1         POP DE
@@ -1606,7 +1607,7 @@ KBD_INPUT:
     fd59  c5         PUSH BC
 
     fd5a  3e 7f      MVI A, 7f                  ; Reset repeat counter (if the button is _still_ pressed
-    fd5c  32 f3 f7   STA f7f3                   ; let's wait some time until it is triggered again)
+    fd5c  32 f3 f7   STA KBD_REPEAT_CNTR (f7f3) ; let's wait some time until it is triggered again)
 
 KBD_INPUT_LOOP:
     fd5f  cd 9a fd   CALL SCAN_KBD_STABLE (fd9a)
@@ -1615,31 +1616,31 @@ KBD_INPUT_LOOP:
     fd64  c2 74 fd   JNZ KBD_INPUT_PRESS (fd74)
 
     fd67  3e 00      MVI A, 00                  ; Nothing is pressed - reset the repeat counter
-    fd69  32 f3 f7   STA f7f3
+    fd69  32 f3 f7   STA KBD_REPEAT_CNTR (f7f3)
     fd6c  3e 00      MVI A, 00                  ; ... and the pressed flag
-    fd6e  32 f4 f7   STA f7f4
+    fd6e  32 f4 f7   STA BTN_PRESSED (f7f4)
 
     fd71  c3 5f fd   JMP KBD_INPUT_LOOP (fd5f)  ; Wait until something is pressed
 
 KBD_INPUT_PRESS:
     fd74  57         MOV D, A
 
-    fd75  3a f4 f7   LDA f7f4                   ; If it is pressed for the first time - trigger
+    fd75  3a f4 f7   LDA BTN_PRESSED (f7f4)     ; If it is pressed for the first time - trigger
     fd78  a7         ANA A                      ; the button press
     fd79  c2 92 fd   JNZ KBD_INPUT_TRIGGER (fd92)
 
-    fd7c  3a f3 f7   LDA f7f3                   ; If it is pressed for a while - trigger the button 
+    fd7c  3a f3 f7   LDA KBD_REPEAT_CNTR (f7f3) ; If it is pressed for a while - trigger the button 
     fd7f  a7         ANA A                      ; press (repeat)
     fd80  ca 92 fd   JZ KBD_INPUT_TRIGGER (fd92)
 
-    fd83  3a f3 f7   LDA f7f3                   ; Decrease the repeat wait timer
+    fd83  3a f3 f7   LDA KBD_REPEAT_CNTR (f7f3) ; Decrease the repeat wait timer
     fd86  3d         DCR A
-    fd87  32 f3 f7   STA f7f3
+    fd87  32 f3 f7   STA KBD_REPEAT_CNTR (f7f3)
 
     fd8a  c2 5f fd   JNZ KBD_INPUT_LOOP (fd5f)
 
     fd8d  3e 01      MVI A, 01                  ; Raise the pressed flag
-    fd8f  32 f4 f7   STA f7f4
+    fd8f  32 f4 f7   STA BTN_PRESSED (f7f4)
 
 KBD_INPUT_TRIGGER:
     fd92  cd 4b fe   CALL BEEP (fe4b)
@@ -1859,9 +1860,11 @@ BEEP_LOOP:
     fe59  c2 4d fe   JNZ BEEP_LOOP (fe4d)       ; Repeat
 
 BEEP_DELAY:
-    fe5c  06 2f      MVI B, 2f          
+    fe5c  06 2f      MVI B, 2f                  ; One more delay
+
+BEEP_DELAY_LOOP:
     fe5e  05         DCR B
-    fe5f  c2 5e fe   JNZ fe5e
+    fe5f  c2 5e fe   JNZ BEEP_DELAY_LOOP (fe5e)
     fe62  c9         RET
 
 ; UNUSED FUNCTION
@@ -1941,34 +1944,34 @@ BACKSPACE_STR:
 ;
 ; See Command G description for more information
 BREAKPOINT:
-    febb  22 b6 f7   SHLD f7b6                      ; Store HL at f7b6
+    febb  22 b6 f7   SHLD USER_HL (f7b6)            ; Store HL at f7b6
 
     febe  f5         PUSH PSW                       ; Store AF at f7be
     febf  e1         POP HL
-    fec0  22 be f7   SHLD f7be
+    fec0  22 be f7   SHLD USER_PSW (f7be)
 
     fec3  e1         POP HL                         ; Store return address-1 to f7b4
     fec4  2b         DCX HL
-    fec5  22 b4 f7   SHLD f7b4
+    fec5  22 b4 f7   SHLD USER_PC (f7b4)
 
     fec8  21 00 00   LXI HL, 0000                   ; Move SP to HL
     fecb  39         DAD SP
 
-    fecc  31 be f7   LXI SP, f7be                   ; Store BC, DE, and previous SP f7b8, f7bb, and f7bd
+    fecc  31 be f7   LXI SP, USER_PSW (f7be)        ; Store BC, DE, and previous SP at f7b8, f7bb, and f7bd
     fecf  e5         PUSH HL
     fed0  d5         PUSH DE
     fed1  c5         PUSH BC
 
-    fed2  2a b4 f7   LHLD f7b4                      ; Print previous PC
-    fed5  31 af f7   LXI SP, f7af
+    fed2  2a b4 f7   LHLD USER_PC (f7b4)            ; Print previous PC
+    fed5  31 af f7   LXI SP, MONITOR_STACK (f7af)
     fed8  cd 51 fb   CALL PRINT_HEX_ADDR (fb51)
 
     fedb  eb         XCHG                           ; Check if the PC address really matches breakpoint
-    fedc  2a c3 f7   LHLD f7c3                      ; address previously stored in f7c3
+    fedc  2a c3 f7   LHLD BREAKPOINT_ADDR (f7c3)    ; address previously stored in f7c3
     fedf  cd 8d f9   CALL CMP_HL_DE (f98d)
     fee2  c2 6c f8   JNZ ENTER_NEXT_COMMAND (f86c)
 
-    fee5  3a c5 f7   LDA f7c5                       ; Restore the original instruction under the breakpoint
+    fee5  3a c5 f7   LDA ORIGINAL_OPCODE (f7c5)     ; Restore the original instruction under the breakpoint
     fee8  77         MOV M, A                       ; address
 
     fee9  c3 6c f8   JMP ENTER_NEXT_COMMAND (f86c)  ; Jump to the main command loop
@@ -1982,7 +1985,7 @@ COMMAND_X:
     feec  21 8c fe   LXI HL, REGISTERS_STR (fe8c)
     feef  cd 1f f9   CALL PRINT_STR (f91f)
 
-    fef2  21 b4 f7   LXI HL, f7b4               ; Display 6 register pairs starting 0xf7b4
+    fef2  21 b4 f7   LXI HL, USER_PC (f7b4)     ; Display 6 register pairs starting 0xf7b4
     fef5  06 06      MVI B, 06
 
 COMMAND_X_LOOP:
@@ -2087,7 +2090,7 @@ COMMAND_V_LOOP_2:
     ff5d  90         SUB B
 
 COMMAND_V_1:
-    ff5e  32 cf f7   STA f7cf                   ; Store measured value
+    ff5e  32 cf f7   STA TAPE_IN_DELAY (f7cf)   ; Store measured value
 
     ff61  fb         EI                         ; Enable interrups and print the value
     ff62  cd b4 f9   CALL PRINT_HEX_BYTE_SPACE (f9b4)
@@ -2183,7 +2186,7 @@ TIME_INTERRUPT:
     ffc5  e5         PUSH HL
 
     ffc6  21 f0 ff   LXI HL, TIME_LIMITS (fff0) ; Advance time values at 0xf6fd-0xf6ff
-    ffc9  11 fd f6   LXI DE, f6fd
+    ffc9  11 fd f6   LXI DE, CUR_SECONDS (f6fd)
     ffcc  06 03      MVI B, 03                  ; 3 values to advance
 
 TIME_INTERRUPT_LOOP:
@@ -2203,10 +2206,10 @@ TIME_INTERRUPT_LOOP:
     ffdb  c2 ce ff   JNZ TIME_INTERRUPT_LOOP (ffce)
 
 TIME_INTERRUPT_EXIT:
-    ffde  2a fe f6   LHLD f6fe                  ; Display current time at CPU module LCD
-    ffe1  3a fd f6   LDA f6fd
-    ffe4  32 00 90   STA 9000
-    ffe7  22 01 90   SHLD 9001
+    ffde  2a fe f6   LHLD CUR_MINUTES (f6fe)    ; Display current time at CPU module LCD
+    ffe1  3a fd f6   LDA CUR_SECONDS (f6fd)
+    ffe4  32 00 90   STA LCD_A (9000)
+    ffe7  22 01 90   SHLD LCD_HL (9001)
 
     ffea  e1         POP HL                     ; Restore registers and exit
     ffeb  d1         POP DE
