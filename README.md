@@ -1,37 +1,39 @@
 # UT-88 Soviet DIY i8080-based Computer Emulator
 
-This is the emulator of UT-88 computer, written in Python. Goals of the project:
+This is an emulator of the UT-88 computer, developed using Python. The project has two primary objectives:
 - Understand the computer schematics, and emulate it as close as possible to the real hardware
 - Understand software part of the computer, disassemble and document it
 
-This is also the most complete collection of UT-88 related information:
-- scematics, and component descriptions
-- binaries (fixed a lot of scanning issues, compared to other binaries on Internet)
-- disassembly of all programs ever published for UT-88 (and even more)
+Additionally, this project serves as the most comprehensive repository of UT-88 related information, encompassing:
+- scematics and modules descriptions
+- binary files (addressing numerous scanning issues compared to other binaries available on the internet)
+- Disassembly of every program ever published for the UT-88, and even beyond.
 
 ## UT-88 - Computer Description
 
-UT-88 (Russian: ЮТ-88) is a DIY computer, first published in "Young Technician - For Skilled Hands" magazine (Russian: "ЮТ Для Умелых Рук") on Feb 1989. In late 80x a typical DIY computers was quite complex, consist of many parts, and required quite solid technical skills to bring it up. Instead, UT-88 offered a very simple design, and a step-by-step build. This extends target audience to children and hobbyist.
+UT-88 (Russian: ЮТ-88) is a DIY computer originally introduced in "Young Technician - For Skilled Hands" magazine (Russian: "ЮТ Для Умелых Рук") on Feb 1989. In late 1980s, a typical DIY computers were notably complex, comprised of numerous components, and demanded substantial technical expertise to assemble and bring it up. In contrast, the UT-88 presented an elegantly simple design and a step-by-step construction process. This approach significantly broadened its appeal to a wider audience, including children and hobbyists.
 
-The magazine published the computer schematics and software codes. It was supposed to build the computer in phases:
-- Basic configuration looks like a calculator with a 6-digit LCD and hexadecimal button keypad. 
-- Calculator addon adds a ROM with some floating point functions, making possible scientific calculations
-- Video module adds 55-keys alpha-numeric keyboard, and a 64x28 char monochrome display (TV output). 
-- Dynamic 64k RAM adds possibility to run programs from other compatible computers
-- 64k-256k Quasi Disk (a battery powered dynamic ROM) adds possibility to store large amount of data
-- There were a few custom addons such as Flash memory programmer, and i8253-based sound generator
+The magazine featured both computer schematics and software code, with the intention of guiding readers through a computer construction process in several phases:
+- **Basic Configuration:** The CPU module resembled a calculator, featuring a 6-digit LCD display and a hexadecimal button keypad.
+- **Calculator Add-on:** This expanded the capabilities by incorporating a ROM with floating-point functions, enabling scientific calculations.
+- **Video Module:** The next phase introduced a 55-key alphanumeric keyboard and a 64x28 character monochrome display (with TV output).
+- **Dynamic 64k RAM:** This upgrade allowed users to run programs from other compatible computers.
+- **64k-256k Quasi Disk:** A battery-powered dynamic ROM was added, providing the capacity to store a substantial amount of data.
+- **Custom Add-ons:** In addition to the phases listed above, there were custom add-ons, including a Flash memory programmer and an i8253-based sound generator.
 
-From the software point of view each phase provided additional capabilities:
-- The basic configuration allowed doing basic computer operations (read/write memory, calculate CRC), loading programs from tape, creating and running own simple programs. 
-- The video module provided possibility to run text based programs, such as simple text based video games.
-- Full configuration allowed running so called UT-88 operating system, which provided a text editor, assembler, and better compatibility with other i8080-based computers.
-- The magazine offerred a special port of the CP/M operating system, that allows working with files on the quasi disk.
+These phases offered readers a structured approach to gradually build and enhance the UT-88 computer according to their preferences and needs. Each phase of the UT-88 build not only expanded the hardware but also enriched the software capabilities, providing users with a versatile computing experience.
 
-The UT-88 computer architecture is based on previously published Micro-80 computer (early 80s), and Radio-86RK (published in 'Radio' magazine in 1985-1987s). It reuses multiple technical solutions such as tape recorder connectivity and recording format, keyboard layout and schematics. 
+From a software perspective, each phase of the UT-88 computer build introduced additional functionalities:
+- **Basic Configuration:** In the basic configuration, users could perform basic computer operations such as memory read/write, CRC calculations, load programs from tape, and create and execute simple programs.
+- **Video Module:** With the video module installed, the UT-88 could run text-based programs, including simple text-based video games.
+- **Full Configuration:** Achieving the full configuration unlocked the ability to run the UT-88 operating system. This OS offered essential tools like a full screen text editor and an assembler, enhancing compatibility with other i8080-based computers.
+- **Special CP/M Port:** The magazine also provided an unique port of the CP/M operating system, enabling users to work with files stored on the quasi disk, expanding the computer's capabilities even further.
 
-It worth noting that UT-88 offers a more mature schematics, such as using i8224 and i8238 (instead of number of TTL logic gate chips in Radio-86RK), and wide use of peripheral in I/O address space (unlike Radio-86RK where the peripheral was located in the main address space). UT-88 schematics also takes into account chip availability. Thus hard to buy i8275 used in 86RK was replaced with a number of registers and counters in UT-88 video module.
+The architecture of the UT-88 computer draws significant inspiration from two previously published computer systems: the Micro-80 (from the early 1980s) and the Radio-86RK (featured in the 'Radio' magazine between 1985 and 1987). Several technical solutions and design elements are inherited from these predecessors, enhancing the UT-88's overall functionality and compatibility. Key elements carried over from its predecessors include connectivity with tape recorders and the associated recording format, the layout and schematics of the keyboard, and the general hardware framework.
 
-Software part is also highly compatible with the previous generation computers. Thus Monitor F (the primary firmware for the Video Module) is very similar to the Radio-86RK Monitor, and shares same routine entry points. This makes possible loading Radio-86RK programs from the tape and run them with no or little modifications.
+Notably, the UT-88 distinguishes itself by incorporating more advanced and refined schematics. This includes the integration of components like the i8224 and i8238, which replace a multitude of TTL logic gate chips used in the Radio-86RK. Additionally, the UT-88's peripheral are connected to the CPU using I/O address space, in contrast to the Radio-86RK where peripherals were located within the main memory address space. Furthermore, the UT-88's design takes into account chip availability, addressing the scarcity of the i8275 chip in late USSR. In response, the UT-88's video module employs a combination of registers and counters, providing a practical alternative for the video signal generation.
+
+On the software front, the UT-88 maintains a high degree of compatibility with its predecessors. For instance, the Monitor F, which serves as the primary firmware for the Video Module, closely resembles the Radio-86RK Monitor and shares common routine entry points. This compatibility allows for the loading and execution of Radio-86RK programs from tape with minimal to no modifications, underscoring the seamless transition between these related computer systems.
 
 Scans of the original magazine can be found [here](doc/scans).
 
@@ -193,7 +195,7 @@ chars 6x8 pixels each. Characters partially comply to 7-bit ASCII table (perhaps
 - A 1k RAM at `0xf400`-`0xf7ff` address range
 - A 2k ROM at `0xf800`-`0xffff` range, containing Monitor F
 - An optional 4k RAM can be connected to the `0x3000`-`0x3fff` address range
-- An optional external ROM can be connected via another i8255 chip at ports `0xf8`-`0xfb`. Unfortunately the magazine never published the connection schematics, and the firmware support looks incorrect.
+- An optional external ROM can be connected via another i8255 chip at ports `0xf8`-`0xfb`. The schematics of the external ROM was published 2 years later after the other computer parts. Unfortunately the firmware support looks incorrect. 
 
 This hardware can work together with the CPU Basic Module components. Thus Video Module is supposed to use Tape Recorder connection at port `0xa1`. It also may use the LCD screen connected to `0x9000`-`0x9002` to display some information (e.g. current time). Some other components such as Monitor 0 ROM (`0x0000`-`0x03ff`) may be disconnected, and replaced with other memory modules (e.g. extra RAM). Hex keyboard is also not used in the Video Module configuration.
 
@@ -575,6 +577,8 @@ The topmost UT-88 configuration adds 256k Quasi Disk, and allows running a well 
 
 Quasi Disk is a 64/128/192/256k RAM module (depending on how many RAM chips available), organized in 1-4 64k banks. Module schematics uses a nice trick: i8080 CPU generates different signals when accessing stack and regular memory. Thus quasi disk RAM is enabled for stack push/pop instructions, while the main memory is accessible with regular read/write operations. This makes possible main RAM and quasi disk operate simultaneously in the same address space. A special configuration port `0x40` allows selecting a RAM bank, or disconnect from the quasi disk, so that stack operations are routed back to the main RAM.
 
+Quasi disk schematic and description can be found [here](doc/scans/UT49.djvu).
+
 The magazine mentions that Quasi Disk may be powered from an accumulator, and therefore data on the disk may 'persist' for a long time.
 
 CP/M system provides modular design, and consists of a few components:
@@ -669,7 +673,7 @@ This section describe main parts of the emulator, and outlines important impleme
 - [Machine](src/machine.py) - implements the machine as a whole, sets up relationships between the CPU, registered (installed) memories, attached I/O devices, and interrupt controller (if it would exist for the UT-88 machine). The concept of the Machine class allow emulating UT-88 design closer to how it works in the hardware. Thus it implements some important concepts:
     - Real CPU does not read the memory directly. Instead, the CPU sets the desired address on its address lines, and reads the data that a memory device (if connected and selected) sets on the data bus. This is emulated in the same way: the CPU is a part of the particular Machine configuration, and can access only a memory which is installed in this configuration. Same for I/O devices, which may vary for different computer configurations.
     - Reset button resets only the CPU, but leaves the RAM intact. This makes possible some workflows implemented in the Monitor 0, where exiting from some modes (e.g. Memory read or write) is performed using the Reset button.
-    - Some types of memory is triggerred with stack read/write operations. Thus the Quasi Disc module is connected in this way. This allows RAM and Quasi Disk operate in the same address space, but use different accessing mechanisms.
+    - Some types of memory is triggerred with stack read/write operations. Thus the Quasi Disc module is connected in this way. This allows RAM and Quasi Disk operate in the same address space, but use different accessing mechanisms. At the same time, the Machine class is responsible for handling `0x40` port in order to select between regular memory and the quasi disk.
     - The UT-88 Computer does not have an interrupt controller. Instead if an interrupts occurr, the data bus will have 0xff value on the line due to pull-up resistors. This coincide with the RST7 instruction, that runs an interrupt handler.
 - [RAM](src/ram.py), [ROM](src/rom.py), stack memories (e.g. Quasi Disc), and I/O devices are connected to the machine according to a few [generic interfaces](src/interfaces.py). This allows extending functionality of the computer with new devices very easily - just implement the interface, and register the device/memory in the Machine object. Note that some devices (such as [LCD display](src/lcd.py)) in fact connected to a memory bus, and not to the I/O devices space.
 - Finally, the [Emulator](src/emulator.py) class provides handy routines for emulating the machine and its CPU. Particularly, this class adds routines to run a single or multiple machine steps, and handle breakpoints. The breakpoint concept is a handy way to do emulator side actions, based on the machine condition or CPU state. Particularly it is possible to add some extra logging when a CPU enters a specific stage or executes a certain code.
@@ -681,13 +685,22 @@ The following peripherals is emulated:
 - [Seconds Timer](src/timer.py) is not connected to any data buses in the computer, but generates an interrupt every second. As said previously, Machine will set `0xff` on the data line, so that CPU will treat it as RST7 instruction.
 - [Display](src/display.py) emulates the 64x28 chars monochrome display. Technically this is a piece of RAM at `0xe800`-`0xefff` that CPU can write to. Every character is displayed according to the Font ROM used in the original hardware (each symbol is displayed as 6x8 dot matrix). Font can display chars in `0x00`-`0x7f` range. MSB is used to invert the symbol (e.g. to show the cursor). Symbols in `0x00`-`0x1f` range are pseudo-graphics symbols, that allows converting the display to pseudo 128x56 dots graphic display.
 - [Keyboard](src/keyboard.py) class emulates a 55-button keyboard connected through a i8255 controller to `0x04`-`0x07` ports. The monitor does a keyboard matrix scan by setting low levels on a column (via Port A) and reading rows (via Port B). The emulator handles host computer key presses (taking onto account Shift and Ctrl mod keys, and Russian keyboard layout), and sets Port B/C scan codes accordingly. The Monitor F reads these scan codes, and converts them to char codes.
+- [Quasi Disk](src/quasidisk.py) class emulates the quasi disk. It responds to stack read/write commands to perform read/write data from/to the 'disk'. The 'disk' is a 256k memory buffer, that is loaded during emulator start, and flushed to the host system disk from time to time. The 256k disk is logically split into four 64k pages. The software can use port `0x40` to select the data page to work with.
 
 The Emulator class, as well as CPU, memories, and some of the peripherals are UI agnostic. This means it can work as a non-UI component, executed in a script, or be checked in automated tests.
 
 Other components, such as LCD, Display and keyboards interact with the User. This is done using [pygame](https://www.pygame.org/) framework. In order to properly handle the keyboard input, and prepare output graphics, components have an `update()` method. The update signal is propagated via Machine object to all memories and devices registered in the Machine. The `update()` method is called approx 15-60 times a second, providing a way to emulate these devices.
 
+## Breakpoints and hooks in emulator
 
-## Running the emulator
+TBD
+
+## Emulating the emulator
+
+TBD Describe 
+
+
+# Usage of the emulator
 
 
 ### Basic configuration
@@ -749,7 +762,7 @@ The emulator supports storage formats from other similar emulators:
 
 These formats provide similar capabilities, and have just minor differences in data layout. Refer [tape recorder](src/tape.py) component description for more detail.
 
-## Tests
+# Tests
 
 In order to verify correctness of the implemented features (especially CPU instructions), a comprehensive [set of automated tests](test) was developed. These tests also help to control massive changes across the codebase, and verify that nothing is broken with the change.
 
