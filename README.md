@@ -81,21 +81,21 @@ Usage of the Monitor 0:
 
 Monitor0 Commands:
 - 0 `addr`    - Manually enter data from memory address `addr`. 
-                  - Current address is displayed on the LCD
-                  - Monitor0 waits for the byte to be entered
-                  - The entered byte is stored at the current address, then address advances to the next byte
-                  - To exit memory write mode press the Reset button. The memory data will be preserved.
+  - Current address is displayed on the LCD
+  - Monitor0 waits for the byte to be entered
+  - The entered byte is stored at the current address, then address advances to the next byte
+  - To exit memory write mode press the Reset button. The memory data will be preserved.
 - 1           - Manually enter data starting from memory address `0xc000` (similar to command 0)
 - 2           - Read memory data starting from memory address `0xc000` (similar to command 5)
 - 3           - Run an LCD test
 - 4           - Run a memory test for the range of addresses `0xc000` to `0xc400`.
-                  - If a memory error is found, the LCD will display the address and the read value.
-                  - Displaying address `0xc400` on the LCD means no memory errors were found.
-                  - To exit memory test mode, press the Reset button.
+  - If a memory error is found, the LCD will display the address and the read value.
+  - Displaying address `0xc400` on the LCD means no memory errors were found.
+  - To exit memory test mode, press the Reset button.
 - 5 `addr`    - Display data starting from memory address `addr`
-                  - The current address and the byte at the address are displayed on the LCD.
-                  - Press a button to display the next byte.
-                  - To exit memory read mode, press the Reset button. The memory data will be preserved.
+  - The current address and the byte at the address are displayed on the LCD.
+  - Press a button to display the next byte.
+  - To exit memory read mode, press the Reset button. The memory data will be preserved.
 - 6           - Start the program from memory address `0xc000`
 - 7 `addr`    - Start the program from the user-specified address.
 - 8 `a1` `a2` - Calculate CRC for the address range from `a1` to `a2`
@@ -151,7 +151,7 @@ Programs in the second part of Monitor 0  extend the functionality of Monitor 0,
   - Shifts the range 1 byte backward and corrects addresses within the range.
   - Accepts the start and end address of the range to be moved.
 - `0x03b2` - **Memory compare program**:
- - Accepts the start and end address of a source range and the start address of the range to compare with.
+  - Accepts the start and end address of a source range and the start address of the range to compare with.
 - `0x03dd` - **Display registers helper function**:
   - Displays AF, BC, DE, HL, and the memory byte underneath the HL pointer.
 
