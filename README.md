@@ -167,15 +167,22 @@ Basic CPU module schematics can be found here: [part 1](doc/scans/UT08.djvu), [p
 
 ## UT-88 Calculator Add-On
 
-One of the suggested modifications to the computer is the calculator add-on. It adds a 2k ROM at `0x0800`-`0x0fff` address range. This ROM contains some functions to work with floating point values, and include arithmetic operations (+, -, *, /), and also trigonometric functions (sin, cos, tg, ctg, arcsin, arccos, arctg, arcctg), based on Taylor series calculations.
+The calculator add-on is a valuable extension for the UT-88 computer, introducing a 2k ROM at the memory address range `0x0800`-`0x0fff`. This calculator add-on significantly expands the computational capabilities of the UT-88 computer, enabling users to perform advanced mathematical operations and trigonometric calculations with ease. The ROM contains a set of functions designed to work with floating-point values, offering a wide range of mathematical operations. 
 
-The calculator ROM is supposed to work with 3-byte floats, which consists of 8-bit signed exponent, and 16-bit signed mantissa. The ROM contains a number of helper functions to operate with these floating point numbers as a whole, as well as operate with its parts (exponent and mantissa). Exponent and Mantissa are presented in a Sign-Magnitude form in order to simplify user experience, and decrease complexity of converting numbers into a human readable form. Unfortunately conversion from/to decimal form is not a part of the library, the User has to work with 3-byte hexadecimal floating point numbers.
+- **Arithmetic Operations**: The calculator ROM provides support for basic arithmetic operations, including addition (+), subtraction (-), multiplication (*), and division (/) of floating point values.
+- **Trigonometric Functions**: Users can also access trigonometric functions, such as sine (sin), cosine (cos), tangent (tg), cotangent (ctg), arcsine (arcsin), arccosine (arccos), arctangent (arctg), and arccotangent (arcctg). These functions are computed using Taylor series calculations.
 
-Overall, 3-byte floating point values provide a good balance between accuracy and calculation power required to operate with these numbers. Simple arithmetic calculations work quite fast, and allows building own calculation algorithms based on provided functions. Unfortunately some of the trigonometric functions use high exponent values, a lot of multiplications and divisions, and as result accuracy of these functions for some values appears to be quite low (+-0.01), and function execution time is quite high (>10 seconds). 
+The calculator ROM operates with 3-byte floating-point numbers, each consisting of an 8-bit signed exponent and a 16-bit signed mantissa. These numbers are represented in Sign-Magnitude form, enhancing user-friendliness and simplifying the process of handling them as a whole or working with their individual parts (exponent and mantissa).
 
-The ROM provides number of function with fixed starting addresses outlined below. Unlike modern approach when parameters and the result are passed via stack or registers, functions in this library expects parameters and store the result at a fixed memory addresses. This adds some complexity of the client programs to copy values to/from specific addresses.
+It's important to note that the calculator ROM does not include built-in functionality for converting these floating-point numbers to or from decimal form. Users are expected to work with these numbers in their hexadecimal representation.
 
-The disassembly of the calculator ROM is [here](doc/disassembly/calculator.asm). Refer to the disassembly for parameter/result addresses, as well as for algorithm explanation. 
+The choice of 3-byte floating-point values strikes a balance between accuracy and computational efficiency. Basic arithmetic calculations are executed quite fast, enabling users to develop their own calculation algorithms based on the provided building blocks. However, some of the trigonometric functions involve high exponent values, numerous multiplications, and divisions, resulting in reduced accuracy for certain values (approximately ±0.01) and longer execution times (exceeding 10 seconds).
+
+It's important to note that the ROM offers a set of functions with fixed starting addresses. Unlike modern programming approaches, where parameters and results are typically passed via stack or registers, these functions expect parameters and store results at specific, predetermined memory addresses. This design choice adds complexity to client programs, which must manage the copying of values to and from these specific addresses.
+
+While the use of fixed memory addresses may present challenges, it allows for efficient use of the limited resources and capabilities of the UT-88 computer, making the most of its computational power and expanding its functionality for mathematical operations.
+
+The disassembly of the calculator ROM can be found [here](doc/disassembly/calculator.asm). Refer to the disassembly for parameters/result addresses, as well as for algorithm explanation. 
 
 Functions in the library are:
 - `0x0849` - add two 1-byte integers in Sign-Magnitude representation
@@ -198,91 +205,102 @@ Functions in the library are:
 - `0x0f61` - Cotangent
 - `0x0f8f` - Arccotangent
 
-In order to better understand how 3-byte floating numbers work, a special [Float](misc/float.py) python component was created. It provides conversion from/to a regular 4-byte floating point numbers.
+To enhance comprehension of 3-byte floating-point numbers and facilitate their usage, a dedicated Python component called [Float](misc/float.py) was developed. This component enables the conversion of these 3-byte floating-point numbers to and from regular 4-byte floating-point numbers commonly used in computing.
 
-In order to simplify calling library functions for disassembly and testing purposes, a special [set of automated tests](test/test_calculator.py) were created, along with the helper python code to run the library functions and load parameters. These tests are not supposed to _test_ the library functions, but rather run different branches of the code, and check the result accuracy.
+To streamline the process of calling library functions for disassembly and testing purposes, a comprehensive [set of automated tests](test/test_calculator.py) was designed. These tests are intended not to _validate_ the functionality of the library functions, but rather to execute various branches of the code and assess the accuracy of the results. They serve as valuable tools for analyzing and verifying the behavior and performance of the library functions under different conditions.
 
 Add-on schematics can be found [here](doc/scans/UT18.djvu).
 
 ## UT-88 Video Module
 
-The Video Module adds a 64x28 chars monochrome display and a full 55-keys keyboard. With this module UT-88 becomes a real computer, and can run text-based video games, text editors, programming language compilers, and many more. Video Module provides good level of compatibility with previously released Radio-86RK and its modifications, so that using/porting of programs for 86RK to UT-88 is not a big problem.
+The Video Module is a pivotal addition to the UT-88 computer, bringing with it a 64x28 character monochrome display and a 55-key keyboard. With this module in place, the UT-88 transforms into a fully-fledged computer, capable of running text-based video games, text editors, programming language compilers, and a wide array of applications.
 
-The hardware additions in more details:
-- Video adapter is based on a 2-port RAM at the address range `0xe800`-`0xefff`. One port of this memory is attached to the computer's data bus, and works like a regular memory. A special schematics based on counters and logic gates is reading the video memory through the second port, and converts it to a TV signal. A special 2k ROM (not connected to the data bus) is used as a font generator.
-  Overall, the video adapter can display 64x28 monochrome
-chars 6x8 pixels each. Characters partially comply to 7-bit ASCII table (perhaps this is KOI-7 N2 encoding). Chars in `0x00`-`0x1f` range provide pseudo-graphics symbols. Chars in `0x20`-`0x5f` range match standard ASCII table. Chars in `0x60`-`0x7f` range allocated for Cyrilic symbols. Highest bit signals the video controller to invert the symbol.
-- The keyboard is connected via i8255 chip to ports `0x04`-`0x07` (2 lowest bits of the address are inverted). The keyboard is a 7x8 buttons matrix connected to Port A (columns) and Port B (rows) of the i8255. 3 modification keys are used to enter special, control, and Cyrilic symbols. These keys connected to the Port C. Monitor F is responsible for scanning the keyboard matrix, and converting the scan code to the ASCII character value.
-- A 1k RAM at `0xf400`-`0xf7ff` address range
-- A 2k ROM at `0xf800`-`0xffff` range, containing Monitor F
-- An optional 4k RAM can be connected to the `0x3000`-`0x3fff` address range
-- An optional external ROM can be connected via another i8255 chip at ports `0xf8`-`0xfb`. The schematics of the external ROM was published 2 years later after the other computer parts. Unfortunately the firmware support looks incorrect. 
+The Video Module not only enhances the UT-88's functionality but also offers a high level of compatibility with previously released Radio-86RK and its various modifications. This compatibility ensures that using and porting programs from the Radio-86RK to the UT-88 is a straightforward and manageable task. It effectively bridges the gap between these related computer systems, enabling a seamless transition of software and expanding the UT-88's capabilities.
 
-This hardware can work together with the CPU Basic Module components. Thus Video Module is supposed to use Tape Recorder connection at port `0xa1`. It also may use the LCD screen connected to `0x9000`-`0x9002` to display some information (e.g. current time). Some other components such as Monitor 0 ROM (`0x0000`-`0x03ff`) may be disconnected, and replaced with other memory modules (e.g. extra RAM). Hex keyboard is also not used in the Video Module configuration.
+Here's a detailed description of the hardware additions to the UT-88 computer:
+- **Video Adapter**: 
+  - The Video Adapter is built around a 2-port RAM located in the address range `0xe800`-`0xefff`. One port of this memory is connected to the computer's data bus and functions like regular memory. A specialized circuit, consisting of counters and logic gates, reads the video memory through the second port and converts it into a TV signal.
+  - Additionally, a dedicated 2k ROM (not connected to the data bus) serves as a font generator. 
+  - The video adapter is capable of displaying a 64x28 monochrome character matrix, with each character being 6x8 pixels in size. The character set matches the KOI-7 N2 encoding: characters in the `0x00`-`0x1f` range providing pseudo-graphic symbols, characters in the `0x20`-`0x5f` range matching the standard ASCII table, and characters in the `0x60`-`0x7f` range allocated for Cyrillic symbols.
+  - The highest bit of each character signals the video controller to invert the symbol.
+- **Keyboard**:
+  - The keyboard is connected via an i8255 chip to ports 0x04-0x07, with the two lowest bits of the address inverted.
+  - The keyboard comprises a 7x8 button matrix connected to Port A (columns) and Port B (rows) of the i8255. Three modification keys are used to enter special, control, and Cyrillic symbols and are connected to Port C.
+  - The keyboard matrix scanning and conversion of scan codes to ASCII character values are managed by Monitor F.
+- **Memory Additions**:
+  - A 1k RAM is located at the address range `0xf400`-`0xf7ff`.
+  - A 2k ROM, containing Monitor F, resides in the address range `0xf800`-`0xffff`.
+  - Optionally, a 4k RAM can be connected to the address range `0x3000`-`0x3fff`.
+- **External ROM Support**:
+  - An optional external ROM can be connected via another i8255 chip at ports `0xf8`-`0xfb`. However, it's worth noting the schematics of the external ROM was published 2 years later than the other computer components. Unfortunately the firmware support does not look correct. 
 
-The primary firmware for the Video Module is Monitor F (since located starting `0xf800` address). The Monitor F provides a set of routines to work with the new hardware, such as display and keyboard. These routines are accessed via static and predefined entry points. Refer to the [Monitor F disassembly](doc/disassembly/monitorF.asm) for arguments and return values explanation, as well as algorithm description.
+The Video Module seamlessly integrates with the CPU Basic Module components, allowing for the coexistence of these hardware modules. In the Video Module configuration, the Tape Recorder connection is utilized at port `0xa1`, and the LCD screen connected to addresses `0x9000`-`0x9002` can be employed to display various information, such as the current time. Some other components, such as the Monitor 0 ROM at addresses `0x0000`-`0x03ff`, may be disconnected and replaced with alternative memory modules, such as additional RAM. Additionally, the hexadecimal keyboard is not used in the Video Module configuration.
+
+The primary firmware for the Video Module is Monitor F, as it resides at memory addresses starting from `0xf800`. Monitor F provides a comprehensive set of routines to interact with the new hardware components, including display and keyboard input. These routines are accessed via static and predefined entry points, each serving specific purposes:
 - `0xf800`    - Software reset
-- `0xf803`    - Wait for a keyboard press, returns entered symbol in A
-- `0xf806`    - Input a byte from the tape (A - number of bits to receive, or `0xff` if synchronization is needed. Returns the received byte in A)
-- `0xf809`    - Put a char to the display at cursor location (C - char to print)
+- `0xf803`    - Wait for a keyboard press, returning the entered symbol in register A
+- `0xf806`    - Input a byte from the tape (A - number of bits to receive or 0xff if synchronization is needed). Returns the received byte in register A.
+- `0xf809`    - Put a character to the display at the cursor location (C - character to print)
 - `0xf80c`    - Output a byte to the tape (C - byte to output)
-- `0xf80f`    - Put a char to the display at cursor location (C - char to print)
-- `0xf812`    - Check if any button is pressed on the keyboard (A=`0x00` if no buttons pressed, `0xff` otherwise)
+- `0xf80f`    - This function is supposed to print a byte on a printer. Since the printer connectivity is not implemented in UT-88, this function is just an alias for `0xf809` (put char to the display)
+- `0xf812`    - Check if any button is pressed on the keyboard (A=`0x00` if no buttons are pressed, `0xff` otherwise)
 - `0xf815`    - Print a byte in a 2-digit hexadecimal form (A - byte to print)
-- `0xf818`    - print a NULL terminated string at cursor position (HL - pointer to the string)
-- `0xf81b`    - Scan a keyboard, return when a stable scan code is read (returns scan code in A)
-- `0xf81e`    - Get the current cursor position (offset from `0xe800` video memory start, return in HL)
-- `0xf821`    - Get the character under cursor (return in A)
-- `0xf824`    - Load a program from tape (HL - offset, returns CRC in BC)
+- `0xf818`    - Print a NULL-terminated string at the cursor position (HL - pointer to the string)
+- `0xf81b`    - Scan a keyboard, returning when a stable scan code is read (returns the scan code in register A)
+- `0xf81e`    - Get the current cursor position (offset from `0xe800` video memory start, returned in registers HL)
+- `0xf821`    - Get the character under the cursor (returned in register A)
+- `0xf824`    - Load a program from tape (HL - offset, returns CRC in registers BC)
 - `0xf827`    - Output a program to the tape (HL - start address, DE - end address, BC - CRC)
-- `0xf82a`    - Calculate CRC for a memory range (HL - start address, DE - end address, Result in BC)
+- `0xf82a`    - Calculate CRC for a memory range (HL - start address, DE - end address, result in registers BC)
 
-Character output function performs printing in a terminal mode: the symbol is printed at the cursor position, and cursor advances to the next position. If the cursor reaches the end of line, it advances to the next line. If cursor reaches the bottom right position of the screen, the screen is scrolled for one line.
+These predefined entry points simplify interaction with the Video Module hardware and enable efficient development of software that leverages its capabilities. For detailed information on arguments and return values, as well as algorithm descriptions, please refer to the [Monitor F disassembly](doc/disassembly/monitorF.asm).
 
-Character output function also support several control symbols:
-- `0x08`  - Move cursor 1 position left
-- `0x0c`  - Move cursor to the top left position
-- `0x18`  - Move cursor 1 position right
-- `0x19`  - Move cursor 1 line up
-- `0x1a`  - Move cursor 1 line down
-- `0x1f`  - Clear screen
-- `0x1b`  - Move cursor to a selected position. This is a 4-symbol sequence (similar to Esc sequence): `0x1b`, '`Y`', `0x20`+Y position, `0x20`+X position
+The character output function operates in a terminal mode, where the symbol is printed at the cursor's current position, and then the cursor advances to the next position. When the cursor reaches the end of a line, it automatically advances to the next line. If the cursor reaches the bottom-right position of the screen, the screen is scrolled down by one line to make room for additional text.
 
-Besides general purpose routines, the Monitor F also provides a basic command console, that provide the User with possibilities to:
-- View, modify, copy, fill memory data
-- Input from and output programs to the tape recorder
-- Run user programs with a breakpoint possibility
-- Handle time interrupt and display current time
+Additionally, the character output function supports several control symbols for special actions:
+- `0x08`  - Moves the cursor one position to the left.
+- `0x0c`  - Moves the cursor to the top-left position of the screen.
+- `0x18`  - Moves the cursor one position to the right.
+- `0x19`  - Moves the cursor one line up.
+- `0x1a`  - Moves the cursor one line down.
+- `0x1f`  - Clears the entire screen.
+- `0x1b`  - Moves the cursor to a specific position. This is achieved using a 4-symbol sequence, similar to an Escape sequence, consisting of `0x1b`, `'Y'`, `0x20` + Y position, and `0x20` + X position.
 
-The following commands are supported:
-- Memory commands:
-  - `D` `<addr1>`, `<addr2>`        - Dump the memory range in hex form
-  - `L` `<addr1>`, `<addr2>`        - List the memory range in text form ('.' is printed for non-printable chars)
-  - `K` `<addr1>`, `<addr2>`        - Calculate CRC for the memory range
-  - `F` `<addr1>`, `<addr2>`, `<val>` - Fill the memory range with the provided constant
-  - `S` `<addr1>`, `<addr2>`, `<val>` - Search the specified byte in the memory range
-  - `T` `<src1>`, `<src2>`, `<dst>`   - Copy (Transfer) `<src1>`-`<src2>` memory range to `<dst>`
-  - `C` `<src1>`, `<src2>`, `<dst>`   - Compare `<src1>`-`<src2>` memory range with range starting `<dst>`
-  - `M` `<addr>`                  - View and edit memory starting `<addr>`
-- Tape commands:
-  - `O` `<start>`, `<end>`[, `<spd>`] - Save the memory range to the tape. Use speed constant if provided.
-  - `I` `<offset>`[, `<spd>`]       - Load program from the tape, apply specified offset. Use speed constant.
-  - `V`                         - Measure tape loading delay constant
-- Program execution:
-  - `W`                         - Start the program from `0xc000`
-  - `U`                         - Start the program from `0xf000`
-  - `G` `<addr>`[, `<brk`>]         - Start/Continue the program from `<addr>`, set breakpoint at `<brk>`
-  - `X`                         - View/Modify CPU registers when breakpoint hit
-- Time commands:
-  - `B`                         - Display current time at CPU module LCD
-- External ROM:
-  - `R` `<start>`, `<end>`, `<dst>`   - Import `<start>`-`<end>` data range from external ROM
+In addition to its general-purpose routines, Monitor F offers a basic command console that provides users with several essential capabilities:
+- **View, Modify, Copy, and Fill Memory Data**: Users can interactively view the contents of memory, make modifications to memory values, copy data from one memory location to another, and fill specific memory ranges with desired values. These commands are invaluable for low-level memory manipulation and debugging.
+- **Input from and Output Programs to the Tape Recorder**: Monitor F allows users to load programs from a connected tape recorder into the computer's memory. It also provides the functionality to save programs from memory onto a tape recorder for storage or sharing. These operations are crucial for program transfer and archival purposes.
+- **Run User Programs with Breakpoint Possibility**: Users can execute their own programs loaded into memory. Monitor F offers the convenience of setting breakpoints, which enable users to pause program execution at specific memory addresses. Breakpoints are a valuable tool for debugging and tracing program flow.
+- **Handle Time Interrupt and Display Current Time**: The Monitor F console includes functionality for handling time interrupts and displaying the current time. This feature is especially useful for applications that require precise timing or for monitoring the passage of time during program execution.
 
-The tape format is similar to one used in Monitor 0, except for 2 additions:
-- The recording format is extended with CRC. The Monitor F can detect stored and calculated CRC mismatch, and report this to the User
-- Speed can be adjusted, by specifying so called 'tape constant' (which is a delay between bits). This is done to unify the format and allow read tapes for Micro-80 and Radio-86RK computers. These computers may potentially use different crystals, and therefore write to the tape at different speed. 
+The following commands are supported by the Monitor F:
+- **Memory commands**:
+  - `D` `<addr1>`, `<addr2>`        - Dump the memory range in hexadecimal format.
+  - `L` `<addr1>`, `<addr2>`        - List the memory range in text format, with '.' indicating non-printable characters.
+  - `K` `<addr1>`, `<addr2>`        - Calculate the CRC for the specified memory range.
+  - `F` `<addr1>`, `<addr2>`, `<val>` - Fill the memory range with the provided constant value.
+  - `S` `<addr1>`, `<addr2>`, `<val>` - Search for the specified byte value in the memory range.
+  - `T` `<src1>`, `<src2>`, `<dst>`   - Copy (Transfer) the memory range specified by `<src1>`-`<src2>` to the destination `<dst>`
+  - `C` `<src1>`, `<src2>`, `<dst>`   - Compare the memory range specified by `<src1>`-`<src2>` with the range starting from `<dst>`
+  - `M` `<addr>`                  - View and edit memory starting at address `<addr>`
+- **Tape commands**:
+  - `O` `<start>`, `<end>`[, `<spd>`] - Save the memory range to the tape. Optionally, use the speed constant if provided.
+  - `I` `<offset>`[, `<spd>`]       - Load a program from the tape and apply the specified offset. Optionally, use the speed constant.
+  - `V`                         - Measure the tape loading delay constant.
+- **Program execution**:
+  - `W`                         - Start the program from address `0xc000`.
+  - `U`                         - Start the program from address `0xf000`.
+  - `G` `<addr>`[, `<brk`>]         - Start or continue the program from the specified address `<addr>`. Optionally, set a breakpoint at address `<brk>`.
+  - `X`                         - View and modify CPU registers when a breakpoint is hit.
+- **Time commands**:
+  - `B`                         - Display the current time at the CPU module's LCD.
+- **External ROM**:
+  - `R` `<start>`, `<end>`, `<dst>`   - Import data from the external ROM in the range `<start>`-`<end>` to the destination memory location `<dst>`.
 
-Tape recording format (last 3 fields are new, compared to Monitor 0 format):
+The tape format used in Monitor F is an extension of the format used in Monitor 0, with two notable additions:
+- The recording format now includes a CRC, which is used for error detection. Monitor F can detect a CRC mismatch between the stored CRC value and the calculated CRC value, allowing it to report this discrepancy to the user.
+- Users have the option to adjust the tape speed by specifying a "tape constant". This tape constant represents the delay between individual bits in the recorded data. This feature is included to standardize the format and accommodate potential variations in tape recording speeds due to differences in crystal frequencies between computers like Micro-80 and Radio-86RK.
+
+The tape recording format, with the additional fields introduced in Monitor F, is as follows:
 - 256 x `0x00` - pilot tone
 - `0xe6`       - Synchronization byte
 - 2 byte       - start address (high byte first)
@@ -292,6 +310,7 @@ Tape recording format (last 3 fields are new, compared to Monitor 0 format):
 - `0xe6`       - Synchronization byte
 - 2 byte       - Calculated CRC (high byte first)
 
+These enhancements to the tape format improve data integrity and provide greater flexibility in working with tape recordings, ensuring accurate program loading and error detection during the tape loading process.
 
 Memory map of the UT-88 in the Video Configuration:
 - `0x0000`-`0x03ff` - CPU Module ROM (Monitor 0, Optional)
@@ -312,8 +331,9 @@ I/O address space map:
 - `0xfb`  - (Optional) external ROM i8255 Control register
 - `0xa1`  - tape recorder
 
-From the software perspective the Video Module makes the UT-88 a classic computer with a keyboard and monitor, and typical terminal-like routines that expected from this kind of computer. The only program published with the UT-88 video module is [Tetris game](tapes/TETR1.GAM) ([Disassembly](doc/disassembly/tetris.asm)).
+From a software perspective, the Video Module transforms the UT-88 into a classic computer with the essential components of a keyboard and monitor. This expansion enables the UT-88 to operate as a traditional computer with typical terminal-like routines expected from this type of machine. It opens the door for various software applications and interactions that are common to such computers.
 
+One notable program published for the UT-88 with the Video Module is the Tetris game, which offers an engaging gaming experience. The Tetris game allows users to enjoy the classic block-stacking challenge on their UT-88 computer. You can find the program tape for Tetris [here](tapes/TETR1.GAM) and explore its disassembly [here](doc/disassembly/tetris.asm)).
 
 Video module schematics can be found here: [part 1](doc/scans/UT22.djvu), [part 2](doc/scans/UT24.djvu).
 
@@ -456,6 +476,8 @@ The following commands are supported by the Monitor:
     - Command P: Relocate program
 
 Refer to a respective monitor disassembly ([1](doc/disassembly/ut88os_monitor.asm), [2](doc/disassembly/ut88os_monitor2.asm)) for a more detailed description of the  commands' parameters and algorithm.
+
+The UT-88 OS Monitor does not provide any time counting functions. The time interrupt shall be switched off when working with the UT-88 OS.
 
 As soon as Monitor is providing hardware abstraction facilities (display printing, keyboard scanning, tape input/output), it worth noting that there are 2 major inconsistencies compared to the original UT-88 MonitorF.
 
