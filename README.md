@@ -340,18 +340,20 @@ Video module schematics can be found here: [part 1](doc/scans/UT22.djvu), [part 
 
 ## 64k Dynamic RAM
 
-The next proposed step in upgrading UT-88 computer was building a 64k dynamic RAM module ([schematics](doc/scans/UT38.djvu)). While the RAM module covers whole address space, special logic disables the dynamic RAM for `0xe000`-`0xefff`, and `0xf000`-`0xffff` address ranges (video RAM, and MonitorF RAM/ROM respectively). Thus actual dynamic RAM size is 56k.
+The upgrade to a 64k dynamic RAM module ([schematics](doc/scans/UT38.djvu)) significantly enhances UT-88 computer memory capabilities. While the RAM module covers the entire 64k address space, it includes special logic to disable the dynamic RAM for specific address ranges, such as `0xe000`-`0xefff` (video RAM) and `0xf000`-`0xffff` (reserved for Monitor F RAM/ROM). As a result, the effective dynamic RAM size is 56k.
 
-Additional RAM allows running programs in other address ranges. It is claimed that UT-88 is programmatically compatible with other computers in the same class (particularly Micro-80 and Radio-86RK), but this is true only partially. Programs that communicate with keyboard and display using the Monitor F functions will work as expected. Unfortunately most of the Radio-86RK programs write directly to the video memory (which is located at different address range), or even re-configure i8275 video controller used in 86RK (but not available for UT-88) for a different screen resolution. This makes almost all 86RK games pretty much incompatible. 
+This additional RAM capacity opens up the possibility of running a wider range of programs on the UT-88. It is claimed that the UT-88 is programmatically compatible with other computers in the same class, particularly the Micro-80 and Radio-86RK. However, compatibility is only partial, as some programs designed for the Radio-86RK write directly to video memory or make use of the i8275 video controller (which is not available in the UT-88). These differences can result in incompatibility with many Radio-86RK games.
 
-Examples of Radio-86RK games that run on UT-88 are Treasure game ([Disassembly](doc/disassembly/klad.asm)), and 2048 game ([Disassembly](doc/disassembly/2048.asm)) which was (surprinsingly) developed recently.
+Nonetheless, there are examples of Radio-86RK games that can run on the UT-88, thanks to the compatibility provided by Monitor F functions. Programs that communicate with the keyboard and display using Monitor F functions will work as expected on the UT-88. For instance, Treasure game ([Disassembly](doc/disassembly/klad.asm)) and the more recently developed 2048 game ([Disassembly](doc/disassembly/2048.asm)) are two examples of Radio-86RK games that are compatible with the UT-88.
+
 
 ## ROM flasher addon
 
-One of the addons offered in the magazine was a ROM flasher - a i8255 based device that allows programming 573RF2 and 573RF5 2k ROM chips (both are claimed as Intel 2716 analogs). 
+The magazine offered an interesting addon for the UT-88 computer, which was a ROM flasher. This device was designed to enable the programming of 573RF2 and 573RF5 2k ROM chips, both of which were claimed to be analogs of Intel 2716 ROM chips. Overall, the ROM flasher addon added a valuable feature to the UT-88, enabling users to work with ROM chips and potentially customize their computer's functionality to suit their specific needs.
 
-The [device schematics](doc/scans/UT60.djvu) is pretty straightforward, but it worth noting that CE and OE lines were interchanged, compared to how they are referenced in the code. The device is supported with a [flasher program](doc/disassembly/flasher.asm) that allows reading and writing the ROM. 
+The [schematics](doc/scans/UT60.djvu) for the ROM flasher device appear to be relatively straightforward, and is based on the i8255 chip. However, it's worth noting that there is a discrepancy in the CE (Chip Enable) and OE (Output Enable) lines compared to their references in the code.
 
+To support the ROM flasher device, a dedicated flasher program was provided. This program, which you can explore in the [disassembly](doc/disassembly/flasher.asm), allowed users to read and write to the ROM chips using the flasher device. 
 
 ## UT-88 OS
 
