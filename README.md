@@ -239,7 +239,7 @@ The Video Module seamlessly integrates with the CPU Basic Module components, all
 The primary firmware for the Video Module is Monitor F, as it resides at memory addresses starting from `0xf800`. Monitor F provides a comprehensive set of routines to interact with the new hardware components, including display and keyboard input. These routines are accessed via static and predefined entry points, each serving specific purposes:
 - `0xf800`    - Software reset
 - `0xf803`    - Wait for a keyboard press, returning the entered symbol in register A
-- `0xf806`    - Input a byte from the tape (A - number of bits to receive or 0xff if synchronization is needed). Returns the received byte in register A.
+- `0xf806`    - Input a byte from the tape (A - number of bits to receive or `0xff` if synchronization is needed). Returns the received byte in register A.
 - `0xf809`    - Put a character to the display at the cursor location (C - character to print)
 - `0xf80c`    - Output a byte to the tape (C - byte to output)
 - `0xf80f`    - This function is supposed to print a byte on a printer. Since the printer connectivity is not implemented in UT-88, this function is just an alias for `0xf809` (put char to the display)
@@ -357,137 +357,135 @@ To support the ROM flasher device, a dedicated flasher program was provided. Thi
 
 ## UT-88 OS
 
-64k RAM configuration with some minor modifications allows running so called UT-88 OS. It is presented as an operating system specifically designed for UT-88. In fact this is not an operating system in classical meaning, but rather a package of programs:
-- Extended version of Monitor, that offers a bigger variety of commands, blinking cursor, some text output improvements (e.g. scroll control)
-- Set of development tools: running programs with 2 software breakpoints, program relocator, interactive disassembler and assembler
-- "Micron" full screen text editor
-- "Micron" assembler
+The 64k RAM configuration, with some minor modifications, enables the UT-88 to run what is referred to as the "UT-88 OS". This OS is presented as an operating system tailored specifically for the UT-88, although it should be noted that it doesn't adhere to the classical definition of an operating system. In essence, the UT-88 OS serves as a suite of tools and programs that enhance the UT-88's capabilities, making it more versatile and suitable for a range of programming and development tasks.
 
-The OS does not offer a specific API layering (like CP/M does). It is still a mix of hardware related functions (keyboard, display, tape recorder), middleware (e.g. line editing function), and high level programs (e.g. interactive assembler). At the same time text editor and assembler are separate programs that can potentially work on other systems with minor modifications.
+The components of this package include:
+- **Extended Monitor**: This version of the Monitor offers an expanded set of commands, including features like a blinking cursor and improvements in text output (such as scroll control).
+- **Development Tools**: The OS includes a set of development tools, such as the ability to run programs with two software breakpoints, a program relocator, an interactive disassembler, and an assembler.
+- **"Micron" Text Editor**: The package incorporates a full-screen text editor known as "Micron." This editor provides users with text editing capabilities and is designed to work seamlessly within the UT-88 environment.
+- **"Micron" Assembler**: Alongside the text editor, there is an assembler program bearing the "Micron" name. This assembler is designed to complement the development tools and facilitate the creation of programs for the UT-88.
 
-The UT-88 comes as a [single bootstrap binary](tapes/UT88.rku). It assumes that the user will switch off Monitor ROM (and other ROMs, if any), and enable RAM at the same addresses instead. When the system is reconfigured (on the fly), the bootstrap program will copy OS parts to their dedicated locations. 
+It's important to note that the UT-88 OS doesn't introduce a specific API layering, akin to what is found in operating systems like CP/M. Instead, it retains a mixture of functions that are closely related to hardware operations (e.g., keyboard, display, tape recorder), middleware (e.g., line editing functions), and higher-level programs (e.g., the interactive assembler). At the same time, the text editor and assembler are standalone programs that could potentially be adapted for use on other systems with minor modifications.
 
-The following describes memory map in UT-88 OS configuration (assuming OS parts are already loaded by the bootstrap program):
-- `0x0000` - `0xbfff` is general purpose RAM. Some of the parts of this range have special meaning:
-  - `0x3000` - `0x9fff` - text area. Used by Editor for the edited text, and by Assemblers for source code.
-  - `0xa000` - `0xbfff` - default area for binary code produced by assembler
-- `0xc000`-`0xcaff` - additional part of the Monitor, including some [additional functions](doc/disassembly/ut88os_monitor2.asm), [interactive assembler/disassembler](doc/disassembly/ut88os_asm_disasm.asm), and some other development tools.
-- `0xcb00`-`0xd7ff` - ['Micron' text editor](doc/disassembly/ut88os_editor.asm)
-- `0xd800`-`0xdfff` - ['Micron' assembler](doc/disassembly/ut88os_micron_asm.asm)
-- `0xe800`-`0xefff` - Video RAM
-- `0xf400`-`0xf5ff` - Special area for labels and references used while compiling assembler code
-- `0xf600`-`0xf7ff` - Monitor and other UT-88 OS program variables
-- `0xf800`-`0xffff` - [Monitor main part](doc/disassembly/ut88os_monitor.asm), including hardware function, and basic commands processing.
+The UT-88 OS is loaded into memory through a [single bootstrap binary file](tapes/UT88.rku). As a part of the bootstrap loading, the User is asked to deactivate the Monitor ROM (as well as any other ROMs, if present) and enable RAM at the corresponding addresses. Once the system is reconfigured in this manner, the bootstrap program takes over and proceeds to copy the different components of the UT-88 OS to their designated memory locations.
 
-The documentation on the UT-88 OS is very poor. Programs and commands description is too brief, so it makes almost impossible to understand how to use program or command. Some statements do not match the actually implemeted behavior. There are number of mistakes in command names, key combinations or values through the text.
+Here is an overview of the memory map in the UT-88 OS configuration, assuming that the OS components have already been loaded by the bootstrap program:
+- `0x0000` - `0xbfff` - This region represents general-purpose RAM. Some portions of this range are reserved for specific purposes:
+  - `0x3000` - `0x9fff` - Text area used by the text editor for storing edited text and by assemblers for source code.
+  - `0xa000` - `0xbfff` - Default area for binary code generated by the assembler.
+- `0xc000` - `0xcaff` - This segment contains an additional part of the Monitor, which includes various [additional functions](doc/disassembly/ut88os_monitor2.asm), [interactive assembler/disassembler](doc/disassembly/ut88os_asm_disasm.asm), and some other development tools.
+- `0xcb00` - `0xd7ff` - ['Micron' text editor](doc/disassembly/ut88os_editor.asm)
+- `0xd800` - `0xdfff` - ['Micron' assembler](doc/disassembly/ut88os_micron_asm.asm)
+- `0xe800` - `0xefff` - Video RAM
+- `0xf400` - `0xf5ff` - A special area reserved for labels and references used during the compilation of assembler code.
+- `0xf600` - `0xf7ff` - This segment is used for storing variables related to the Monitor and other UT-88 OS programs.
+- `0xf800` - `0xffff` - The main part of the [Monitor](doc/disassembly/ut88os_monitor.asm) is located in this region. It includes hardware functions and handles basic command processing.
 
-Published binary codes also contains a lot of mistakes (for example 0x3c00-0x3fff range of the [UT-88 OS binary code](doc/scans/UT44.djvu) is misplaced with a similar range of [CP/M-35 binary](doc/scans/UT56.djvu)). Some code is obviously wrong (incorrect addresses or values used) and simply will not work out of the box. 
+It appears that the documentation and software for the UT-88 OS suffer from various shortcomings, including insufficient documentation, discrepancies between documented behavior and actual implementation, and mistakes in command names and descriptions. These issues can certainly make it challenging for users to understand and effectively use the software. Additionally, there are compatibility issues between various OS components, which suggest that UT-88 OS may have been assembled from different sources without thorough testing.
 
-Finally there are some incompatibilities between some of the OS components, which makes an impression that the UT-88 is a quickly prepared compilation of several separate programs, that was published without an intensive testing.
+Published binary codes also contains a lot of mistakes (for example `0x3c00`-`0x3fff` range of the [UT-88 OS binary code](doc/scans/UT44.djvu) is misplaced with a similar range of [CP/M-35 binary](doc/scans/UT56.djvu)). Some code is obviously wrong (incorrect addresses or values used) and simply does not work out of the box. 
 
 The following subchapters describe UT-88 OS software in detail.
 
 ### UT-88 OS Monitor
 
-UT-88 OS Monitor offers a concept very similar to MonitorF. 
-
-The API is narrower, but main entry points remain the same:
+The UT-88 OS Monitor shares many similarities with the MonitorF in terms of its main entry points and functionalities. Although the API is narrower, it still provides basic I/O operations, tape input/output, display operations, and keyboard interactions:
 - `0xf800`    - Software reset
-- `0xf803`    - Wait for a keyboard press, returns entered symbol in A
-- `0xf806`    - Input a byte from the tape (A - number of bits to receive, or `0xff` if synchronization is needed. Returns the received byte in A)
-- `0xf809`    - Put a char to the display at cursor location (C - char to print)
+- `0xf803`    - Wait for a keyboard press, returning the entered symbol in register A
+- `0xf806`    - Input a byte from the tape (A - number of bits to receive or `0xff` if synchronization is needed). Returns the received byte in register A
+- `0xf809`    - Put a character to the display at the cursor location (C - character to print)
 - `0xf80c`    - Output a byte to the tape (C - byte to output)
-- `0xf80f`    - Put a char to the display at cursor location (C - char to print)
-- `0xf812`    - Check if any button is pressed on the keyboard (A=`0x00` if no buttons pressed, `0xff` otherwise)
+- `0xf80f`    - This function is supposed to print a byte on a printer. Since the printer connectivity is not implemented in UT-88, this function is just an alias for `0xf809` (put char to the display)
+- `0xf812`    - Check if any button is pressed on the keyboard (A=`0x00` if no buttons are pressed, `0xff` otherwise)
 - `0xf815`    - Print a byte in a 2-digit hexadecimal form (A - byte to print)
-- `0xf818`    - print a NULL terminated string at cursor position (HL - pointer to the string)
+- `0xf818`    - Print a NULL-terminated string at the cursor position (HL - pointer to the string)
 
-Character output function is slightly less featured, compared to MonitorF, and does not support Esc-Y cursor positioning sequence. Scrolling the screen when cursor moves further down beyond the last line is working same way as in MonitorF. 
+The character output function in the UT-88 OS Monitor is slightly more simplified compared to its counterpart, MonitorF, and lacks support for the Esc-Y cursor positioning sequence. The scrolling behavior, where the cursor moves beyond the last line is similar to that of MonitorF.
 
-There are 2 scroll modes supported:
- - continuous scroll (similar to MonitorF's one): when the screen is fully filled, it is scrolled one line up, and new line is printed in the freed last line
- - page turning: when the screen is filled, the Monitor waits for a key press, then clears the page so that new lines are printed on a blank screen.
+Two scroll modes are supported:
+- Continuous scroll, similar to MonitorF: When the screen is entirely filled, it scrolls up by one line, and a new line is printed in the freed last line.
+- Page turning: When the screen is filled, the Monitor awaits a key press. Upon input, it clears the page, providing a fresh canvas for new lines.
 
-Character output function support several control symbols:
-- `0x08`  - Move cursor 1 position left
-- `0x0c`  - Move cursor to the top left position
-- `0x18`  - Move cursor 1 position right
-- `0x19`  - Move cursor 1 line up
-- `0x1a`  - Move cursor 1 line down
-- `0x1f`  - Clear screen
+The character output function recognizes several control symbols:
+- `0x08` - Move the cursor one position to the left.
+- `0x0c` - Move the cursor to the top-left position.
+- `0x18` - Move the cursor one position to the right.
+- `0x19` - Move the cursor one line up.
+- `0x1a` - Move the cursor one line down.
+- `0x1f` - Clear the screen.
 
-There is no Esc-Y direct cursor positioning sequence. Instead, some programs use 0x0c (home cursor) control symbol, followed by certain number of 0x1a (cursor down) and 0x18 (cursor right) chars.
+Unlike MonitorF, there is no direct Esc-Y cursor positioning sequence. Instead, some programs utilize the `0x0c` (home cursor) control symbol, followed by a specific number of `0x1a` (cursor down) and `0x18` (cursor right) characters.
 
-The following commands are supported by the Monitor:
-- Memory commands:
+The UT-88 OS Monitor supports a range of commands for memory operations, tape recorder functions, mode and helper commands, and program execution. Here's a detailed breakdown:
+- **Memory commands**:
   - Command M: View and edit memory
-      M `<addr>`                                    - View and edit memory starting `addr`
+      M `<addr>`                                    - View and edit memory starting at `addr`
   - Command K: Calculate and print CRC for a memory range
-      K `<addr1>`, `<addr2>`                        - Calculate CRC for `addr1`-`addr2` range
+      K `<addr1>`, `<addr2>`                        - Calculate CRC for the range `addr1`-`addr2`
   - Command C: Memory copy and compare
       C `<src_start>`, `<src_end>`, `<dst_start>`   - Compare memory data between two ranges
-      CY `<src_start>`, `<src_end>`, `<dst_start>`  - Copy memory from one memory range to another
+      CY `<src_start>`, `<src_end>`, `<dst_start>`  - Copy memory from one range to another
   - Command F: Fill or verify memory range
       FY `<addr1>`, `<addr2>`, `<constant>`         - Fill memory range with the constant
       F `<addr1>`, `<addr2>`, `<constant>`          - Compare memory range with the constant, report differences
   - Command D: Dump the memory
-      D                                             - Dump 128-byte chunk of memory, starting the user program HL
-      D`<start>`                                    - Dump 128-byte chunk, starting the address provided
-      D`<start>`,`<end>`                            - Dump memory for the specified memory range
+      D                                             - Dump 128-byte chunk of memory, starting the user program's HL
+      D`<start>`                                    - Dump 128-byte chunk, starting from the specified address
+      D`<start>`,`<end>`                            - Dump memory for the specified range
   - Command S: Search string in a memory range
       S `maddr1`, `maddr2`, `saddr1`, `saddr2`      - Search string located `saddr1`-`saddr2` in a memory range `maddr1`-`maddr2`
       S `maddr1`, `maddr2`, '`<string>`'            - Search string specified in single quotes in `maddr1`-`maddr2` memory
       S `maddr1`, `maddr2`, &`<hex>`, `<hex>`,...   - Search string specified in a form of hex sequence in specified memory range
   - Command L: List the text from the memory
       L `<addr1>`[, `<addr2>`]                      - List text located at `addr1`-`addr2` range
-- Tape recorder commands:
+- **Tape recorder commands**:
   - Command O: Output data to the tape
       O `<addr1>`,`<addr2>`,`<offset>`[,`<speed>`]  - Output data for `addr1`-`addr2` range, at specified speed. `offset` parameter is not used
   - Commands I and IY: input data from the tape (IY - data input, I - data verification)
       I/IY                                          - Data start and end addresses are stored on the tape
       I/IY`<addr1>`                                 - Search for `addr1` signature on tape, then read `addr2` from the tape
       I/IY`<addr1>`,`<addr2>`                       - Search `addr1`/`addr2` sequence on the tape
-      I/IY`<space>``<addr1>`                        - Tape data is loaded to address provided as a parameter
-      I/IY`<space>``<addr1>`,`<addr2>`              - Data start and end addresses are specified as parameters. `addr2` can be used to limit amount of data to be loaded.
+      I/IY`<space>``<addr1>`                        - Tape data is loaded to the address provided as a parameter
+      I/IY`<space>``<addr1>`,`<addr2>`              - Data start and end addresses are specified as parameters. `addr2` can be used to limit the amount of data to be loaded.
   - Command V: Measure tape delay constant
-- Mode and helper commands:
+- **Mode and Helper commands**:
   - Command R: enable or disable scroll
-      R`<any symbol>`                               - enable scroll
-      R                                             - disable scroll (clear screen if full page is filled)
+      R`<any symbol>`                               - Enable scroll
+      R                                             - Disable scroll (clear screen if full page is filled)
   - Command T: trace the command line
-      T`<string>`                                   - print command line string in a hexadecimal form
+      T`<string>`                                   - Print command line string in a hexadecimal form
   - Command H: Calculate sum and difference between the two 16-bit arguments
-      H `<arg1>`, `<arg2>`                          - Calculate and print sum and difference of 2 args
-- Program execution commands:
+      H `<arg1>`, `<arg2>`                          - Calculate and print the sum and difference of the two args
+- **Program execution commands**:
   - Command G: Run user program
-      G `<addr>`                                    - Run user program from `<addr>`
-      GY `<addr>`[,`<bp1>`[,`<bp2>`[,`<cnt>`]]]     - Run user program from `<addr>`, set up to two breakpoints. This command also sets/restores registers previously set by the Command X (edit registers) or captured during breakpoint handling. 
+      G `<addr>`                                    - Run a user program from `<addr>`
+      GY `<addr>`[,`<bp1>`[,`<bp2>`[,`<cnt>`]]]     - Run a user program from `<addr>`, set up to two breakpoints. This command also sets/restores registers previously set by the Command X (edit registers) or captured during breakpoint handling. 
   - Command X: View and edit CPU registers
   - Command J: Quick jump
       J`<addr>`                                     - Set the quick jump address
       J                                             - Execute from the previously set quick jump address
-- Other programs execution commands (see respective descriptions below)
+- **Interactive assembler commands** (see description below):
+  - Command A: assembler
+  - Command N: interactive assembler
+  - Command @: assembler second pass
+  - Command W: disassembler
+  - Command Z: clear reference/label table
+  - Command P: Relocate program
+- **Other programs execution commands** (see respective descriptions below)
   - Command E: run Micron editor
   - Command B: run Micron assembler
-  - Interactive assembler commands:
-    - Command A: assembler
-    - Command N: interactive assembler
-    - Command @: assembler second pass
-    - Command W: disassembler
-    - Command Z: clear reference/label table
-    - Command P: Relocate program
-
+  
 Refer to a respective monitor disassembly ([1](doc/disassembly/ut88os_monitor.asm), [2](doc/disassembly/ut88os_monitor2.asm)) for a more detailed description of the  commands' parameters and algorithm.
 
-The UT-88 OS Monitor does not provide any time counting functions. The time interrupt shall be switched off when working with the UT-88 OS.
+The UT-88 OS Monitor does not include time counting functions, and the time interrupt should be switched off while working with the OS. 
 
-As soon as Monitor is providing hardware abstraction facilities (display printing, keyboard scanning, tape input/output), it worth noting that there are 2 major inconsistencies compared to the original UT-88 MonitorF.
+The UT-88 OS Monitor has a couple of inconsistencies compared to the original UT-88 MonitorF, particularly in the display module design and the handling of Ctrl key combinations.
 
-First, the original display module design offer a single 2k video RAM at `0xe800`-`0xef00` range. Each byte's lower 7 bits represent a char code, while the MSB is responsible for symbol highlighting (inversion). As per the UT-88 OS Monitor code, it expects a different hardware design: `0xe800`-`0xef00` range is used for symbol charcodes only, while a parallel range `0xe000`-`0xe700` is used for symbol attributes (only MSB is used, other 7 bits are ignored). There were no alternate schematics published in the magazine, so the published code may not work correctly on the official hardware (though this alternate schematics is implemented in this emulator).
+The original display module design uses a single 2k video RAM at `0xe800`-`0xef00` range. Each byte's lower 7 bits represent a character code, while the MSB is responsible for symbol highlighting (inversion). The UT-88 OS Monitor code expects a different hardware design. The `0xe800`-`0xef00` range is used for symbol character codes only, while a parallel range `0xe000`-`0xe700` is used for symbol attributes (only MSB is used, other 7 bits are ignored). This may create compatibility issues with the official hardware, and it's worth noting that this alternate schematics is implemented in this emulator.
 
-Second issue is related to the Ctrl key combinations. When Ctrl-`<char>` is pressed, the original MonitorF produces the `<char>`-`0x40` code (so that returned char code is in `0x01`-`0x1f` range). On the good side this provides a single keycode for Ctrl-char key combination without having to perform additional actions. On the other side this does not allow distinguishing between, for example, Ctrl-H key combination and Left arrow key press. Surprisingly some of the UT-88 parts (including Monitor itself, but not including Micron assembler) expect a different behavior - symbol keys are returned as is (in 0x41-0x5f range), and additional code reads the keyboard's port C to check whether Ctrl key is pressed. 
+Another incompatibility is related to Ctrl key handling. When `Ctrl-<char>` is pressed, the original MonitorF produces the `<char>`-`0x40` code. This means that the returned character code is in the `0x01`-`0x1f` range. This design provides a single keycode for Ctrl-char key combinations without requiring additional actions. Some UT-88 OS programs, including the Monitor itself (but not including the Micron assembler), expect a different behavior. Symbol keys are returned as is (in the `0x41`-`0x5f` range), and additional code reads the keyboard's port C to check whether the Ctrl key is pressed.
 
-The emulator is using [fixed version](tapes/ut88os_monitor.rku) of the editor by default. [Difference with original version](tapes/ut88os_monitor.diff) are explained in details.
+The emulator is using [fixed version](tapes/ut88os_monitor.rku) of the editor by default. Difference with original version are described in details [here](tapes/ut88os_monitor.diff).
 
 ### Built-it assembler and disassembler
 
