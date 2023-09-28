@@ -617,35 +617,44 @@ Detailed description of the assembler syntax, as well as implementation details 
 
 ## CP/M Operating System and Quasi Disk
 
-The topmost UT-88 configuration adds 256k Quasi Disk, and allows running a well known CP/M v2.2 operating system, including plenty of software available for this OS. Typical CP/M program uses CP/M API for disk and console operations, and therefore provides high level of compatibility with other computers working on the same OS.
+The highest UT-88 configuration includes a 256k Quasi Disk, enabling it to run the widely recognized CP/M v2.2 operating system. CP/M is an operating system that gained popularity during the era of early microcomputers. With the inclusion of CP/M, the UT-88 system becomes compatible with a wealth of software developed for this operating system.
 
-### CP/M-64 and Quasi Disk
+Typical CP/M programs leverage the CP/M Application Programming Interface (API) for disk and console operations. This adherence to a standardized API enhances compatibility with other computers running CP/M, fostering a high level of interoperability. As a result, users can access and run a variety of software applications and utilities designed for the CP/M ecosystem on the UT-88 system.
 
-Quasi Disk is a 64/128/192/256k RAM module (depending on how many RAM chips available), organized in 1-4 64k banks. Module schematics uses a nice trick: i8080 CPU generates different signals when accessing stack and regular memory. Thus quasi disk RAM is enabled for stack push/pop instructions, while the main memory is accessible with regular read/write operations. This makes possible main RAM and quasi disk operate simultaneously in the same address space. A special configuration port `0x40` allows selecting a RAM bank, or disconnect from the quasi disk, so that stack operations are routed back to the main RAM.
 
-Quasi disk schematic and description can be found [here](doc/scans/UT49.djvu).
+### Quasi Disk
 
-The magazine mentions that Quasi Disk may be powered from an accumulator, and therefore data on the disk may 'persist' for a long time.
+The Quasi Disk is a RAM module in the UT-88 system, offering capacities of 64k, 128k, 192k, or 256k, depending on the number of available RAM chips. It is organized into 1-4 banks, each with a capacity of 64k. The module utilizes a clever design using the i8080 CPU's ability to generate different signals for stack and regular memory access.
 
-CP/M system provides modular design, and consists of a few components:
-- [Console Commands Processor (CCP)](doc/disassembly/cpm64_ccp.asm) is a user facing application, that accepts and interprets user commands, and runs user programs.
-- [Basic Disk Operating System (BDOS)](doc/disassembly/cpm64_bdos.asm) provides a rich set of high level functions to work with console (print a string, input a line from console to a buffer), and rich set of file functions (create/open/read/write/close file, search for a file by pattern)
-- [Basic Input/Output System (BIOS)](doc/disassembly/cpm64_bios.asm) provide low level functions to work with console (input/output a char), and disk operations (select disk, read/write disk sector).
+Specifically, the quasi disk RAM is enabled for stack push/pop instructions, while regular memory is accessible through standard read/write operations. This innovative approach allows both the main RAM and the quasi disk to operate simultaneously within the same address space. A dedicated configuration port at address `0x40` provides the capability to select a RAM bank or disconnect from the quasi disk. By doing so, stack operations are then routed back to the main RAM.
 
-While CCP and BDOS are hardware-independent components, and provide the same code for all systems, BIOS is specific for a hardware platform. Thus this particular CP/M version is provided with BIOS taylored specifically for UT-88:
-- Keyboard input are routed to MonitorF implementation
-- Character printing functions provide an [additional layer](doc/disassembly/cpm64_monitorf_addon.asm) on top of MonitorF function, that implements some sort of ANSI escape sequences to move the cursor. MonitorF already provides a similar functionality, but this module provides a different char sequences to control the cursor position.
-- Disk operations provide access to the quasi disk, implementing disk/track/sector selection functions, as well as sector read/write operations that actually transfer data to/from the disk. Depending on the selected track, BIOS enables corresponding Quasi Disk RAM bank.
-- BIOS also exposes a structure that describes physical and logical structure of the quasi disk. This structure is used by BDOS to properly allocate data on the disk.
+Quasi disk schematic and description can be found [here](doc/scans/UT49.djvu). The magazine suggests that the Quasi Disk may be powered from an accumulator, and therefore data on the disk may 'persist' for a long time.
 
-Since Quasi Disk is essentially a RAM module, it does not have a concept of sectors and tracks. BIOS is responsible for emulating the disk tracks and sectors to match CP/M concepts. Exposed disk structure:
+### CP/M-64
+
+The CP/M system on the UT-88 consists of several modular components, each serving a specific purpose:
+- **Console Commands Processor (CCP)**: This component is the user-facing application responsible for accepting and interpreting user commands. It runs user programs and acts as the interface between the user and the system. (CCP Documentation and disassembly is available [here](doc/disassembly/cpm64_ccp.asm))
+- **Basic Disk Operating System (BDOS)**: BDOS provides a comprehensive set of high-level functions for interacting with the console and performing file operations. It includes functions for console I/O (input and output), as well as file-related operations such as creating, searching, opening, reading, writing, and closing files. (BDOS documentation and disassembly is available [here](doc/disassembly/cpm64_bdos.asm))
+- **Basic Input/Output System (BIOS)**: BIOS offers low-level functions for working with the console and low level disk operations. Console functions include input and output a char. Disk operations provide a way to select a disk, read or write a data sector. (Refer [here](doc/disassembly/cpm64_bios.asm) for the BIOS disassembly)
+
+While CCP and BDOS are hardware-independent and share the same code across different systems, the BIOS is system-specific and tailored to the UT-88 hardware platform. This modular design allows for a high degree of portability and flexibility in CP/M systems.
+
+Particular BIOS for UT-88 provides the following functionality:
+- **Keyboard Input**: Routed to the MonitorF implementation.
+- **Character Printing Functions**: An [additional layer](doc/disassembly/cpm64_monitorf_addon.asm) on top of MonitorF, implementing ANSI escape sequences for cursor control.
+- **Disk Operations**: Provide access to the Quasi Disk, implementing functions for disk/track/sector selection and sector read/write operations. The BIOS dynamically enables the appropriate Quasi Disk RAM bank based on the selected track.
+- **Disk Structure Description**: BIOS exposes a structure describing the physical and logical structure of the Quasi Disk. BDOS uses this structure for proper disk data allocation.
+
+Given that the Quasi Disk is essentially a RAM module without a physical concept of sectors and tracks, the BIOS plays a crucial role in emulating these disk structures to align with CP/M's concepts. The exposed disk structure for the Quasi Disk includes:
 - 64/128/192/256 tracks (depending on the quasi disk size)
 - First 6 tracks are reserved for the system (see boot approach description below)
 - 8 sectors per track
 
-The following describes the main memory map, as well as CP/M components layout:
-- `0x0000`-`0x00ff` (256 bytes) - base memory page, contains warm reboot and BDOS entry points, default disk buffer area, which is also used to pass parameters between CCP and user programs.
-- `0x0100`-`0xc3ff` (almost 49k) - transient programs area. CCP loads and executes user programs in this memory range. User programs are free to use this memory for their data and variables.
+This emulation of disk tracks and sectors by the BIOS enables the Quasi Disk to function within the CP/M operating system seamlessly. The BIOS manages the translation between the RAM-based storage of the Quasi Disk and the logical structure expected by CP/M, ensuring compatibility and allowing CP/M applications to interact with the Quasi Disk as if it were a traditional disk drive.
+
+The memory map for the UT-88 system, along with the layout of CP/M components, is as follows:
+- `0x0000`-`0x00ff` (256 bytes) - Base memory page. Contains warm reboot and BDOS entry points, default disk buffer area, utilized for passing parameters between CCP and user programs.
+- `0x0100`-`0xc3ff` (almost 49k) - Transient programs area. CCP loads and executes user programs in this memory range. User programs can use this memory for their data and variables.
 - `0xc400`-`0xcbff` - CCP and its data variables
 - `0xcc00`-`0xd9ff` - BDOS and its data variables
 - `0xda00`-`0xdeff` - BIOS and its data variables
@@ -654,32 +663,45 @@ The following describes the main memory map, as well as CP/M components layout:
   - `0xf500`-`0xf620` - Put Char function addon
 - `0xf800`-`0xffff` - MonitorF ROM
 
-The CP/M system comes as a single binary, that loads at `0x3100`. A [special bootstrap code](doc/disassembly/CPM64_boot.asm) performs loading of CP/M components at their addresses, as well as initializes the quasi disk. Eventualy the bootstrap component executes the CP/M starting `0xda00` address (BIOS cold boot handler).
+The CP/M system is delivered as a unified binary file that loads at `0x3100`. The loading process is facilitated by a [dedicated bootstrap code](doc/disassembly/CPM64_boot.asm), which not only loads CP/M components to their specified addresses but also initializes the quasi disk. The bootstrap component eventually executes CP/M starting at the `0xda00` address, which corresponds to the BIOS cold boot handler.
 
-CP/M bootstrap file can be found [here](tapes/CPM64.RKU). Start address is `0x3100`. Alternatively, to simplify and speed up loading in the emulator, all CP/M components were extracted in separate tape files, that load to their correct CP/M locations - [CCP](tapes/cpm64_ccp.rku), [BDOS](tapes/cpm64_bdos.rku), [BIOS](tapes/cpm64_bios.rku), [Put char addon](tapes/cpm64_monitorf_addon.rku). In case of loading CP/M components separately, start address is `0xda00`.
+CP/M bootstrap file can be found [here](tapes/CPM64.RKU) (Start address is `0x3100`). For convenience and to expedite loading in the emulator, the CP/M components have been extracted into separate tape files. Each tape file loads to its designated CP/M location:
+- [CCP](tapes/cpm64_ccp.rku)
+- [BDOS](tapes/cpm64_bdos.rku)
+- [BIOS](tapes/cpm64_bios.rku)
+- [Put char addon](tapes/cpm64_monitorf_addon.rku). 
 
-As per CP/M design, there are 2 startup scenarios for the system:
-- cold boot operation performs disk initialization, and uploads CP/M system components to first several tracks of the disk, specifically reserved to contain the system (in case of UT-88 first 6 tracks of the quasi disk are reserved for the system).
-- warm boot operation assumes that disk system and BIOS are already initialized. In this case CCP and BDOS components are loaded from the disk (in case if these ares were modified/erased by the user program). During cold boot CP/M startup code puts a JMP WARM_BOOT instruction at 0x0000 so that all subsequent boots, or a CPU reset will go through the warm boot scenario.
+When loading the individual CP/M components separately, the start address is `0xda00`. 
 
-While CP/M system and various CP/M programs are basically working on UT-88 hardware, there are 2 compatibility issues:
-- UT-88 video module uses KOI-7 N2 encoding, which means there are no lower case Latin letters, and upper case Cyrillic letters are used instead. Thus all lower case text messages are printed with Cyrillic letters. Although this is somewhat readable, it looks quite weird.
-- CP/M BIOS expects 2 functions to deal with the terminal input: Wait for a key, and check if a key is currently pressed. Although MonitorF provides basically the same functionality, these are incompatible in details. 
-  - MonitorF keyboard press function generates a signal on the first key press. If the key is still pressed, subsequent calls to Wait for key function will not be processed. This is done to avoid flooding console with keypress events. Thus subsequent wait for key function will wait until the key is released and pressed again (or keyboard auto-repeat triggers).
-  - CP/M BIOS expects immediate result - if a key is pressed, wait for key function shall return the code of the pressed function immediately. 
-  - CP/M BIOS _printing_ function checks for a keyboard activity, looking whether user pressed Ctrl-C break key combination. 
-  - So it causes strange scenarios: the user has entered a symbol, symbol is echoed on the console. Printing function sees that the key is _still_ pressed, and tries to get its code (to check whether it is Ctrl-C), but in fact starts waiting for a new key. This leads to swallowing every second entered key, which is very annoyhing (at least when running in emulator).
-  - As a quick work around the problem, reading the keyboard while printing a symbol was disabled in the emulator.
+In the CP/M design, two startup scenarios are defined for the system:
+- **Cold Boot Operation**:
+  - This operation involves initializing the disk and uploading CP/M system components to the first several tracks of the disk. Specifically, the first 6 tracks of the quasi disk are reserved for the system
+  - Cold boot is responsible for the initial setup of the disk and ensuring that the necessary CP/M components are available for execution.
+- **Warm Boot Operation**:
+  - This operation assumes that the disk system and BIOS are already initialized. In a warm boot, CCP and BDOS components are loaded from the disk if these areas were modified or erased by a user program.
+  - During a cold boot, the CP/M startup code places a JMP WARM_BOOT instruction at 0x0000. This ensures that all subsequent boots or CPU resets go through the warm boot scenario, skipping the disk initialization phase.
+
+While the CP/M system and various CP/M programs function on UT-88 hardware, there are two compatibility issues:
+- **Encoding Issue**:
+  - UT-88 video module uses KOI-7 N2 encoding, which lacks lower case Latin letters. Instead, upper case Cyrillic letters are used. This results in lower case text messages being printed with Cyrillic letters, making it appear unusual though still somewhat readable.
+- **Keyboard Input Incompatibility**:
+  - CP/M BIOS expects two functions to handle terminal input: one to check if a key is currently pressed and another to read the pressed key. If no key is pressed, the second function shall return immediately.
+  - The MonitorF provides similar, but not exactly the same interface. The keyboard read function generates a value on the first key press. If the key is _still_ pressed, subsequent calls to the wait-for-key function will not be processed until the key is released and pressed again (or the keyboard auto-repeat triggers).
+  - CP/M BIOS expects immediate results; if a key is pressed, the wait-for-key function should return the code of the pressed key immediately.
+  - CP/M BDOS printing function checks for keyboard activity, specifically looking for the Ctrl-C break key combination.
+  - This results in a scenario where the user enters a symbol, the symbol is echoed on the console, and the printing function detects that the key is still pressed, attempting to get its code. This call in fact starts waiting for a new key, leading to the skipping of every second entered key. This behavior can be disruptive, especially in an emulator.
+  - As a quick workaround in the emulator, reading the keyboard while printing a symbol was disabled to alleviate this issue.
+
 
 ### CP/M-35 (CP/M with no quasi disk)
 
-For those users who cannot afford quasi disk module, a special CP/M version is offerred with in-memory RAM drive. Following the CP/M design, CCP and BDOS components remain the same as in normal disk version of CP/M. At the same time system comes with a [special BIOS version](doc/disassembly/cpm35_bios.asm) that allocates a 35k RAM drive in the system memory. 
+For users who do not have access to the quasi disk module, a special version of CP/M is offered, featuring an in-memory RAM drive. In accordance with CP/M design principles, CCP and BDOS components remain identical to the normal disk version of CP/M. However, this version comes with a [custom BIOS](doc/disassembly/cpm35_bios.asm) that allocates a 35k RAM drive in the system memory.
 
-CP/M-35 comes as a single binary, but there is no bootstrap process like in full CP/M version. Instead, CP/M components are immediately loaded to their working addresses.
+CP/M-35 is delivered as a single binary. Unlike the full CP/M version, there is no bootstrap process. Instead, CP/M components are loaded directly into their designated working addresses.
 
 Memory map and CP/M components layout:
-- `0x0000`-`0x00ff` (256 bytes) - base memory page, contains warm reboot and BDOS entry points, default disk buffer area, which is also used to pass parameters between CCP and user programs.
-- `0x0100`-`0x33ff` (only 12.5k) - transient programs area. CCP loads and executes user programs in this memory range. User programs are free to use this memory for their data and variables.
+- `0x0000`-`0x00ff` (256 bytes) - Base memory page. Contains warm reboot and BDOS entry points, default disk buffer area, utilized for passing parameters between CCP and user programs.
+- `0x0100`-`0x33ff` (only 12.5k) - Transient programs area. CCP loads and executes user programs in this memory range. User programs can use this memory for their data and variables.
 - `0x3400`-`0x3bff` - CCP and its data variables
 - `0x3c00`-`0x49ff` - BDOS and its data variables
 - `0x4a00`-`0x4c50` - BIOS and its data variables
@@ -688,23 +710,23 @@ Memory map and CP/M components layout:
 - `0xf400`-`0xf7ff` - MonitorF RAM
 - `0xf800`-`0xffff` - MonitorF ROM
 
-Special notes about this CP/M version (and particularly BIOS implementation):
-- Surprisingly, the BIOS exposes 4 disk drives, all pointing to the same data memory.
-- Although 36k are allocated for the RAM disk, the disk descriptor exposes only 35k drive
-- There is no special addon that supports ANSI escape sequences (fortunately the system itself does not use this feature)
-- 0 tracks are reserved on the disk for the system. Cold boot process does not copy system to the disk
-- There is no warm boot supported. Instead, MonitorF will take operation during reboot.
+Special considerations for this CP/M version, especially in terms of BIOS implementation:
+- The BIOS unexpectedly exposes 4 disk drives, all referencing the same data memory.
+- Despite allocating 36k for the RAM disk, the disk descriptor exposes only a 35k drive.
+- There is no additional add-on that supports ANSI escape sequences (fortunately, the system itself does not rely on this feature).
+- No tracks are reserved on the disk for the system. The cold boot process does not copy the system to the disk.
+- Warm boot is not supported. Instead, MonitorF takes control during reboot.
 
 CP/M-35 binary is located [here](tapes/CPM35.RKU). Start address is `0x4a00`.
 
 
 ### CP/M programs
 
-If the CP/M program does not use any hardware specific features, and uses only BDOS/BIOS routines to operate with the system, there is high chance this program will work normally on UT-88 version of the CP/M. 
+If a CP/M program avoids hardware-specific features and relies solely on BDOS/BIOS routines to interact with the system, there's a high likelihood that the program will function normally on the UT-88 version of CP/M.
 
-This section describes a few standard CP/M programs, interesting for learning and evaluation:
-- [SUBMIT.COM](doc/disassembly/submit.asm) - provides a way to create and run some sort of scripts, automatically executed by the CP/M CCP. The program allows parameterizing the script, so that the script is developed generic, and the program substitutes actual parameter values. Despite SUBMIT.COM is a stand alone application, it has some support from CCP and even BDOS function to make it working. The program was originally written in PL/M language, also [added to the repository](doc/disassembly/SUBMIT.PLM) for comparison (code found on Internet, probably this is original source).
-- [XSUB.COM](doc/disassembly/xsub.asm) - program that allows substituting console input to be passed to other programs. The program loads and stay resident in memory, hooks the BDOS handler and substitutes it with own one. If a program calls BDOS for a console input, XSUB provides pre-defined data instead (loaded from a file). This program is interesting with its 'terminate and stay resident' approach, as well as hooking the BDOS handler.
+Here are descriptions of a few standard CP/M programs that are interesting for learning and evaluation:
+- [SUBMIT.COM](doc/disassembly/submit.asm) - This program provides a way to create and run scripts that are automatically executed by the CP/M CCP. SUBMIT.COM allows for the parameterization of scripts, making them generic, and the program substitutes actual parameter values. Despite being a standalone application, it has some support from CCP and even BDOS functions to facilitate its operation. The program was originally written in PL/M language, and the original source has been [added to the repository](doc/disassembly/SUBMIT.PLM) for comparison (code found on the Internet, probably the original source).
+- [XSUB.COM](doc/disassembly/xsub.asm) - XSUB is a program that enables substituting console input to be passed to other programs. The program loads and stays resident in memory, hooks the BDOS handler, and substitutes it with its own. If a program calls BDOS for console input, XSUB provides predefined data instead (loaded from a file). This program is interesting due to its 'terminate and stay resident' approach, as well as its capability of hooking the BDOS handler.
 
 
 # UT-88 Emulator
