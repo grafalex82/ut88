@@ -764,12 +764,40 @@ On the other hand, components like LCD, Display, and keyboards interact with the
 
 ## Breakpoints and hooks in emulator
 
-TBD
+Breakpoints are a useful feature in the emulator that allows executing specific code when the emulated CPU reaches a particular address. Breakpoints serve various purposes, including fixing or altering the behavior of UT-88 software, disabling certain code branches in automated test environments, suppressing logging for a piece of code, generating keypress events for testing, hooking display functions for output text collection, and more.
+
+The usage of breakpoints is straightforward. Here's an example:
+
+```
+  emulator.add_breakpoint(0x1234, lambda: emulator._cpu.set_pc(0x2345))
+```
+
+In this example, a breakpoint is added at address 0x1234. When the CPU reaches this address, the lambda function is executed, diverting the execution flow to address 0x2345.
+
+Breakpoint hooks can perform various actions, such as reading or writing to memory, changing registers, triggering emulated hardware features, or executing host routines in the emulator.
+
+Multiple breakpoints can be added to the same address to accommodate different actions.
+
+
+## CPU instructions logging
+
+The CPU instruction logging feature in the emulator is a valuable tool for understanding and debugging UT-88 code execution. It provides detailed information about the program's behavior, including the current execution address, the executed instruction, and the CPU register values. This information can help developers gain insights into how the emulated program behaves.
+
+By default, CPU instruction logging is turned off to avoid excessive performance overhead. However, users can enable logging using a CLI option or by calling the `enable_registers_logging()` function in the code.
+
+One particularly useful feature is the ability to temporarily disable logging when entering specific functions or code blocks that are not of interest for a particular debugging session. This feature is implemented using the NestedLogger class, which sets hooks at enter and exit addresses and disables logging on enter while re-enabling it on exit. The NestedLogger class also keeps track of nested function calls.
+
+Here's an example of how to use the suppress_logging method to disable logging for specific functions or code blocks:
+
+```
+        self.suppress_logging(0xfd92, 0xfd95, "Beep")
+        self.suppress_logging(0xfd57, 0xfd99, "Keyboard input")
+        self.suppress_logging(0xfd9a, 0xfdad, "Scan keyboard")
+```
 
 ## Emulating the emulator
 
-TBD Describe 
-
+TBD
 
 # Usage of the emulator
 
