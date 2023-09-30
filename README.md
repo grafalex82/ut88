@@ -823,6 +823,7 @@ python src/main.py basic
 
 Calculator ROM is also pre-loaded in this configuration.
 
+![](doc/images/basic.png)
 
 ### Video configuration
 
@@ -832,6 +833,10 @@ python src/main.py video
 ```
 
 This configuration enables `0x0000`-`0x7fff` (32k) memory range available for user programs, which allows running some of Radio-86RK software. The configuration also enables some workarounds that improve stability of the MonitorF when running under emulator (see [setup_special_breakpoints()](src/main.py) function for moore details)
+
+![](doc/images/video.png)
+
+![](doc/images/tetris.png)
 
 
 ### UT-88 OS configuration
@@ -844,6 +849,10 @@ python src/main.py ut88os
 This configuration skips the [UT-88 OS bootstrap module](tapes/UT88.rku), as it requires reconfiguration of RAM and ROM components on the fly. Instead, it loads UT-88 OS components directly to their target locations, as they would be loaded by the bootstrap module.
 
 Unfortunately the UT-88 OS is pretty raw and contains a lot of bugs. Most critical of them are fixed right in the binary (see [detailed description](tapes/ut88os_monitor.diff)), other worked around with special hooks in [setup_special_breakpoints()](src/main.py) function (refer the code for moore details)
+
+![](doc/images/ut88os.png)
+
+![](doc/images/ut88os_disasm.png)
 
 
 ### CP/M operating system
@@ -858,6 +867,8 @@ This command starts the regular video module monitor with CP/M components loaded
 The `G 3000` command can be used to run [bootstrap module](tapes/CPM64.RKU), which is also preloaded in this configuration. The bootstrap module will create/clear and initialize quasi disk image, that later may be used with the system.
 
 CP/M-35 version of the OS can be executed as follows: load [OS binary](tapes/CPM35.RKU), and execute it with `G 4A00` command. Note that keyboard incompatibility workaround is applied only for CP/M-64 version, but not CP/M-35.
+
+![](doc/images/cpm64.png)
 
 
 ### Other emulator notes
