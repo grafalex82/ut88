@@ -63,7 +63,7 @@ class EmulatedInstance:
     
     def run_function(self, addr, endaddr = 0xbeef):
         # Put the breakpoint to the top of the stack
-        # When a calculator function will return, it will get to the 0xbeef address
+        # When an emulated function will return, it will get to the endaddr address
         self._emulator._cpu.sp = self._get_sp()
         self._emulator._machine.write_memory_word(self._get_sp(), endaddr) # breakpoint return address
 

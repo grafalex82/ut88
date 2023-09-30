@@ -29,7 +29,7 @@ class UT88OS(EmulatedInstanceWithKeyboard):
 
         # Since we do not run Monitor initialization code, we need to initialize some variables
         self.set_word(0xf75a, 0xe800)   # Cursor position
-        self.set_byte(0xf77a, 0xff)     # ????
+        self.set_byte(0xf77a, 0xff)     # Enable scroll flag
 
 
     def _get_sp(self):
