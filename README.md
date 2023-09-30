@@ -892,4 +892,11 @@ py.test -rfeEsxXwa --verbose --showlocals
 
 # Future plans
 
-TBD
+This repository contains the complete list of features, descriptions, schematics, and software ever published for UT-88 computer. There are no specific plans to extend this emulator any further.
+
+At the same time there are a few nice to have areas where improvements appreciated:
+- Sound over the tape recorder port
+- Run "8080/8085 CPU Exerciser" test by Ian Bartholomew to validate implementation correctness
+- Add description and disassembly of more UT-88, RK-86, and CP/M programs
+
+Also, it would be interesting to compare UT-88 with other computers in the Radio RK86 family.
