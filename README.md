@@ -873,22 +873,21 @@ The emulator supports storage formats from other similar emulators, including .P
 
 # Tests
 
-In order to verify correctness of the implemented features (especially CPU instructions), a comprehensive [set of automated tests](test) was developed. These tests also help to control massive changes across the codebase, and verify that nothing is broken with the change.
+To ensure the accuracy of implemented features, particularly CPU instructions, a comprehensive [suite of automated tests](test) has been developed. These tests serve the dual purpose of validating individual component functionalities in isolation and safeguarding against inadvertent codebase alterations during development.
 
-Most of the tests cover a component functionality in isolation. Some tests require a few components work together (e.g. Machine + RAM + CPU). In order not to use hard-to-set-up or User facing components, [Mocks](test/mock.py) are used where it is convenient.
+While many tests focus on the functionality of individual components, certain scenarios excercise the collaboration of multiple components (e.g., Machine + RAM + CPU). To facilitate testing without relying on hard-to-set-up or user-facing components, [Mocks](test/mock.py) are employed when feasible.
 
 Some tests, such as [Calculator tests](test/test_calculator.py) are not really tests in classic meaning - it does not suppose to _test_ the firmware (though it found a few issues). These tests is a simple and handy way to execute some functions in the firmware.
 
-For running big portions of machine code, that interacts with memories and peripherals, a [special helper class](test/helper.py) was created. The helper class provide handy way to read/write a machine memory in the test, operate with the peripheral (e.g. emulate key press sequence), and run specific functins of the software. Derived classes represent a specific configuration ([Calculator](test/test_calculator.py), [CP/M](test/cpm_helper.py), [UT-88 OS](test/ut88os_helper.py)), set up corresponding RAM/ROM configuration, peripherals, and load application images.
+For executing substantial portions of machine code that interact with memories and peripherals, a dedicated [helper](test/helper.py) class has been introduced. This helper class offers a convenient interface for reading/writing machine memory during tests, managing peripherals (e.g., emulating keypress sequences), and executing specific functions in the software. Derived classes represent specific configurations ([Calculator](test/test_calculator.py), [CP/M](test/cpm_helper.py), [UT-88 OS](test/ut88os_helper.py)), configuring the appropriate RAM/ROM setup, peripherals, and loading application images.
 
-Tests are implemented with pytest framework.
+The tests are implemented with pytest framework.
 
-To run tests:
+To run tests use the following commands:
 ```
 cd test
 py.test -rfeEsxXwa --verbose --showlocals
 ```
-
 
 # Future plans
 
