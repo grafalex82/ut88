@@ -475,7 +475,7 @@ The UT-88 OS Monitor supports a range of commands for memory operations, tape re
   - Command E: run Micron editor
   - Command B: run Micron assembler
   
-Refer to a respective monitor disassembly ([1](doc/disassembly/ut88os_monitor.asm), [2](doc/disassembly/ut88os_monitor2.asm)) for a more detailed description of the  commands' parameters and algorithm.
+Refer to a respective monitor disassembly ([1](doc/disassembly/ut88os_monitor.asm), [2](doc/disassembly/ut88os_monitor2.asm)) for a more detailed description of the commands' parameters and algorithm.
 
 The UT-88 OS Monitor does not include time counting functions, and the time interrupt should be switched off while working with the OS. 
 
@@ -825,13 +825,13 @@ Calculator ROM is also pre-loaded in this configuration.
 
 
 ### Video configuration
+
 This is how to run the emulator in Video module configuration:
 ```
 python src/main.py video
 ```
 
 This configuration enables `0x0000`-`0x7fff` (32k) memory range available for user programs, which allows running some of Radio-86RK software. The configuration also enables some workarounds that improve stability of the MonitorF when running under emulator (see [setup_special_breakpoints()](src/main.py) function for moore details)
-
 
 
 ### UT-88 OS configuration
@@ -841,37 +841,35 @@ To run the emulator with UT-88 OS enter this command:
 python src/main.py ut88os
 ```
 
-This configuration skips the [UT-88 OS bootstrap module](tapes/UT88.rku), as it requires reconfiguration of RAM and ROM components on the fly. Instead it loads UT-88 OS components directly to their target locations, as they would be loaded by the bootstrap module.
+This configuration skips the [UT-88 OS bootstrap module](tapes/UT88.rku), as it requires reconfiguration of RAM and ROM components on the fly. Instead, it loads UT-88 OS components directly to their target locations, as they would be loaded by the bootstrap module.
 
-Unfortunately the UT-88 OS is pretty raw and contains a lot of bugs. Most critical of them are worked around with special hooks in [setup_special_breakpoints()](src/main.py) function (refer the code for moore details)
+Unfortunately the UT-88 OS is pretty raw and contains a lot of bugs. Most critical of them are fixed right in the binary (see [detailed description](tapes/ut88os_monitor.diff)), other worked around with special hooks in [setup_special_breakpoints()](src/main.py) function (refer the code for moore details)
 
 
 ### CP/M operating system
+
 UT-88 with CP/M-64 system loaded can be started as follows:
 ```
 python src/main.py cpm64
 ```
 
-This command starts the regular video module monitor with CP/M components loaded to the memory ([CCP](tapes/cpm64_ccp.rku), [BDOS](tapes/cpm64_bdos.rku), [BIOS](tapes/cpm64_bios.rku)). Use `G DA00` command to skip CP/M bootstrap module, and start CP/M directly. In this case pre-created quasi disk image is used, and its contents survive between runs. 
+This command starts the regular video module monitor with CP/M components loaded to the memory ([CCP](tapes/cpm64_ccp.rku), [BDOS](tapes/cpm64_bdos.rku), and [BIOS](tapes/cpm64_bios.rku)). Use `G DA00` command to skip CP/M bootstrap module, and start CP/M directly. In this case pre-created quasi disk image is used, and its contents survive between runs. 
 
-Use `G 3000` command to run [bootstrap module](tapes/CPM64.RKU), which is also preloaded in this configuration. The bootstrap module will create/clear and initialize quasi disk image, that later may be used with the system.
+The `G 3000` command can be used to run [bootstrap module](tapes/CPM64.RKU), which is also preloaded in this configuration. The bootstrap module will create/clear and initialize quasi disk image, that later may be used with the system.
 
 CP/M-35 version of the OS can be executed as follows: load [OS binary](tapes/CPM35.RKU), and execute it with `G 4A00` command. Note that keyboard incompatibility workaround is applied only for CP/M-64 version, but not CP/M-35.
 
+
 ### Other emulator notes
 
-The `--debug` option will enable CPU instructions logging, and can be used will all modes described above. In order not to clutter the log for dumping waiting loops, each configuration suppresses logging for some well known functions (e.g. various delays, printing a character, input/output a byte to the tape, etc). [configure_logging() method](src/main.py) is responsible for setting up log suppression for a specific configuration.
+The `--debug` option activates CPU instruction logging, compatible with all the modes outlined earlier. To prevent log cluttering with repetitive waiting loops, each configuration selectively suppresses logging for specific well-known functions (e.g., delays, character printing, tape input/output, etc.). The [configure_logging() method](src/main.py) is responsible for configuring log suppression for a given setup.
 
-Basic and Video configurations offer tape recorder component. Use `Alt-L` key combination to load a binary to the tape recorder. When the binary is loaded it can be read by corresponding tape load Monitor command. The data can be also output to the tape. Use `Alt-S` to save data buffered in the tape recorder to a file.
+Both Basic and Video configurations include a tape recorder component. Utilize the `Alt-L` key combination to load a binary into the tape recorder. Once loaded, the data can be read using the corresponding Monitor tape load command. Additionally, the data can be output to the tape using `Alt-S` to save the buffered data in the tape recorder to a file.
 
-Loading data through the tape recorder is quite time consuming. So emulator offers a shortcut: `Alt-M` key combination loads the tape file directly to the memory. Start address is taken from the binary. `Alt-M` combination works for all configurations, not only those that offer tape recorder.
+Loading data through the tape recorder can be time-consuming. Hence, the emulator provides a shortcut: the `Alt-M` key combination directly loads the tape file into memory. The start address is extracted from the binary. Importantly, the `Alt-M` combination is applicable to all configurations, not limited to those featuring the tape recorder.
 
-The emulator supports storage formats from other similar emulators:
-- .PKI files (sometimes used with .GAM extensions). 
-- .RK and .RKU files 
-- raw binary files   
+The emulator supports storage formats from other similar emulators, including .PKI files (sometimes associated with .GAM extensions), .RK and .RKU files, and raw binary files. These formats offer similar capabilities with minor differences in data layout. For more details, refer to the [tape recorder](src/tape.py) component description.
 
-These formats provide similar capabilities, and have just minor differences in data layout. Refer [tape recorder](src/tape.py) component description for more detail.
 
 # Tests
 
