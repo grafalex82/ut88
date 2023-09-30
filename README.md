@@ -783,11 +783,11 @@ Multiple breakpoints can be added to the same address to accommodate different a
 
 The CPU instruction logging feature in the emulator is a valuable tool for understanding and debugging UT-88 code execution. It provides detailed information about the program's behavior, including the current execution address, the executed instruction, and the CPU register values. This information can help developers gain insights into how the emulated program behaves.
 
-By default, CPU instruction logging is turned off to avoid excessive performance overhead. However, users can enable logging using a CLI option or by calling the `enable_registers_logging()` function in the code.
+By default, CPU instruction logging is turned off to avoid excessive performance overhead. However, users can enable logging using a CLI option or by calling the `enable_registers_logging()` function on the CPU object in the code.
 
 One particularly useful feature is the ability to temporarily disable logging when entering specific functions or code blocks that are not of interest for a particular debugging session. This feature is implemented using the NestedLogger class, which sets hooks at enter and exit addresses and disables logging on enter while re-enabling it on exit. The NestedLogger class also keeps track of nested function calls.
 
-Here's an example of how to use the suppress_logging method to disable logging for specific functions or code blocks:
+Here's an example of how to use the `suppress_logging()` method to disable logging for specific functions or code blocks:
 
 ```
         self.suppress_logging(0xfd92, 0xfd95, "Beep")
@@ -795,12 +795,24 @@ Here's an example of how to use the suppress_logging method to disable logging f
         self.suppress_logging(0xfd9a, 0xfdad, "Scan keyboard")
 ```
 
+That's an important consideration when using the logging suppression feature. Selecting the exit address carefully is crucial to ensure that logging is correctly re-enabled when the function or code block exits. Since the suppression feature uses breakpoints that trigger when the CPU reaches a specific address, it's essential to account for all possible exit points within the specified range.
+
+Functions with multiple exit points or conditional returns can be more challenging to handle. In such cases, it's essential to carefully analyze the code flow and identify the most appropriate exit address to use. While it may not always be possible to set a breakpoint on the exact exit condition, selecting an address that covers the majority of exit scenarios can help minimize the impact of this limitation.
+
 ## Emulating the emulator
 
-TBD
+That's a clever approach to optimize performance by selectively replacing certain computationally intensive functions with emulator-side implementation. Using the breakpoint feature it is possible to hook to a UT-88 function, replace it with more efficient Python implementations, bypassing the original code. This strategy allows for a balance between emulation accuracy and performance in emulation. This approach may significantly enhance the overall performance of the emulated system. 
+
+As a proof of concept, the [character output function](src/bios_emulator.py) was re-implemented in Python, replacing the MonitorF's implementation. Although this does not introduce any new functionality, it significantly boosts performance of display operations for MonitorF and CP/M use cases.
+
+It's worth noting that extending this approach to optimize quasi disk operations would be another valuable enhancement. This would further demonstrate the emulator's ability to fine-tune its behavior to suit different use cases and scenarios.
+
+This emulation mode is enabled by adding `--emulate_bios` command line switch to the emulator.
+
 
 # Usage of the emulator
 
+The following sections describe how to run and use the Emulator in the configuration options described above.
 
 ### Basic configuration
 
