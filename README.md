@@ -866,6 +866,8 @@ This command starts the regular video module monitor with CP/M components loaded
 
 The `G 3000` command can be used to run [bootstrap module](tapes/CPM64.RKU), which is also preloaded in this configuration. The bootstrap module will create/clear and initialize quasi disk image, that later may be used with the system.
 
+Note that the QuasiDisk.bin quasi disk file is created in the current directory. 
+
 CP/M-35 version of the OS can be executed as follows: load [OS binary](tapes/CPM35.RKU), and execute it with `G 4A00` command. Note that keyboard incompatibility workaround is applied only for CP/M-64 version, but not CP/M-35.
 
 ![](doc/images/cpm64.png)
