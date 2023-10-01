@@ -17,6 +17,7 @@ from display import Display
 from utils import NestedLogger
 from quasidisk import QuasiDisk
 from rk86kbd_adapter import RK86KeyboardAdapter
+from rk86display import RK86Display
 from bios_emulator import *
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
@@ -457,6 +458,8 @@ class Radio86RKConfiguration(Configuration):
         # self._machine.add_io(self._recorder)
         self._keyboard = RK86KeyboardAdapter()
         self._machine.add_memory(self._keyboard)
+        self._display = RK86Display()
+        self._machine.add_memory(self._display)
         # self._display = Display()
         # self._machine.add_memory(self._display)
 
