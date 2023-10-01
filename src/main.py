@@ -16,6 +16,7 @@ from keyboard import Keyboard
 from display import Display
 from utils import NestedLogger
 from quasidisk import QuasiDisk
+from rk86kbd_adapter import RK86KeyboardAdapter
 from bios_emulator import *
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
@@ -438,13 +439,65 @@ class UT88OSConfiguration(VideoConfiguration):
         self._emulator.add_breakpoint(0xccdb, lambda: beep())   # Editor BEEP function
 
 
+class Radio86RKConfiguration(Configuration):
+    def __init__(self):
+        Configuration.__init__(self)
+
+
+    def create_memories(self):
+        self._machine.add_memory(RAM(0x0000, 0x7fff))
+        self._machine.add_memory(ROM(f"{resources_dir}/rk86_monitor.bin", 0xf800))
+
+
+    def create_peripherals(self):
+        # All Radio86RK peripherals are connected to the memory lines, not I/O lines, and therefore
+        # require special adapters
+
+        # self._recorder = TapeRecorder()
+        # self._machine.add_io(self._recorder)
+        self._keyboard = RK86KeyboardAdapter()
+        self._machine.add_memory(self._keyboard)
+        # self._display = Display()
+        # self._machine.add_memory(self._display)
+
+
+    def configure_logging(self):
+        pass
+
+    def setup_special_breakpoints(self):
+        pass
+
+
+    def get_start_address(self):
+        # This configuration will start right from Monitor
+        return 0xf800
+
+
+    def get_screen_size(self):
+        return (64*12, 28*16)
+
+
+    # def update(self, screen):
+    #     alt_pressed = pygame.key.get_mods() & (pygame.KMOD_ALT | pygame.KMOD_META) 
+    #     if pygame.key.get_pressed()[pygame.K_l] and alt_pressed:
+    #         self._recorder.load_from_file(open_pki())
+    #     if pygame.key.get_pressed()[pygame.K_s] and alt_pressed:
+    #         self._recorder.dump_to_file(save_pki())
+
+    #     self._display.update_screen(screen)
+
+    def handle_event(self, event):
+        self._keyboard.handle_key_event(event)
+
+
+
 
 def main():
     parser = argparse.ArgumentParser(
                     prog='UT-88 Emulator',
                     description='UT-88 DIY i8080-based computer emulator')
     
-    parser.add_argument('configuration', choices=["basic", "video", "ut88os", "cpm64"])
+    parser.add_argument('configuration', choices=["basic", "video", "ut88os", "cpm64", "radio86rk"])
     parser.add_argument('-d', '--debug', help="enable CPU instructions logging", action='store_true')
     parser.add_argument('-b', '--emulate_bios', help="emulate BIOS and MonitorF I/O functions", action='store_true')
     args = parser.parse_args()
@@ -460,6 +513,8 @@ def main():
         configuration = UT88OSConfiguration()
     if args.configuration == "cpm64":
         configuration = QuasiDiskConfiguration()
+    if args.configuration == "radio86rk":
+        configuration = Radio86RKConfiguration()
     
     configuration.enable_logging(args.debug)
     if args.emulate_bios:
