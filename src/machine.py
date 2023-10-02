@@ -105,6 +105,12 @@ class Machine:
             return 0xffff
         return mem.read_word(addr)
 
+    def read_memory_burst(self, addr, count):
+        mem = self._get_memory(addr)
+        if not mem:
+            return []
+        return mem.read_burst(addr, count)
+
     def write_memory_byte(self, addr, value):
         mem = self._get_memory(addr)
         if mem:
@@ -114,6 +120,11 @@ class Machine:
         mem = self._get_memory(addr)
         if mem:
             mem.write_word(addr, value)
+
+    def write_memory_burst(self, addr, data):
+        mem = self._get_memory(addr)
+        if mem:
+            mem.write_burst(addr, data)
 
     def write_stack(self, addr, value):
         mem = self._get_memory(addr)
