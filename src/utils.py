@@ -27,3 +27,13 @@ class NestedLogger():
     def reset(self):
         self._level =0
         logging.disable(logging.NOTSET)
+
+
+def is_bit_set(value, bit):
+    return (value & (0x01 << bit)) != 0
+
+def set_bit(value, bit):
+    return value | (0x01 << bit)
+
+def clear_bit(value, bit):
+    return value & ~(0x01 << bit)

@@ -1,8 +1,11 @@
 import sys
 
+from utils import set_bit, clear_bit
+
 CURSOR_POS_ADDR = 0xf7b2
 VIDEO_MEMORY_ADDR = 0xe800
 VIDEO_MEMORY_SIZE = 0x0700
+LINE_WIDTH = 0x40
 
 """
     MonitorF and CP/M BIOS provide functions to print characters to the console. UT-88 emulator does a
@@ -36,18 +39,18 @@ class BIOSDisplayEmulator():
 
     def _hide_cursor(self, pos):
         char = self._machine.read_memory_byte(pos+1)
-        self._machine.write_memory_byte(pos+1, char & 0x7f) # Remove high bit (remove inversion)
+        self._machine.write_memory_byte(pos+1, clear_bit(char, 7)) # Remove inversion
 
 
     def _show_cursor(self, pos):
         char = self._machine.read_memory_byte(pos+1)
-        self._machine.write_memory_byte(pos+1, char | 0x80) # Set high bit (enable symbol inversion)
+        self._machine.write_memory_byte(pos+1, set_bit(char, 7)) # Enable symbol inversion
 
 
     def _clear_screen(self):
         # Fill screen with spaces
         for addr in range(VIDEO_MEMORY_ADDR, VIDEO_MEMORY_ADDR + VIDEO_MEMORY_SIZE):
-            self._machine.write_memory_byte(addr, 0x20)
+            self._machine.write_memory_byte(addr, ord(' '))
 
         return VIDEO_MEMORY_ADDR
 
@@ -71,33 +74,33 @@ class BIOSDisplayEmulator():
 
 
     def _move_cursor_up(self, pos):
-        pos -= 64
+        pos -= LINE_WIDTH
         if pos < VIDEO_MEMORY_ADDR:
             pos += VIDEO_MEMORY_SIZE
         return pos
 
 
     def _move_cursor_down(self, pos):
-        pos += 64
+        pos += LINE_WIDTH
         if pos >= VIDEO_MEMORY_ADDR + VIDEO_MEMORY_SIZE:
             pos -= VIDEO_MEMORY_SIZE
         return pos
 
 
     def _carriage_return(self, pos):
-        add = 64 - pos % 64
+        add = LINE_WIDTH - pos % LINE_WIDTH
         return pos + add
 
 
     def _scroll_one_line(self):
         # Copy all lines one line up
-        for addr in range(VIDEO_MEMORY_ADDR, VIDEO_MEMORY_ADDR + VIDEO_MEMORY_SIZE - 0x40):
-            char = self._machine.read_memory_byte(addr + 0x40)
+        for addr in range(VIDEO_MEMORY_ADDR, VIDEO_MEMORY_ADDR + VIDEO_MEMORY_SIZE - LINE_WIDTH):
+            char = self._machine.read_memory_byte(addr + LINE_WIDTH)
             self._machine.write_memory_byte(addr, char)
 
         # Fill the line with spaces
-        for addr in range(VIDEO_MEMORY_ADDR + VIDEO_MEMORY_SIZE - 0x40, VIDEO_MEMORY_ADDR + VIDEO_MEMORY_SIZE):
-            self._machine.write_memory_byte(addr, 0x20)
+        for addr in range(VIDEO_MEMORY_ADDR + VIDEO_MEMORY_SIZE - LINE_WIDTH, VIDEO_MEMORY_ADDR + VIDEO_MEMORY_SIZE):
+            self._machine.write_memory_byte(addr, ord(' '))
 
 
     def _handle_direct_cursor_move(self, pos, char):
@@ -111,7 +114,7 @@ class BIOSDisplayEmulator():
         
         if self._sequence_byte == 2:
             # Move cursor to selected line, preserve column position
-            pos = ((char - 0x20) * 0x40 + VIDEO_MEMORY_ADDR)  +  (pos % 64) 
+            pos = ((char - 0x20) * LINE_WIDTH + VIDEO_MEMORY_ADDR)  +  (pos % LINE_WIDTH) 
             self._sequence_byte = 3
             return pos
 
@@ -157,7 +160,7 @@ class BIOSDisplayEmulator():
         # If the cursor position moves out of the screen - scroll the screen 1 line up
         if pos >= VIDEO_MEMORY_ADDR + VIDEO_MEMORY_SIZE:
             self._scroll_one_line()
-            pos -= 64
+            pos -= LINE_WIDTH
 
         self._set_cursor_position(pos)
         self._show_cursor(pos)
