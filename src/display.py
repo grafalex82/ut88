@@ -88,8 +88,7 @@ class Display(RAM):
         # value, and apply the inversion bit to the corresponding character in 0xe800-0xefff range
         if addr < 0xe800:
             char_addr = addr + 0x0800
-            value &= 0x80
-            value |= RAM.read_byte(self, char_addr) & 0x7f
+            value = set_bit_value(RAM.read_byte(self, char_addr), 7, is_bit_set(value, 7))
             RAM.write_byte(self, char_addr, value)
 
         # Both attribute and char values updated as usual

@@ -37,3 +37,8 @@ def set_bit(value, bit):
 
 def clear_bit(value, bit):
     return value & ~(0x01 << bit)
+
+def set_bit_value(value, bit, bitvalue):
+    value = clear_bit(value, bit)
+    if bitvalue: value = set_bit(value, bit)
+    return value

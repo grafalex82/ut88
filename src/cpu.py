@@ -268,11 +268,11 @@ class CPU:
     @property
     def psw(self):
         flags = 2 # bit1 is always 1
-        flags |= 0x80 if self._sign else 0
-        flags |= 0x40 if self._zero else 0
-        flags |= 0x10 if self._half_carry else 0
-        flags |= 0x04 if self._parity else 0
-        flags |= 0x01 if self._carry else 0
+        if self._sign: flags = set_bit(flags, 7)
+        if self._zero: flags = set_bit(flags, 6)
+        if self._half_carry: flags = set_bit(flags, 4)
+        if self._parity: flags = set_bit(flags, 2)
+        if self._carry: flags = set_bit(flags, 0)
 
         return (self._a << 8) | flags
 
@@ -281,11 +281,11 @@ class CPU:
     def psw(self, value):
         assert value >= 0x00 and value <= 0xffff
         self._a = value >> 8
-        self._sign = (value & 0x80) != 0
-        self._zero = (value & 0x40) != 0
-        self._half_carry = (value & 0x10) != 0
-        self._parity = value & 0x04 != 0
-        self._carry = (value & 0x01) != 0
+        self._sign = is_bit_set(value, 7)
+        self._zero = is_bit_set(value, 6)
+        self._half_carry = is_bit_set(value, 4)
+        self._parity = is_bit_set(value, 2)
+        self._carry = is_bit_set(value, 0)
 
 
     def _fetch_next_byte(self):
@@ -953,7 +953,7 @@ class CPU:
 
     def _rlc(self):
         """ Rotate accumulator left """
-        self._carry = True if (self._a >> 7) == 1 else False
+        self._carry = is_bit_set(self._a, 7)
         self._a = ((self._a << 1) & 0xff) | (self._a >> 7)
         self._cycles += 4
 
@@ -962,8 +962,8 @@ class CPU:
 
     def _rrc(self):
         """ Rotate accumulator right """
-        self._carry = True if (self._a & 0x01) == 1 else False
-        self._a = ((self._a >> 1) & 0xFF) | ((self._a << 7) & 0xFF)
+        self._carry = is_bit_set(self._a, 0)
+        self._a = ((self._a >> 1) & 0xff) | ((self._a << 7) & 0xff)
         self._cycles += 4
 
         self._log_1b_instruction(f"RRC")
@@ -972,9 +972,9 @@ class CPU:
     def _ral(self):
         """ Rotate accumulator left through carry """
         temp = self._a
-        self._a = (self._a << 1) & 0xFF
-        self._a |= 1 if self._carry else 0
-        self._carry = (temp & 0x80) > 0
+        self._a = (self._a << 1) & 0xff
+        if self._carry: self._a = set_bit(self._a, 0)
+        self._carry = is_bit_set(temp, 7)
         self._cycles += 4
 
         self._log_1b_instruction(f"RAL")
@@ -984,8 +984,8 @@ class CPU:
         """ Rotate accumulator right through carry """
         temp = self._a
         self._a >>= 1
-        self._a |= 0x80 if self._carry else 0
-        self._carry = (temp & 0x01) > 0
+        if self._carry: self._a = set_bit(self._a, 7)
+        self._carry = is_bit_set(temp, 0)
         self._cycles += 4
 
         self._log_1b_instruction(f"RAR")
@@ -1009,7 +1009,7 @@ class CPU:
 
     def _cma(self):
         """ Complement accumulator """
-        self._a = (~self._a) & 0xFF
+        self._a = (~self._a) & 0xff
         self._cycles += 4
 
         self._log_1b_instruction(f"CMA")

@@ -18,18 +18,19 @@ class QuasiDisk(IODevice, StackDevice):
     def write_io(self, addr, value):
         self.validate_io_addr(addr)
 
-        if value == 0xff:
-            self._page = None
-        elif value == 0xfe:
-            self._page = 0
-        elif value == 0xfd:
-            self._page = 1
-        elif value == 0xfb:
-            self._page = 2
-        elif value == 0xf7:
-            self._page = 3
-        else:
-            raise IOError(f"Incorrect quasi disk page selection: {value:02x}")
+        match value:
+            case 0xff:
+                self._page = None
+            case 0xfe:
+                self._page = 0
+            case 0xfd:
+                self._page = 1
+            case 0xfb:
+                self._page = 2
+            case 0xf7:
+                self._page = 3
+            case _:
+                raise IOError(f"Incorrect quasi disk page selection: {value:02x}")
 
 
     def write_stack(self, ptr, value):
