@@ -37,6 +37,9 @@ class MemoryDevice:
     fetching instructions, read and write data (except for stack operations, that
     are handled by StackDevice)
 
+    The byte and word functions are typically used by CPU to read or write the data, while
+    burst functions mimic DMA transfer.
+
     The actual device shall reimplement read* and/or write* functions.
     """
     def __init__(self, startaddr, endaddr):
@@ -58,6 +61,12 @@ class MemoryDevice:
         self.validate_addr(addr)
         raise MemoryError(f"Reading address 0x{addr:04x} is not supported")
 
+    def read_burst(self, addr, count):
+        endaddr = addr + len(data) - 1
+        self.validate_addr(addr)
+        self.validate_addr(endaddr)
+        raise MemoryError(f"Burst reading address range 0x{addr:04x}-0x{endaddr:04x} is not supported")
+
     def write_byte(self, addr, value):
         self.validate_addr(addr)
         raise MemoryError(f"Writing address 0x{addr:04x} is not supported")
@@ -65,6 +74,12 @@ class MemoryDevice:
     def write_word(self, addr, value):
         self.validate_addr(addr)
         raise MemoryError(f"Writing address 0x{addr:04x} is not supported")
+
+    def write_burst(self, addr, data):
+        endaddr = addr + len(data) - 1
+        self.validate_addr(addr)
+        self.validate_addr(endaddr)
+        raise MemoryError(f"Burst writing address range 0x{addr:04x}-0x{endaddr:04x} is not supported")
 
     def update(self):
         pass

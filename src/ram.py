@@ -29,6 +29,12 @@ class RAM(MemoryDevice, StackDevice):
         return self._ram[addr - self._startaddr] | self._ram[addr - self._startaddr + 1] << 8
 
 
+    def read_burst(self, addr, count):
+        self.validate_addr(addr)
+        self.validate_addr(addr + count - 1)
+        return self._ram[addr - self._startaddr : addr - self._startaddr + count]
+
+
     def write_byte(self, addr, value):
         self.validate_addr(addr)
         self._check_value(value, 0xff)
@@ -50,3 +56,11 @@ class RAM(MemoryDevice, StackDevice):
 
     def read_stack(self, ptr):
         return self.read_word(ptr)
+
+
+    def write_burst(self, addr, data):
+        self.validate_addr(addr)
+        self.validate_addr(addr + len(data) - 1)
+        self._ram[addr - self._startaddr : addr - self._startaddr + len(data)] = data
+
+

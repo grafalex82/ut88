@@ -35,3 +35,14 @@ def test_out_of_addr_range_word(rom):
         rom.read_word(0x1234)
     with pytest.raises(MemoryError):
         rom.read_word(0x6789)
+
+def test_out_of_addr_range_burst(rom):
+    with pytest.raises(MemoryError):
+        rom.read_burst(0x1234, 0x10)    # Start address is out of the range
+    with pytest.raises(MemoryError):
+        rom.read_burst(0x6789, 0x10)    # Start address is out of the range
+    with pytest.raises(MemoryError):
+        rom.read_burst(0x43f8, 0x10)    # Start address is ok, end address is not
+
+def test_read_burst(rom):
+    assert rom.read_burst(0x4242, 10) == [0xe5, 0x09, 0x22, 0xf6, 0xc3, 0x2a, 0xf0, 0xc3, 0x4d, 0x44]

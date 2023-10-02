@@ -34,6 +34,26 @@ def test_write_read_word2(ram):
     assert ram.read_byte(0x1234) == 0xef
     assert ram.read_byte(0x1235) == 0xbe
 
+def test_read_burst(ram):
+    ram.write_byte(0x1234, 0x42)
+    ram.write_byte(0x1235, 0x43)
+    ram.write_byte(0x1236, 0x44)
+    ram.write_byte(0x1237, 0x45)
+    assert ram.read_burst(0x1230, 12) == [0x00, 0x00, 0x00, 0x00, 0x42, 0x43, 0x44, 0x45, 0x00, 0x00, 0x00, 0x00]
+
+
+def test_write_burst(ram):
+    ram.write_byte(0x1238, 0xa5)    # Guard byte, to check if this not overwritten  
+    ram.write_burst(0x1234, bytes([0x42, 0x43, 0x44, 0x45]))
+
+    assert ram.read_byte(0x1233) == 0x00
+    assert ram.read_byte(0x1234) == 0x42
+    assert ram.read_byte(0x1235) == 0x43
+    assert ram.read_byte(0x1236) == 0x44
+    assert ram.read_byte(0x1237) == 0x45
+    assert ram.read_byte(0x1238) == 0xa5
+
+
 def test_push(ram):
     ram.write_stack(0x1234, 0xbeef)
     assert ram.read_byte(0x1234) == 0xef
@@ -87,3 +107,20 @@ def test_out_of_addr_range_stack():
         ram.read_stack(0x1234)
     with pytest.raises(MemoryError):
         ram.read_stack(0x6789)
+
+def test_out_of_addr_range_burst():
+    ram = RAM(0x5000, 0x5fff) 
+    with pytest.raises(MemoryError):
+        ram.read_burst(0x1234, 0x10)
+    with pytest.raises(MemoryError):
+        ram.read_burst(0x6789, 0x10)
+    with pytest.raises(MemoryError):
+        ram.read_burst(0x5ff8, 0x10)
+
+    buf = [0]*0x10
+    with pytest.raises(MemoryError):
+        ram.write_burst(0x1234, buf)
+    with pytest.raises(MemoryError):
+        ram.write_burst(0x6789, buf)
+    with pytest.raises(MemoryError):
+        ram.write_burst(0x5ff8, buf)
