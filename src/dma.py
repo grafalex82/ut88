@@ -51,6 +51,7 @@ class DMA(MemoryDevice):
         if count_register:
             if self._channels[channel]['count']:
                 self._channels[channel]['count'] |= (value & 0x3f) << 8         # High byte
+                self._channels[channel]['count'] += 1                           # Parameter is 1 less than actual count
                 self._channels[channel]['read'] = is_bit_set(value, 6)
                 self._channels[channel]['write'] = is_bit_set(value, 7)
             else:

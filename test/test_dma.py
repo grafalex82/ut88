@@ -25,7 +25,8 @@ def test_fill_channel_params(dma):
     dma.write_byte(0xe003, 0x56)    
 
     assert dma.get_register_value(1, False) == 0x1234   # Start address register
-    assert dma.get_register_value(1, True) == 0x1678    # Counter register (not including read/write bits)
+    assert dma.get_register_value(1, True) == 0x1679    # Counter register (not including read/write bits)
+                                                        # Number of bytes to transfer is 1 bigger than param
 
 
 def test_fill_autoload_params(dma):
@@ -36,9 +37,10 @@ def test_fill_autoload_params(dma):
     dma.write_byte(0xe005, 0x56)    
 
     assert dma.get_register_value(2, False) == 0x1234   # Start address register
-    assert dma.get_register_value(2, True) == 0x1678    # Counter register (not including read/write bits)
+    assert dma.get_register_value(2, True) == 0x1679    # Counter register (not including read/write bits)
+                                                        # Number of bytes to transfer is 1 bigger than param
     assert dma.get_register_value(3, False) == 0x1234   # Validate data is also replicated for channel 3
-    assert dma.get_register_value(3, True) == 0x1678
+    assert dma.get_register_value(3, True) == 0x1679
 
 
 def test_dma_read(dma):
@@ -51,7 +53,7 @@ def test_dma_read(dma):
     # Configure the DMA channel 0 for reading 4 memory bytes starting 0x1234
     dma.write_byte(0xe000, 0x34)    # Set channel 0 start address (low byte first)
     dma.write_byte(0xe000, 0x12)
-    dma.write_byte(0xe001, 0x04)    # Set channel 0 count and read mode
+    dma.write_byte(0xe001, 0x03)    # Set channel 0 count and read mode
     dma.write_byte(0xe001, 0x40)
     dma.write_byte(0xe008, 0x01)    # Enable channel 0
 
@@ -66,7 +68,7 @@ def test_dma_write(dma):
     # Configure the DMA channel 1 for writing 4 memory bytes starting 0x1234
     dma.write_byte(0xe002, 0x34)    # Set channel 1 start address (low byte first)
     dma.write_byte(0xe002, 0x12)
-    dma.write_byte(0xe003, 0x04)    # Set channel 1 count and write mode
+    dma.write_byte(0xe003, 0x03)    # Set channel 1 count and write mode
     dma.write_byte(0xe003, 0x80)
     dma.write_byte(0xe008, 0x02)    # Enable channel 1
 
@@ -91,7 +93,7 @@ def test_dma_autoload(dma):
     dma.write_byte(0xe008, 0x80)    # Raise the autoload bit
     dma.write_byte(0xe004, 0x34)    # Set channel 2 start address (low byte first)
     dma.write_byte(0xe004, 0x12)
-    dma.write_byte(0xe005, 0x04)    # Set channel 2 count and read mode
+    dma.write_byte(0xe005, 0x03)    # Set channel 2 count and read mode
     dma.write_byte(0xe005, 0x40)
     dma.write_byte(0xe008, 0x84)    # Enable channel 2, autoload
 
@@ -121,7 +123,7 @@ def test_dma_not_autoloaded(dma):
     dma.write_byte(0xe008, 0x00)    # Clear the autoload bit
     dma.write_byte(0xe006, 0x34)    # Set channel 3 start address (low byte first)
     dma.write_byte(0xe006, 0x12)
-    dma.write_byte(0xe007, 0x04)    # Set channel 3 count and read mode
+    dma.write_byte(0xe007, 0x03)    # Set channel 3 count and read mode
     dma.write_byte(0xe007, 0x40)
     dma.write_byte(0xe008, 0x08)    # Enable channel 3
 
