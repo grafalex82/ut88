@@ -466,7 +466,9 @@ class Radio86RKConfiguration(Configuration):
 
 
     def configure_logging(self):
-        pass
+        self.suppress_logging(0xf841, 0xf84c, "Initial memset")
+        self.suppress_logging(0xfcba, 0xfd9d, "Put char")
+
 
     def setup_special_breakpoints(self):
         pass
