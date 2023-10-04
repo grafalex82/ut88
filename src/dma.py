@@ -32,6 +32,7 @@ class DMA(MemoryDevice):
             'count': None, 
             'read':False, 
             'write':False} for _ in range(4)]
+        self._waiting_high_byte = False
 
 
     def _enable_channel(self, channel, enable):
@@ -49,7 +50,7 @@ class DMA(MemoryDevice):
 
     def set_register_value(self, channel, count_register, value):
         if count_register:
-            if self._channels[channel]['count']:
+            if self._waiting_high_byte:
                 self._channels[channel]['count'] |= (value & 0x3f) << 8         # High byte
                 self._channels[channel]['count'] += 1                           # Parameter is 1 less than actual count
                 self._channels[channel]['read'] = is_bit_set(value, 6)
@@ -57,10 +58,12 @@ class DMA(MemoryDevice):
             else:
                 self._channels[channel]['count'] = value & 0xff                 # Low byte
         else:
-            if self._channels[channel]['start_addr']:
+            if self._waiting_high_byte:
                 self._channels[channel]['start_addr'] |= (value & 0xff) << 8    # High byte
             else:
                 self._channels[channel]['start_addr'] = value & 0xff            # Low byte
+
+        self._waiting_high_byte = not self._waiting_high_byte
 
         # In case of Autoload option, channel 3 registers will store original values for start address 
         # and bytes count for channel 2

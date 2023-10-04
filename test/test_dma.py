@@ -29,6 +29,27 @@ def test_fill_channel_params(dma):
                                                         # Number of bytes to transfer is 1 bigger than param
 
 
+def test_fill_channel_params_multiple(dma):
+    dma.write_byte(0xe002, 0x34)    # Fill start address for Channel 1 (low byte first)
+    dma.write_byte(0xe002, 0x12)
+    dma.write_byte(0xe003, 0x78)    # Fill count for Channel 1 (low byte first)
+    dma.write_byte(0xe003, 0x56)    
+
+    assert dma.get_register_value(1, False) == 0x1234   # Start address register
+    assert dma.get_register_value(1, True) == 0x1679    # Counter register (not including read/write bits)
+                                                        # Number of bytes to transfer is 1 bigger than param
+
+    # Do filling params again
+    dma.write_byte(0xe002, 0x45)    # Fill start address for the same Channel 1 (low byte first)
+    dma.write_byte(0xe002, 0x23)
+    dma.write_byte(0xe003, 0x89)    # Fill count for Channel 1 (low byte first)
+    dma.write_byte(0xe003, 0x67)    
+
+    assert dma.get_register_value(1, False) == 0x2345   # Start address register
+    assert dma.get_register_value(1, True) == 0x278a    # Counter register (not including read/write bits)
+                                                        # Number of bytes to transfer is 1 bigger than param
+
+
 def test_fill_autoload_params(dma):
     dma.write_byte(0xe008, 0x80)    # Set Autoload flag in the configuration register
     dma.write_byte(0xe004, 0x34)    # Fill start address for Channel 1 (low byte first)
