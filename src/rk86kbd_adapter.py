@@ -29,9 +29,21 @@ class RK86KeyboardAdapter(MemoryDevice):
         match addr:
             case 0x8000:    # Port A
                 return self._keyboard.write_io(0x07, value)
-            
+
+            case 0x8002:    # Port C
+                # TODO: LED connected to C3 pin shows status of the Rus/Lat switch
+                # Emulate it at some point
+                return
+
             case 0x8003:    # Control port
-                assert value == 0x8a    # TODO: Support other modes as well
+                if value & 0x80:
+                    # Unlike UT-88 keyboard, the 86RK one uses upper port C for reading mod keys, while
+                    # lower part of the Port C is configured for output. Particularly Rus/Lat LED is connected
+                    # to the C3 pin
+                    assert value == 0x8a
+                else:
+                    # TODO: handle setting/resetting bits using BSR mode
+                    pass
 
                 # The only mode supported by the UT-88 keyboard is 0x8b (Port A - output, Ports B and C - input)
                 return self._keyboard.write_io(0x04, 0x8b)  
