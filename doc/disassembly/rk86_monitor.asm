@@ -1,36 +1,54 @@
-f800  c3 36 f8   JMP f836
-f803  c3 63 fe   JMP fe63
-f806  c3 98 fb   JMP fb98
-f809  c3 ba fc   JMP fcba
-f80c  c3 46 fc   JMP fc46
-f80f  c3 ba fc   JMP fcba
-f812  c3 01 fe   JMP fe01
-f815  c3 a5 fc   JMP fca5
-f818  c3 22 f9   JMP f922
-f81b  c3 72 fe   JMP fe72
-f81e  c3 7b fa   JMP fa7b
-f821  c3 7f fa   JMP fa7f
-f824  c3 b6 fa   JMP fab6
-f827  c3 49 fb   JMP fb49
-f82a  c3 16 fb   JMP fb16
-f82d  c3 ce fa   JMP face
-f830  c3 52 ff   JMP ff52
-f833  c3 56 ff   JMP ff56
-????:
-f836  3e 8a      MVI A, 8a
-f838  32 03 80   STA 8003
+; 
 
-f83b  31 cf 76   LXI SP, 76cf
-f83e  cd ce fa   CALL face
-f841  21 00 76   LXI HL, 7600
-f844  11 5f 76   LXI DE, 765f
-f847  0e 00      MVI C, 00
-f849  cd ed f9   CALL f9ed
-f84c  21 cf 76   LXI HL, 76cf
-f84f  22 1c 76   SHLD 761c
-f852  21 5a ff   LXI HL, ff5a
-f855  cd 22 f9   CALL f922
-f858  cd ce fa   CALL face
+; Variables:
+; 0x7600    - current cursor address (points to the video RAM)
+; 0x7602    - current cursor position (high byte - X, and low byte as Y coordinate)
+; 0x7604    - Esc-Y escape sequence byte number
+; 0x7600 - 0x765f - monitor variables
+; ??????
+; 76cf - stack top
+; 0x76d0 - Video RAM (0x924 bytes)
+
+VECTORS:
+    f800  c3 36 f8   JMP START (f836)
+    f803  c3 63 fe   JMP fe63
+    f806  c3 98 fb   JMP fb98
+    f809  c3 ba fc   JMP PUT_CHAR (fcba)
+    f80c  c3 46 fc   JMP fc46
+    f80f  c3 ba fc   JMP PUT_CHAR (fcba)
+    f812  c3 01 fe   JMP fe01
+    f815  c3 a5 fc   JMP fca5
+    f818  c3 22 f9   JMP PRINT_STR (f922)
+    f81b  c3 72 fe   JMP fe72
+    f81e  c3 7b fa   JMP fa7b
+    f821  c3 7f fa   JMP fa7f
+    f824  c3 b6 fa   JMP fab6
+    f827  c3 49 fb   JMP fb49
+    f82a  c3 16 fb   JMP fb16
+    f82d  c3 ce fa   JMP INIT_VIDEO (face)
+    f830  c3 52 ff   JMP ff52
+    f833  c3 56 ff   JMP ff56
+
+START:
+    f836  3e 8a      MVI A, 8a                  ; Initialize keyboard port: Port A - output, Port B - input,
+    f838  32 03 80   STA KBD_CTRL_PORT (8003)   ; Port C (upper) - input, Port C (lower) - output
+
+    f83b  31 cf 76   LXI SP, STACK_TOP (76cf)   ; Initialize stack
+
+    f83e  cd ce fa   CALL INIT_VIDEO (face)     ; Initialize video controller and DMA controller
+
+    f841  21 00 76   LXI HL, 7600               ; Clear the 0x7600 - 0x765f Monitor variables range
+    f844  11 5f 76   LXI DE, 765f
+    f847  0e 00      MVI C, 00
+    f849  cd ed f9   CALL MEMSET (f9ed)
+
+    f84c  21 cf 76   LXI HL, STACK_TOP (76cf)   ; ???? User SP????
+    f84f  22 1c 76   SHLD 761c
+
+    f852  21 5a ff   LXI HL, ff5a               ; Print the hello line
+    f855  cd 22 f9   CALL PRINT_STR (f922)
+
+f858  cd ce fa   CALL INIT_VIDEO (face)
 f85b  21 ff 75   LXI HL, 75ff
 f85e  22 31 76   SHLD 7631
 f861  21 2a 1d   LXI HL, 1d2a
@@ -38,10 +56,10 @@ f864  22 2f 76   SHLD 762f
 f867  3e c3      MVI A, c3
 f869  32 26 76   STA 7626
 ????:
-f86c  31 cf 76   LXI SP, 76cf
+f86c  31 cf 76   LXI SP, STACK_TOP (76cf)
 f86f  21 66 ff   LXI HL, ff66
-f872  cd 22 f9   CALL f922
-f875  32 02 80   STA 8002
+f872  cd 22 f9   CALL PRINT_STR (f922)
+f875  32 02 80   STA KBD_PORT_C (8002)
 f878  3d         DCR A
 f879  32 02 a0   STA a002
 f87c  cd ee f8   CALL f8ee
@@ -67,7 +85,7 @@ f8a4  ca c5 f9   JZ f9c5
 f8a7  fe 43      CPI A, 43
 f8a9  ca d7 f9   JZ f9d7
 f8ac  fe 46      CPI A, 46
-f8ae  ca ed f9   JZ f9ed
+f8ae  ca ed f9   JZ MEMSET (f9ed)
 f8b1  fe 53      CPI A, 53
 f8b3  ca f4 f9   JZ f9f4
 f8b6  fe 54      CPI A, 54
@@ -91,7 +109,7 @@ f8de  bd         CMP L
 f8df  ca f1 f8   JZ f8f1
 f8e2  e5         PUSH HL
 f8e3  21 9e ff   LXI HL, ff9e
-f8e6  cd 22 f9   CALL f922
+f8e6  cd 22 f9   CALL PRINT_STR (f922)
 f8e9  e1         POP HL
 f8ea  2b         DCX HL
 f8eb  c3 f3 f8   JMP f8f3
@@ -105,7 +123,7 @@ f8f6  fe 08      CPI A, 08
 f8f8  ca dc f8   JZ f8dc
 f8fb  fe 7f      CPI A, 7f
 f8fd  ca dc f8   JZ f8dc
-f900  c4 b9 fc   CNZ fcb9
+f900  c4 b9 fc   CNZ PUT_CHAR_A (fcb9)
 f903  77         MOV M, A
 f904  fe 0d      CPI A, 0d
 f906  ca 1a f9   JZ f91a
@@ -123,18 +141,24 @@ f91b  17         RAL
 f91c  11 33 76   LXI DE, 7633
 f91f  06 00      MVI B, 00
 f921  c9         RET
-????:
-f922  7e         MOV A, M
-f923  a7         ANA A
-f924  c8         RZ
-f925  cd b9 fc   CALL fcb9
-f928  23         INX HL
-f929  c3 22 f9   JMP f922
+
+; Print a NULL-terminated string pointed by HL
+PRINT_STR:
+    f922  7e         MOV A, M                   ; Load the next symbol
+
+    f923  a7         ANA A                      ; Exit on zero char
+    f924  c8         RZ
+
+    f925  cd b9 fc   CALL PUT_CHAR_A (fcb9)     ; Print the char
+
+    f928  23         INX HL                     ; Advance to the next char
+    f929  c3 22 f9   JMP PRINT_STR (f922)
+
 ????:
 f92c  21 27 76   LXI HL, 7627
 f92f  11 2d 76   LXI DE, 762d
 f932  0e 00      MVI C, 00
-f934  cd ed f9   CALL f9ed
+f934  cd ed f9   CALL MEMSET (f9ed)
 f937  11 34 76   LXI DE, 7634
 f93a  cd 5a f9   CALL f95a
 f93d  22 27 76   SHLD 7627
@@ -210,13 +234,13 @@ f9a3  c9         RET
 f9a4  cd 72 fe   CALL fe72
 f9a7  fe 03      CPI A, 03
 f9a9  c0         RNZ
-f9aa  cd ce fa   CALL face
+f9aa  cd ce fa   CALL INIT_VIDEO (face)
 f9ad  c3 ae fa   JMP faae
 
 ????:
 f9b0  e5         PUSH HL
 f9b1  21 6c ff   LXI HL, ff6c
-f9b4  cd 22 f9   CALL f922
+f9b4  cd 22 f9   CALL PRINT_STR (f922)
 f9b7  e1         POP HL
 f9b8  c9         RET
 ????:
@@ -225,7 +249,7 @@ f9b9  7e         MOV A, M
 f9ba  c5         PUSH BC
 f9bb  cd a5 fc   CALL fca5
 f9be  3e 20      MVI A, 20
-f9c0  cd b9 fc   CALL fcb9
+f9c0  cd b9 fc   CALL PUT_CHAR_A (fcb9)
 f9c3  c1         POP BC
 f9c4  c9         RET
 ????:
@@ -249,10 +273,13 @@ f9e3  cd ba f9   CALL f9ba
 f9e6  03         INX BC
 f9e7  cd 96 f9   CALL f996
 f9ea  c3 d7 f9   JMP f9d7
-????:
-f9ed  71         MOV M, C
-f9ee  cd 99 f9   CALL ADVANCE_HL (f999)
-f9f1  c3 ed f9   JMP f9ed
+
+; Fill memory at HL-DE with byte in C
+MEMSET:
+    f9ed  71         MOV M, C                   ; Store the byte
+    f9ee  cd 99 f9   CALL ADVANCE_HL (f999)     ; Increment HL until it reaches DE
+    f9f1  c3 ed f9   JMP MEMSET (f9ed)
+
 ????:
 f9f4  79         MOV A, C
 f9f5  be         CMP M
@@ -276,7 +303,7 @@ fa12  d2 17 fa   JNC fa17
 ????:
 fa15  3e 2e      MVI A, 2e
 ????:
-fa17  cd b9 fc   CALL fcb9
+fa17  cd b9 fc   CALL PUT_CHAR_A (fcb9)
 fa1a  cd 96 f9   CALL f996
 fa1d  7d         MOV A, L
 fa1e  e6 0f      ANI A, 0f
@@ -329,11 +356,11 @@ fa74  03         INX BC
 fa75  cd 99 f9   CALL ADVANCE_HL (f999)
 fa78  c3 6d fa   JMP fa6d
 ????:
-fa7b  2a 02 76   LHLD 7602
+fa7b  2a 02 76   LHLD CURSOR_POS (7602)
 fa7e  c9         RET
 ????:
 fa7f  e5         PUSH HL
-fa80  2a 00 76   LHLD 7600
+fa80  2a 00 76   LHLD CURSOR_ADDR (7600)
 fa83  7e         MOV A, M
 fa84  e1         POP HL
 fa85  c9         RET
@@ -361,7 +388,7 @@ faaa  eb         XCHG
 faab  cd 78 fb   CALL fb78
 ????:
 faae  3e 3f      MVI A, 3f
-fab0  cd b9 fc   CALL fcb9
+fab0  cd b9 fc   CALL PUT_CHAR_A (fcb9)
 fab3  c3 6c f8   JMP f86c
 ????:
 fab6  3e ff      MVI A, ff
@@ -378,34 +405,62 @@ fac5  cd 0a fb   CALL fb0a
 fac8  3e ff      MVI A, ff
 faca  cd ff fa   CALL faff
 facd  e1         POP HL
-????:
-face  e5         PUSH HL
-facf  21 01 c0   LXI HL, c001
-fad2  36 00      MVI M, 00
-fad4  2b         DCX HL
-fad5  36 4d      MVI M, 4d
-fad7  36 1d      MVI M, 1d
-fad9  36 99      MVI M, 99
-fadb  36 d3      MVI M, d3			# 93???
-fadd  23         INX HL
-fade  36 27      MVI M, 27
-fae0  7e         MOV A, M
-????:
-fae1  7e         MOV A, M
-fae2  e6 20      ANI A, 20
-fae4  ca e1 fa   JZ fae1
-fae7  21 08 e0   LXI HL, e008
-faea  36 80      MVI M, 80
-faec  2e 04      MVI L, 04
-faee  36 d0      MVI M, d0
-faf0  36 76      MVI M, 76
-faf2  2c         INR L
-faf3  36 23      MVI M, 23
-faf5  36 49      MVI M, 49
-faf7  2e 08      MVI L, 08
-faf9  36 a4      MVI M, a4
-fafb  e1         POP HL
-fafc  c9         RET
+
+; The function re-initializes video controller and DMA transfer for video memory
+;
+; The i8275 video controller works closely with i8257 DMA controller. This allows the video controller access 
+; to the video memory without main CPU involvement. The function intializes the hardware as follows:
+; - Video controller:
+;   - Video mode is set to 30 rows by 78 chars each
+;   - 10 lines per each character row (actual char height is 8 lines, and 2 lines spacing)
+;   - 10 lines high blinking cursor (so that whole symbol is blinking)
+;   - DMA transfer with 8-byte packets, and short delay between packets
+; - DMA controller
+;   - Will use Channel 2 for video memory transfer
+;   - Will use autoload mode when Channel 2 start parameters are stored in Channel 3 internally, and autoloaded
+;     after each data transfer
+;   - Video RAM start address is 0x76d0
+;   - DMA will transfer 0x924 bytes (which is 30 rows by 78 chars each)
+INIT_VIDEO:
+    face  e5         PUSH HL                    ; Set HL to 8275 control register address
+    facf  21 01 c0   LXI HL, c001
+
+    fad2  36 00      MVI M, 00                  ; Send the i8275 reset command
+
+    fad4  2b         DCX HL                     ; Send 4 parameters of the reset command:]
+    fad5  36 4d      MVI M, 4d                  ; Screen width: 78 chars
+    fad7  36 1d      MVI M, 1d                  ; Screen height: 30 chars
+    fad9  36 99      MVI M, 99                  ; Char height: 10 lines, underline height: 10 lines
+    fadb  36 d3      MVI M, d3			        ; Non offset mode, non-transparrent attribute mode (shall be transparent???)
+                                                ; Blinking cursor, Horisontal retracing - 8
+
+    fadd  23         INX HL                     ; Send the i8275 start display command (7 chars burst delay
+    fade  36 27      MVI M, 27                  ; interval, 8 bytes transfer per burst)
+
+    fae0  7e         MOV A, M                   ; Read the i8275 status byte
+    
+INIT_VIDEO_WAIT_LOOP:
+    fae1  7e         MOV A, M                   ; Read the status byte until Interrupt Request (IR) flag is set
+    fae2  e6 20      ANI A, 20                  ; (waiting until current frame is shown so that we can load the
+    fae4  ca e1 fa   JZ INIT_VIDEO_WAIT_LOOP (fae1) ; new frame)
+
+    fae7  21 08 e0   LXI HL, e008               ; Init DMA controller, set autoload flag
+    faea  36 80      MVI M, 80
+
+    faec  2e 04      MVI L, 04                  ; Set 0x76d0 as a video memory start (start address for DMA
+    faee  36 d0      MVI M, d0                  ; transfer to the video controller)
+    faf0  36 76      MVI M, 76
+
+    faf2  2c         INR L                      ; Set 0x924 number of bytes in video frame (30 rows by 78 cols)
+    faf3  36 23      MVI M, 23
+    faf5  36 49      MVI M, 49                  ; Set also memory->video controller direction
+
+    faf7  2e 08      MVI L, 08                  ; Enable DMA Channel 2 with autoload
+    faf9  36 a4      MVI M, a4
+
+    fafb  e1         POP HL                     ; Exit
+    fafc  c9         RET
+
 ????:
 fafd  3e 08      MVI A, 08
 ????:
@@ -476,7 +531,7 @@ fb6c  0e e6      MVI C, e6
 fb6e  cd 46 fc   CALL fc46
 fb71  e1         POP HL
 fb72  cd 90 fb   CALL fb90
-fb75  c3 ce fa   JMP face
+fb75  c3 ce fa   JMP INIT_VIDEO (face)
 ????:
 fb78  c5         PUSH BC
 fb79  cd b0 f9   CALL f9b0
@@ -509,7 +564,7 @@ fba4  39         DAD SP
 fba5  31 00 00   LXI SP, 0000
 fba8  22 0d 76   SHLD 760d
 fbab  0e 00      MVI C, 00
-fbad  3a 02 80   LDA 8002
+fbad  3a 02 80   LDA KBD_PORT_C (8002)
 fbb0  0f         RRC
 fbb1  0f         RRC
 fbb2  0f         RRC
@@ -527,7 +582,7 @@ fbbd  26 00      MVI H, 00
 fbbf  25         DCR H
 fbc0  ca 34 fc   JZ fc34
 fbc3  f1         POP PSW
-fbc4  3a 02 80   LDA 8002
+fbc4  3a 02 80   LDA KBD_PORT_C (8002)
 fbc7  0f         RRC
 fbc8  0f         RRC
 fbc9  0f         RRC
@@ -548,7 +603,7 @@ fbdd  f1         POP PSW
 fbde  05         DCR B
 fbdf  c2 dd fb   JNZ fbdd
 fbe2  14         INR D
-fbe3  3a 02 80   LDA 8002
+fbe3  3a 02 80   LDA KBD_PORT_C (8002)
 fbe6  0f         RRC
 fbe7  0f         RRC
 fbe8  0f         RRC
@@ -594,7 +649,7 @@ fc31  c3 a1 fc   JMP fca1
 ????:
 fc34  2a 0d 76   LHLD 760d
 fc37  f9         SPHL
-fc38  cd ce fa   CALL face
+fc38  cd ce fa   CALL INIT_VIDEO (face)
 fc3b  7a         MOV A, D
 fc3c  b7         ORA A
 fc3d  f2 ae fa   JP faae
@@ -618,7 +673,7 @@ fc5a  07         RLC
 fc5b  4f         MOV C, A
 fc5c  3e 01      MVI A, 01
 fc5e  a9         XRA C
-fc5f  32 02 80   STA 8002
+fc5f  32 02 80   STA KBD_PORT_C (8002)
 fc62  3a 30 76   LDA 7630
 fc65  47         MOV B, A
 ????:
@@ -627,7 +682,7 @@ fc67  05         DCR B
 fc68  c2 66 fc   JNZ fc66
 fc6b  3e 00      MVI A, 00
 fc6d  a9         XRA C
-fc6e  32 02 80   STA 8002
+fc6e  32 02 80   STA KBD_PORT_C (8002)
 fc71  15         DCR D
 fc72  3a 30 76   LDA 7630
 fc75  c2 7a fc   JNZ fc7a
@@ -675,219 +730,366 @@ fcb2  fa b7 fc   JM fcb7
 fcb5  c6 07      ADI A, 07
 ????:
 fcb7  c6 30      ADI A, 30
+
+
+; Print a char in A register
+PUT_CHAR_A:
+    fcb9  4f         MOV C, A
+
+; Print a char
+; C - char to print
+;
+; This function puts a char at the cursor location in a terminal mode (including wrapping
+; the cursor to the next line, and scrolling the text if the end of screen reached). 
+;
+; The function is responsible to track the cursor position in 2 different way:
+; - As a pointer in the Video RAM to track where to store the next symbol
+; - As a X and Y coordinate to track screen boundaries, and fill the i8275 cursor position register.
+;
+; The function handles the following special chars:
+; 0x08  - Move cursor 1 position left
+; 0x0c  - Move cursor to the top left position
+; 0x18  - Move cursor 1 position right
+; 0x19  - Move cursor 1 line up
+; 0x1a  - Move cursor 1 line down
+; 0x0d  - carriage return (move cursor to the leftmost position on the same line)
+; 0x0a  - line feed (move cursor to the next line, scroll 1 line if necessary)
+; 0x1f  - Clear screen
+; 0x1b  - Move cursor to a selected position
+;         This is a 4-symbol sequence (similar to Esc sequence):
+;         0x1b, 'Y', 0x20+Y position, 0x20+X position
+;
+; Physical screen resolution (how the Video controller is configured) is 78x30 characters. The video controller
+; outputs the whole video RAM to the screen. At the same time Radio-86RK is supposed to be used with CRT display,
+; and actual visible area may be smaller. This function is responsible for artificially limit amount of data on
+; the screen by adding a 3-line margin at the top of the screen, 8 chars left margin, 6 chars right margin. There
+; is no bottom margin, as it is generated by video controller as a part of the pause between frames. 
+; 
+;
+; Important variables:
+; 7600 - Current cursor position (memory address)
+; 7602 - Current cursor coordinate (X and Y position)
+; 7604 - cursor direct movement state
+;        0 - normal mode, next symbol is a regular symbol
+;        1 - 0x1b printed, expecting 'Y'
+;        2 - expecting Y coordinate
+;        4 - expecting X coordinate
+PUT_CHAR:
+    fcba  f5         PUSH PSW                   ; Save registers
+    fcbb  c5         PUSH BC
+    fcbc  d5         PUSH DE
+    fcbd  e5         PUSH HL
+
+    fcbe  cd 01 fe   CALL fe01                  ; ????
+
+    fcc1  21 85 fd   LXI HL, PUT_CHAR_EXIT (fd85)   ; Put an exit address to the stack (so that subfunction may
+    fcc4  e5         PUSH HL                        ; just call RET)
+
+    fcc5  2a 02 76   LHLD CURSOR_POS (7602)     ; Load logical cursor coordinates (X/Y) to DE
+    fcc8  eb         XCHG
+    fcc9  2a 00 76   LHLD CURSOR_ADDR (7600)    ; Load current cursor address to HL
+
+    fccc  3a 04 76   LDA ESC_SEQ_STATE (7604)   ; Check the escape sequence state machine
+    fccf  3d         DCR A
+    fcd0  fa ee fc   JM PRINT_NORMAL_CHAR (fcee)    ; If 0 - it is a normal character print
+    fcd3  ca 65 fd   JZ MOVE_CUR_DIRECT_B1 (fd65)   ; If 1 - Esc matched, expect 'Y' as the next char
+    fcd6  e2 73 fd   JPO MOVE_CUR_DIRECT_B1 (fd73)  ; If 2 - Esc-Y matched, expect Y cursor coordinate
+
+    fcd9  79         MOV A, C                   ; This is stage 4 of the sequence - apply X coordinate
+    fcda  d6 20      SUI A, 20                  ; Process X coordinate in the escape sequence
+    fcdc  4f         MOV C, A                   ; Adjust by 0x20 (as it uses printable chars)
+
+MOVE_CUR_DIRECT_L1:
+    fcdd  0d         DCR C                      ; Symbols below 0x20 are illegal, abandon the escape sequence
+    fcde  fa e9 fc   JM MOVE_CUR_DIRECT_RESET (fce9)
+
+    fce1  c5         PUSH BC                    ; Move cursor right
+    fce2  cd b9 fd   CALL MOVE_CUR_RIGHT (fdb9)
+    fce5  c1         POP BC
+
+    fce6  c3 dd fc   JMP MOVE_CUR_DIRECT_L1 (fcdd)  ; Repeat C number of times
+
+MOVE_CUR_DIRECT_RESET:
+    fce9  af         XRA A                      ; Reset the escape sequence state machine
+
+MOVE_CUR_DIRECT_EXIT:
+    fcea  32 04 76   STA ESC_SEQ_STATE          ; Store escape sequence state, and exit
+    fced  c9         RET
+
+PRINT_NORMAL_CHAR:
+    fcee  79         MOV A, C                   ; Ensure there is no MSB in the symbol (clear MSB)
+    fcef  e6 7f      ANI A, 7f
+    fcf1  4f         MOV C, A
+
+    fcf2  fe 1f      CPI A, 1f                  ; 0x1f - clear screen
+    fcf4  ca a3 fd   JZ CLEAR_SCREEN (fda3)
+
+    fcf7  fe 0c      CPI A, 0c                  ; 0x0c - home cursor
+    fcf9  ca b2 fd   JZ HOME_SCREEN (fdb2)
+
+    fcfc  fe 0d      CPI A, 0d                  ; 0x0d - carriage return
+    fcfe  ca f3 fd   JZ CARRIAGE_RETURN (fdf3)
+
+    fd01  fe 0a      CPI A, 0a                  ; 0x0a - line feed
+    fd03  ca 47 fd   JZ LINE_FEED (fd47)
+
+    fd06  fe 08      CPI A, 08                  ; 0x08 - cursor left
+    fd08  ca d6 fd   JZ MOVE_CUR_LEFT (fdd6)
+
+    fd0b  fe 18      CPI A, 18                  ; 0x18 - cursor right
+    fd0d  ca b9 fd   JZ MOVE_CUR_RIGHT (fdb9)
+
+    fd10  fe 19      CPI A, 19                  ; 0x19 - cursor up
+    fd12  ca e2 fd   JZ MOVE_CUR_UP (fde2)
+
+    fd15  fe 1a      CPI A, 1a                  ; 0x1a - cursor down
+    fd17  ca c5 fd   JZ MOVE_CUR_DOWN (fdc5)
+
+    fd1a  fe 1b      CPI A, 1b                  ; 0x1b - start of Escape sequence for direct cursor movement
+    fd1c  ca 9e fd   JZ MOVE_CUR_DIRECT (fd9e)
+
+    fd1f  fe 07      CPI A, 07                  ; 0x07 - bell (beep)
+    fd21  c2 38 fd   JNZ DO_PUT_CHAR (fd38)     ; Process normal chars little below
+
+    fd24  01 f0 05   LXI BC, 05f0               ; B - beep period, C - Beep duration
+
+
+; Beep (sound generation) function
+; Generates sounds on EI pin of the CPU
+;
+; Arguments:
+; B - beep period (delay between the pin goes on and off)
+; C - number of periods to generate
+BEEP_LOOP:
+    fd27  78         MOV A, B
+
+BEEP_L1:
+    fd28  fb         EI                         ; Positive half-period
+    fd29  3d         DCR A
+    fd2a  c2 28 fd   JNZ BEEP_L1 (fd28)
+
+    fd2d  78         MOV A, B                   ; Reload beep period
+
+BEEP_L2:
+    fd2e  f3         DI                         ; Negative half-period
+    fd2f  3d         DCR A
+    fd30  c2 2e fd   JNZ BEEP_L2 (fd2e)
+
+    fd33  0d         DCR C                      ; Repeat C times
+    fd34  c2 27 fd   JNZ BEEP_LOOP (fd27)
+
+    fd37  c9         RET                        ; Exit
+
+DO_PUT_CHAR:
+    fd38  71         MOV M, C                   ; Store the symbol in video RAM (HL points to the right position)
+
+    fd39  cd b9 fd   CALL MOVE_CUR_RIGHT (fdb9) ; Advance cursor to the next position
+
+    fd3c  7a         MOV A, D                   ; Check X and Y coordinates to match row #3 and column #8.
+    fd3d  fe 03      CPI A, 03                  
+    fd3f  c0         RNZ                        
+
+    fd40  7b         MOV A, E                   ; Moving cursor right in the bottom-right position will move it
+    fd41  fe 08      CPI A, 08                  ; to the top left position. This is special case, handled below.
+    fd43  c0         RNZ                        ; Otherwise we can safely exit.
+
+    fd44  cd e2 fd   CALL MOVE_CUR_UP (fde2)    ; Do one move up, so that cursor appears at the bottom line
+
+LINE_FEED:
+    fd47  7a         MOV A, D                   ; Check if the cursor is on the bottom line. If not yet, the line
+    fd48  fe 1b      CPI A, 1b                  ; feed command will be a simple cursor down movement
+    fd4a  c2 c5 fd   JNZ MOVE_CUR_DOWN (fdc5)
+
+    fd4d  e5         PUSH HL                    ; Otherwise need to make a one line scroll by copying line data
+    fd4e  d5         PUSH DE                    ; to the previous line.
+
+    fd4f  21 c2 77   LXI HL, 77c2               ; Top-left char (not counting 3-line top and 8 column left margin)
+    fd52  11 10 78   LXI DE, 7810               ; Leftmost char (not including 8-char margin) on the second line
+    fd55  01 9e 07   LXI BC, 079e               ; Number of chars in 25 full lines
+
+SCROLL_LOOP:
+    fd58  1a         LDAX DE                    ; Copy one char
+    fd59  77         MOV M, A
+
+    fd5a  23         INX HL                     ; Advance pointers and decrement counter
+    fd5b  13         INX DE
+    fd5c  0b         DCX BC
+
+    fd5d  79         MOV A, C                   ; Repeat until counter is zero
+    fd5e  b0         ORA B
+    fd5f  c2 58 fd   JNZ SCROLL_LOOP (fd58)
+
+    fd62  d1         POP DE                     ; Exit
+    fd63  e1         POP HL
+    fd64  c9         RET
+
+MOVE_CUR_DIRECT_B1:
+    fd65  79         MOV A, C                   ; Compare the second symbol in the sequence in 'Y'
+    fd66  fe 59      CPI A, 59
+
+    fd68  c2 e9 fc   JNZ MOVE_CUR_DIRECT_RESET (fce9)   ; If not matched - reset the state machine
+
+    fd6b  cd b2 fd   CALL HOME_SCREEN (fdb2)    ; If matched - move cursor to the home position....
+
+    fd6e  3e 02      MVI A, 02                  ; ... and wait for the Y coordinate
+    fd70  c3 ea fc   JMP MOVE_CUR_DIRECT_EXIT (fcea)
+
+MOVE_CUR_DIRECT_B1:
+    fd73  79         MOV A, C                   ; The coordinate is 0x20-based. Subtract 0x20 to get the value
+    fd74  d6 20      SUI A, 20
+    fd76  4f         MOV C, A
+
+MOVE_CUR_DIRECT_L2:
+    fd77  0d         DCR C                      ; Move cursor down C times
+
+    fd78  3e 04      MVI A, 04                  ; Prepare to the 4-th char in sequence
+    fd7a  fa ea fc   JM MOVE_CUR_DIRECT_EXIT (fcea)
+
+    fd7d  c5         PUSH BC                    ; Actually perform the movement
+    fd7e  cd c5 fd   CALL MOVE_CUR_DOWN (fdc5)
+    fd81  c1         POP BC
+
+    fd82  c3 77 fd   JMP MOVE_CUR_DIRECT_L2 (fd77)  ; Repeat
+
+; Finalize character printing, store new cursor position in the video controller
+PUT_CHAR_EXIT:
+    fd85  22 00 76   SHLD CURSOR_ADDR (7600)    ; Store the new cursor address and cursor X/Y coordinate
+    fd88  eb         XCHG
+    fd89  22 02 76   SHLD CURSOR_POS (7602)
+
+    fd8c  3e 80      MVI A, 80                  ; Set the new cursor position in i8275 cursor register
+    fd8e  32 01 c0   STA c001
+    fd91  7d         MOV A, L                   ; X
+    fd92  32 00 c0   STA c000
+    fd95  7c         MOV A, H                   ; Y
+    fd96  32 00 c0   STA c000
+
+    fd99  e1         POP HL                     ; Restore registers and exit
+    fd9a  d1         POP DE
+    fd9b  c1         POP BC
+    fd9c  f1         POP PSW
+    fd9d  c9         RET
+
+; Handle the first symbol in the Esc-Y sequence
+MOVE_CUR_DIRECT:
+    fd9e  3e 01      MVI A, 01                  ; Move to the 'expect Y' state, and exit
+    fda0  c3 ea fc   JMP MOVE_CUR_DIRECT_EXIT (fcea)
+
+
+; Fill the video RAM with zeros
+CLEAR_SCREEN:
+    fda3  21 f4 7f   LXI HL, 7ff4               ; Address of the last char on the screen
+    fda6  11 25 09   LXI DE, 0925               ; Number of chars on the screen (30*78) + 1
+
+CLEAR_SCREEN_LOOP:
+    fda9  af         XRA A                      ; Clear the char
+    fdaa  77         MOV M, A
+
+    fdab  2b         DCX HL                     ; Go to the previous char, decrement counter
+    fdac  1b         DCX DE
+
+    fdad  7b         MOV A, E                   ; Repeat until counter is zero
+    fdae  b2         ORA D
+    fdaf  c2 a9 fd   JNZ CLEAR_SCREEN_LOOP (fda9)
+
+; Set the initial cursor coordinates (which suprisingly are (8:3))
+HOME_SCREEN:
+    fdb2  11 08 03   LXI DE, 0308               ; Set cursor to X=8, Y=3
+    fdb5  21 c2 77   LXI HL, 77c2               ; cursor address = 0x76d0 + Y*width + X
+    fdb8  c9         RET
+
+; Move cursor 1 position right
+; If cursor moves beyond 70th column limit, it is returned back to the beginning of the line (so that
+; the next function will move the cursor down 1 line)
+MOVE_CUR_RIGHT:
+    fdb9  7b         MOV A, E                   ; Advance X coordinate to the next column
+    fdba  23         INX HL                     ; Advance cursor pointer to the next position
+    fdbb  1c         INR E
+
+    fdbc  fe 47      CPI A, 47                  ; If we are within 71th column - we are done
+    fdbe  c0         RNZ
+
+    fdbf  1e 08      MVI E, 08                  ; If exceeded 71th column - return to column #8
+
+    fdc1  01 c0 ff   LXI BC, ffc0               ; Subtract 64 from the cursor pointer (to the beginning
+    fdc4  09         DAD BC                     ; of current row)
+
+
+; Move cursor down 1 line, preserving the column position
+; The function increments Y coordinate, and advances cursor pointer by 78
+MOVE_CUR_DOWN:
+    fdc5  7a         MOV A, D                   ; Is the curson on the last line?
+    fdc6  fe 1b      CPI A, 1b
+
+    fdc8  01 4e 00   LXI BC, 004e               ; If cursor is not yet on the last line, the pointer will be
+    fdcb  c2 d3 fd   JNZ MOVE_CUR_DOWN_1 (fdd3) ; advanced by 78 (line width)
+
+    fdce  16 02      MVI D, 02                  ; If cursor was on the last line, move it to the first line
+    fdd0  01 b0 f8   LXI BC, f8b0               ; (actually line number 3). Correct cursor pointer accordingly.
+
+MOVE_CUR_DOWN_1:
+    fdd3  14         INR D                      ; Increment the Y coordinate, and advance cursor pointer by 78
+    fdd4  09         DAD BC
+    fdd5  c9         RET
+
+; Move cursor 1 position left
+; If cursor reaches the left border, it is moved to the rightmost position on the same line. The next function
+; will also move cursor one line up.
+MOVE_CUR_LEFT:
+    fdd6  7b         MOV A, E                   ; Decrement X cursor coordinate and cursor pointer
+    fdd7  2b         DCX HL
+    fdd8  1d         DCR E
+
+    fdd9  fe 08      CPI A, 08                  ; Check if cursor reached the first logic column (column #8)
+    fddb  c0         RNZ
+
+    fddc  1e 47      MVI E, 47                  ; If reached the beginning of the line, move cursor to the end
+    fdde  01 40 00   LXI BC, 0040               ; of the same line (column 0x71, and move pointer further by 64
+    fde1  09         DAD BC                     ; chars).
+
+; Move cursor one line up
+MOVE_CUR_UP:
+    fde2  7a         MOV A, D                   ; Check if cursor has reached top screen border
+    fde3  fe 03      CPI A, 03
+
+    fde5  01 b2 ff   LXI BC, ffb2               ; If there is still room to go, move cursor pointer by 78 chars back
+    fde8  c2 f0 fd   JNZ MOVE_CUR_UP_1 (fdf0)
+
+    fdeb  16 1c      MVI D, 1c                  ; If reached the top line, move cursor to the bottom line. 
+    fded  01 50 07   LXI BC, 0750               ; Correct cursor pointer accordingly
+
+MOVE_CUR_UP_1:
+    fdf0  15         DCR D                      ; Decrement Y cursor position
+    fdf1  09         DAD BC                     ; Subtract 78 from the cursor pointer
+    fdf2  c9         RET
+
+; Return cursor to the leftmost position (actually column #8) in the same line
+CARRIAGE_RETURN:
+    fdf3  7d         MOV A, L                   ; Subtract X cursor position from current cursor pointer
+    fdf4  93         SUB E                      ; The result is pointer to the beginning of the current line
+    fdf5  d2 f9 fd   JNC CARRIAGE_RETURN_1 (fdf9)
+    fdf8  25         DCR H
+
+CARRIAGE_RETURN_1:
+    fdf9  6f         MOV L, A                   ; Finish previous subtraction operation
+
+    fdfa  1e 08      MVI E, 08                  ; Advance cursor 8 chars right to the logical beginning of 
+    fdfc  01 08 00   LXI BC, 0008               ; the line
+    fdff  09         DAD BC
+
+    fe00  c9         RET
+
+
+
 ????:
-fcb9  4f         MOV C, A
-????:
-fcba  f5         PUSH PSW
-fcbb  c5         PUSH BC
-fcbc  d5         PUSH DE
-fcbd  e5         PUSH HL
-fcbe  cd 01 fe   CALL fe01
-fcc1  21 85 fd   LXI HL, fd85
-fcc4  e5         PUSH HL
-fcc5  2a 02 76   LHLD 7602
-fcc8  eb         XCHG
-fcc9  2a 00 76   LHLD 7600
-fccc  3a 04 76   LDA 7604
-fccf  3d         DCR A
-fcd0  fa ee fc   JM fcee
-fcd3  ca 65 fd   JZ fd65
-fcd6  e2 73 fd   JPO fd73
-fcd9  79         MOV A, C
-fcda  d6 20      SUI A, 20
-fcdc  4f         MOV C, A
-????:
-fcdd  0d         DCR C
-fcde  fa e9 fc   JM fce9
-fce1  c5         PUSH BC
-fce2  cd b9 fd   CALL fdb9
-fce5  c1         POP BC
-fce6  c3 dd fc   JMP fcdd
-????:
-fce9  af         XRA A
-????:
-fcea  32 04 76   STA 7604
-fced  c9         RET
-????:
-fcee  79         MOV A, C
-fcef  e6 7f      ANI A, 7f
-fcf1  4f         MOV C, A
-fcf2  fe 1f      CPI A, 1f
-fcf4  ca a3 fd   JZ fda3
-fcf7  fe 0c      CPI A, 0c
-fcf9  ca b2 fd   JZ fdb2
-fcfc  fe 0d      CPI A, 0d
-fcfe  ca f3 fd   JZ fdf3
-fd01  fe 0a      CPI A, 0a
-fd03  ca 47 fd   JZ fd47
-fd06  fe 08      CPI A, 08
-fd08  ca d6 fd   JZ fdd6
-fd0b  fe 18      CPI A, 18
-fd0d  ca b9 fd   JZ fdb9
-fd10  fe 19      CPI A, 19
-fd12  ca e2 fd   JZ fde2
-fd15  fe 1a      CPI A, 1a
-fd17  ca c5 fd   JZ fdc5
-fd1a  fe 1b      CPI A, 1b
-fd1c  ca 9e fd   JZ fd9e
-fd1f  fe 07      CPI A, 07
-fd21  c2 38 fd   JNZ fd38
-fd24  01 f0 05   LXI BC, 05f0
-????:
-fd27  78         MOV A, B
-????:
-fd28  fb         EI
-fd29  3d         DCR A
-fd2a  c2 28 fd   JNZ fd28
-fd2d  78         MOV A, B
-????:
-fd2e  f3         DI
-fd2f  3d         DCR A
-fd30  c2 2e fd   JNZ fd2e
-fd33  0d         DCR C
-fd34  c2 27 fd   JNZ fd27
-fd37  c9         RET
-????:
-fd38  71         MOV M, C
-fd39  cd b9 fd   CALL fdb9
-fd3c  7a         MOV A, D
-fd3d  fe 03      CPI A, 03
-fd3f  c0         RNZ
-fd40  7b         MOV A, E
-fd41  fe 08      CPI A, 08
-fd43  c0         RNZ
-fd44  cd e2 fd   CALL fde2
-????:
-fd47  7a         MOV A, D
-fd48  fe 1b      CPI A, 1b
-fd4a  c2 c5 fd   JNZ fdc5
-fd4d  e5         PUSH HL
-fd4e  d5         PUSH DE
-fd4f  21 c2 77   LXI HL, 77c2
-fd52  11 10 78   LXI DE, 7810
-fd55  01 9e 07   LXI BC, 079e
-????:
-fd58  1a         LDAX DE
-fd59  77         MOV M, A
-fd5a  23         INX HL
-fd5b  13         INX DE
-fd5c  0b         DCX BC
-fd5d  79         MOV A, C
-fd5e  b0         ORA B
-fd5f  c2 58 fd   JNZ fd58
-fd62  d1         POP DE
-fd63  e1         POP HL
-fd64  c9         RET
-????:
-fd65  79         MOV A, C
-fd66  fe 59      CPI A, 59
-fd68  c2 e9 fc   JNZ fce9
-fd6b  cd b2 fd   CALL fdb2
-fd6e  3e 02      MVI A, 02
-fd70  c3 ea fc   JMP fcea
-????:
-fd73  79         MOV A, C
-fd74  d6 20      SUI A, 20
-fd76  4f         MOV C, A
-????:
-fd77  0d         DCR C
-fd78  3e 04      MVI A, 04
-fd7a  fa ea fc   JM fcea
-fd7d  c5         PUSH BC
-fd7e  cd c5 fd   CALL fdc5
-fd81  c1         POP BC
-fd82  c3 77 fd   JMP fd77
-????:
-fd85  22 00 76   SHLD 7600
-fd88  eb         XCHG
-fd89  22 02 76   SHLD 7602
-fd8c  3e 80      MVI A, 80
-fd8e  32 01 c0   STA c001
-fd91  7d         MOV A, L
-fd92  32 00 c0   STA c000
-fd95  7c         MOV A, H
-fd96  32 00 c0   STA c000
-fd99  e1         POP HL
-fd9a  d1         POP DE
-fd9b  c1         POP BC
-fd9c  f1         POP PSW
-fd9d  c9         RET
-????:
-fd9e  3e 01      MVI A, 01
-fda0  c3 ea fc   JMP fcea
-????:
-fda3  21 f4 7f   LXI HL, 7ff4
-fda6  11 25 09   LXI DE, 0925
-????:
-fda9  af         XRA A
-fdaa  77         MOV M, A
-fdab  2b         DCX HL
-fdac  1b         DCX DE
-fdad  7b         MOV A, E
-fdae  b2         ORA D
-fdaf  c2 a9 fd   JNZ fda9
-????:
-fdb2  11 08 03   LXI DE, 0308
-fdb5  21 c2 77   LXI HL, 77c2
-fdb8  c9         RET
-????:
-fdb9  7b         MOV A, E
-fdba  23         INX HL
-fdbb  1c         INR E
-fdbc  fe 47      CPI A, 47
-fdbe  c0         RNZ
-fdbf  1e 08      MVI E, 08
-fdc1  01 c0 ff   LXI BC, ffc0
-fdc4  09         DAD BC
-????:
-fdc5  7a         MOV A, D
-fdc6  fe 1b      CPI A, 1b
-fdc8  01 4e 00   LXI BC, 004e
-fdcb  c2 d3 fd   JNZ fdd3
-fdce  16 02      MVI D, 02
-fdd0  01 b0 f8   LXI BC, f8b0
-????:
-fdd3  14         INR D
-fdd4  09         DAD BC
-fdd5  c9         RET
-????:
-fdd6  7b         MOV A, E
-fdd7  2b         DCX HL
-fdd8  1d         DCR E
-fdd9  fe 08      CPI A, 08
-fddb  c0         RNZ
-fddc  1e 47      MVI E, 47
-fdde  01 40 00   LXI BC, 0040
-fde1  09         DAD BC
-????:
-fde2  7a         MOV A, D
-fde3  fe 03      CPI A, 03
-fde5  01 b2 ff   LXI BC, ffb2
-fde8  c2 f0 fd   JNZ fdf0
-fdeb  16 1c      MVI D, 1c
-fded  01 50 07   LXI BC, 0750
-????:
-fdf0  15         DCR D
-fdf1  09         DAD BC
-fdf2  c9         RET
-????:
-fdf3  7d         MOV A, L
-fdf4  93         SUB E
-fdf5  d2 f9 fd   JNC fdf9
-fdf8  25         DCR H
-????:
-fdf9  6f         MOV L, A
-fdfa  1e 08      MVI E, 08
-fdfc  01 08 00   LXI BC, 0008
-fdff  09         DAD BC
-fe00  c9         RET
-????:
-fe01  3a 02 80   LDA 8002
-fe04  e6 80      ANI A, 80
-fe06  ca 0e fe   JZ fe0e
-fe09  3a 05 76   LDA 7605
-fe0c  b7         ORA A
-fe0d  c0         RNZ
+    fe01  3a 02 80   LDA KBD_PORT_C (8002)      ; Check if Rus key is pressed
+    fe04  e6 80      ANI A, 80
+    fe06  ca 0e fe   JZ fe0e
+
+    fe09  3a 05 76   LDA 7605                   ; Check if a key was already pressed ?????
+    fe0c  b7         ORA A
+    fe0d  c0         RNZ
+
 ????:
 fe0e  e5         PUSH HL
 fe0f  2a 09 76   LHLD 7609
@@ -915,7 +1117,7 @@ fe32  3c         INR A
 fe33  ca 51 fe   JZ fe51
 fe36  c5         PUSH BC
 fe37  01 03 50   LXI BC, 5003
-fe3a  cd 27 fd   CALL fd27
+fe3a  cd 27 fd   CALL BEEP_LOOP (fd27)
 fe3d  c1         POP BC
 fe3e  3a 0b 76   LDA 760b
 fe41  26 e0      MVI H, e0
@@ -927,7 +1129,7 @@ fe4a  26 40      MVI H, 40
 fe4c  3e ff      MVI A, ff
 fe4e  c3 22 fe   JMP fe22
 ????:
-fe51  3a 02 80   LDA 8002
+fe51  3a 02 80   LDA KBD_PORT_C (8002)
 fe54  e6 80      ANI A, 80
 fe56  ca 51 fe   JZ fe51
 fe59  3a 06 76   LDA 7606
@@ -942,25 +1144,28 @@ fe6a  af         XRA A
 fe6b  32 05 76   STA 7605
 fe6e  3a 09 76   LDA 7609
 fe71  c9         RET
+
 ????:
-fe72  3a 02 80   LDA 8002
+fe72  3a 02 80   LDA KBD_PORT_C (8002)
 fe75  e6 80      ANI A, 80
 fe77  c2 7d fe   JNZ fe7d
 fe7a  3e fe      MVI A, fe
 fe7c  c9         RET
+
 ????:
 fe7d  af         XRA A
-fe7e  32 00 80   STA 8000
-fe81  32 02 80   STA 8002
+fe7e  32 00 80   STA KBD_PORT_A (8000)
+fe81  32 02 80   STA KBD_PORT_C (8002)
 fe84  3a 06 76   LDA 7606
 fe87  e6 01      ANI A, 01
 fe89  f6 06      ORI A, 06
-fe8b  32 03 80   STA 8003
-fe8e  3a 01 80   LDA 8001
+fe8b  32 03 80   STA KBD_CTRL_PORT (8003)
+fe8e  3a 01 80   LDA KBD_PORT_B (8001)
 fe91  3c         INR A
 fe92  c2 97 fe   JNZ fe97
 fe95  3d         DCR A
 fe96  c9         RET
+
 ????:
 fe97  e5         PUSH HL
 fe98  2e 01      MVI L, 01
@@ -970,8 +1175,8 @@ fe9c  7d         MOV A, L
 fe9d  0f         RRC
 fe9e  6f         MOV L, A
 fe9f  2f         CMA
-fea0  32 00 80   STA 8000
-fea3  3a 01 80   LDA 8001
+fea0  32 00 80   STA KBD_PORT_A (8000)
+fea3  3a 01 80   LDA KBD_PORT_B (8001)
 fea6  2f         CMA
 fea7  b7         ORA A
 fea8  c2 b3 fe   JNZ feb3
@@ -984,7 +1189,7 @@ feb2  c9         RET
 ????:
 feb3  2e 20      MVI L, 20
 ????:
-feb5  3a 01 80   LDA 8001
+feb5  3a 01 80   LDA KBD_PORT_B (8001)
 feb8  2f         CMA
 feb9  b7         ORA A
 feba  ca af fe   JZ feaf
@@ -1045,7 +1250,7 @@ ff04  d8         RC
 ff05  e5         PUSH HL
 ????:
 ff06  6f         MOV L, A
-ff07  3a 02 80   LDA 8002
+ff07  3a 02 80   LDA KBD_PORT_C (8002)
 ff0a  67         MOV H, A
 ff0b  e6 40      ANI A, 40
 ff0d  c2 1a ff   JNZ ff1a
@@ -1100,18 +1305,12 @@ ff55  c9         RET
 ????:
 ff56  22 31 76   SHLD 7631
 ff59  c9         RET
-????:
-ff5a  1f         RAR
-ff5b  72         MOV M, D
-ff5c  61         MOV H, C
-ff5d  64         MOV H, H
-ff5e  69         MOV L, C
-ff5f  6f         MOV L, A
-ff60  2d         DCR L
-ff61  38         db 38
-ff62  36 72      MVI M, 72
-ff64  6b         MOV L, E
-ff65  00         NOP
+
+HELLO_STR:
+    ff5a  1f 72 61 64 69 6f 2d 38       db 0x1f, "РАДИО-8"
+    ff62  36 72 6b 00                   db "6РК", 0x00
+
+
 ????:
 ff66  0d         DCR C
 ff67  0a         LDAX BC
@@ -1191,7 +1390,7 @@ ffb6  e5         PUSH HL
 ffb7  d5         PUSH DE
 ffb8  c5         PUSH BC
 ffb9  2a 14 76   LHLD 7614
-ffbc  31 cf 76   LXI SP, 76cf
+ffbc  31 cf 76   LXI SP, STACK_TOP (76cf)
 ffbf  cd 78 fb   CALL fb78
 ffc2  eb         XCHG
 ffc3  2a 23 76   LHLD 7623
@@ -1202,7 +1401,7 @@ ffcf  77         MOV M, A
 ffd0  c3 6c f8   JMP f86c
 ????:
 ffd3  21 73 ff   LXI HL, ff73
-ffd6  cd 22 f9   CALL f922
+ffd6  cd 22 f9   CALL PRINT_STR (f922)
 ffd9  21 14 76   LXI HL, 7614
 ffdc  06 06      MVI B, 06
 ????:
