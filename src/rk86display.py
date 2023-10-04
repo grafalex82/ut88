@@ -111,7 +111,7 @@ class RK86Display(MemoryDevice):
                 self._cursor_x = value
                 self._current_parameter += 1
             case 1: # Y position
-                self._cursor_x = value
+                self._cursor_y = value
                 self._current_parameter = None
                 self._current_command = None
             case _:
@@ -163,7 +163,6 @@ class RK86Display(MemoryDevice):
     def update_screen(self, screen):
         # Read the video memory over the DMA
         data = self._dma.dma_read(2)
-        print(f"data len = {len(data)}, height={self._screen_height}, width={self._screen_width}")
 
         index = 0
         for y in range(self._screen_height):
