@@ -16,6 +16,7 @@ from keyboard import Keyboard
 from display import Display
 from utils import NestedLogger
 from quasidisk import QuasiDisk
+from dma import DMA
 from rk86kbd_adapter import RK86KeyboardAdapter
 from rk86display import RK86Display
 from bios_emulator import *
@@ -98,8 +99,6 @@ class Configuration:
         self._emulator.reset()
 
         while True:
-            self._screen.fill(pygame.Color('black'))
-            
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     exit()
@@ -117,7 +116,9 @@ class Configuration:
 
             self._machine.update()
 
-            self.update(self._screen)                
+            surface = pygame.display.get_surface()
+            surface.fill(pygame.Color('black'))
+            self.update(surface)
 
             pygame.display.flip()
             self._clock.tick(60)
@@ -458,10 +459,10 @@ class Radio86RKConfiguration(Configuration):
         # self._machine.add_io(self._recorder)
         self._keyboard = RK86KeyboardAdapter()
         self._machine.add_memory(self._keyboard)
-        self._display = RK86Display()
+        self._dma = DMA(self._machine)
+        self._machine.add_memory(self._dma)
+        self._display = RK86Display(self._dma)
         self._machine.add_memory(self._display)
-        # self._display = Display()
-        # self._machine.add_memory(self._display)
 
 
     def configure_logging(self):
@@ -480,14 +481,14 @@ class Radio86RKConfiguration(Configuration):
         return (64*12, 28*16)
 
 
-    # def update(self, screen):
+    def update(self, screen):
     #     alt_pressed = pygame.key.get_mods() & (pygame.KMOD_ALT | pygame.KMOD_META) 
     #     if pygame.key.get_pressed()[pygame.K_l] and alt_pressed:
     #         self._recorder.load_from_file(open_pki())
     #     if pygame.key.get_pressed()[pygame.K_s] and alt_pressed:
     #         self._recorder.dump_to_file(save_pki())
 
-    #     self._display.update_screen(screen)
+        self._display.update_screen(screen)
 
     def handle_event(self, event):
         self._keyboard.handle_key_event(event)
