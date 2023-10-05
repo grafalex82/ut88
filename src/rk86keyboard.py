@@ -16,7 +16,7 @@ class RK86KeyboardAdapter(MemoryDevice):
         # Reading is allowed only for ports B and C
         match addr:
             case 0x8001:    # Port B
-                return self._keyboard.read_io(0x06)
+                return set_bit(self._keyboard.read_io(0x06), 7)
             case 0x8002:    # Port C
                 return self._keyboard.read_io(0x05)
             
