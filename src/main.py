@@ -477,11 +477,13 @@ class Radio86RKConfiguration(Configuration):
 
     def configure_logging(self):
         self.suppress_logging(0xf841, 0xf84c, "Initial memset")
-#        self.suppress_logging(0xfcba, 0xfd9d, "Put char")
+        self.suppress_logging(0xfcba, 0xfd9d, "Put char")
 
 
     def setup_special_breakpoints(self):
-        pass
+        # Each key press requires a debounce period. In order to speed up the keyboard reading loop,
+        # it is possible to reduce debounce loop to 1 pass when running under the emulator.
+        self._emulator.add_breakpoint(0xfeb5, lambda: self._emulator._cpu.set_l(0x01))
 
 
     def get_start_address(self):
