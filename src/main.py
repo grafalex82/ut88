@@ -17,7 +17,8 @@ from display import Display
 from utils import NestedLogger
 from quasidisk import QuasiDisk
 from dma import DMA
-from rk86kbd_adapter import RK86KeyboardAdapter
+from ppi import PPI
+from rk86keyboard import RK86Keyboard
 from rk86display import RK86Display
 from bios_emulator import *
 
@@ -457,17 +458,26 @@ class Radio86RKConfiguration(Configuration):
 
         # self._recorder = TapeRecorder()
         # self._machine.add_io(self._recorder)
-        self._keyboard = RK86KeyboardAdapter()
-        self._machine.add_memory(self._keyboard)
+        self._keyboard_port = PPI(0x8000)
+        self._machine.add_memory(self._keyboard_port)
+
+        self._keyboard = RK86Keyboard()
+        self._keyboard_port.set_portA_handler(self._keyboard.set_columns)
+        self._keyboard_port.set_portB_handler(self._keyboard.read_rows)
+        self._keyboard_port.set_portC_bit_handler(6, self._keyboard.read_ctrl_key)
+        self._keyboard_port.set_portC_bit_handler(5, self._keyboard.read_shift_key)
+        self._keyboard_port.set_portC_bit_handler(7, self._keyboard.read_rus_key)
+
         self._dma = DMA(self._machine)
         self._machine.add_memory(self._dma)
+
         self._display = RK86Display(self._dma)
         self._machine.add_memory(self._display)
 
 
     def configure_logging(self):
         self.suppress_logging(0xf841, 0xf84c, "Initial memset")
-        self.suppress_logging(0xfcba, 0xfd9d, "Put char")
+#        self.suppress_logging(0xfcba, 0xfd9d, "Put char")
 
 
     def setup_special_breakpoints(self):
@@ -491,6 +501,7 @@ class Radio86RKConfiguration(Configuration):
     #         self._recorder.dump_to_file(save_pki())
 
         self._display.update_screen(screen)
+
 
     def handle_event(self, event):
         self._keyboard.handle_key_event(event)
