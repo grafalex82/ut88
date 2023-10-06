@@ -4,6 +4,8 @@
 ; 0x7600    - current cursor address (points to the video RAM)
 ; 0x7602    - current cursor position (high byte - X, and low byte as Y coordinate)
 ; 0x7604    - Esc-Y escape sequence byte number
+; 0x7605    - ??? Key pressed flag
+; 0x7606    - Cyrilic layout enabled
 ; 0x7600 - 0x765f - monitor variables
 ; ??????
 ; 76cf - stack top
@@ -11,15 +13,15 @@
 
 VECTORS:
     f800  c3 36 f8   JMP START (f836)
-    f803  c3 63 fe   JMP fe63
+    f803  c3 63 fe   JMP KBD_INPUT (fe63)
     f806  c3 98 fb   JMP fb98
     f809  c3 ba fc   JMP PUT_CHAR (fcba)
     f80c  c3 46 fc   JMP fc46
     f80f  c3 ba fc   JMP PUT_CHAR (fcba)
-    f812  c3 01 fe   JMP fe01
+    f812  c3 01 fe   JMP IS_BUTTON_PRESSED (fe01)
     f815  c3 a5 fc   JMP fca5
     f818  c3 22 f9   JMP PRINT_STR (f922)
-    f81b  c3 72 fe   JMP fe72
+    f81b  c3 72 fe   JMP KBD_SCAN (fe72)
     f81e  c3 7b fa   JMP fa7b
     f821  c3 7f fa   JMP fa7f
     f824  c3 b6 fa   JMP fab6
@@ -118,7 +120,7 @@ f8ee  21 33 76   LXI HL, 7633
 ????:
 f8f1  06 00      MVI B, 00
 ????:
-f8f3  cd 63 fe   CALL fe63
+f8f3  cd 63 fe   CALL KBD_INPUT (fe63)
 f8f6  fe 08      CPI A, 08
 f8f8  ca dc f8   JZ f8dc
 f8fb  fe 7f      CPI A, 7f
@@ -231,7 +233,7 @@ f9a2  23         INX HL
 f9a3  c9         RET
 
 ????:
-f9a4  cd 72 fe   CALL fe72
+f9a4  cd 72 fe   CALL KBD_SCAN (fe72)
 f9a7  fe 03      CPI A, 03
 f9a9  c0         RNZ
 f9aa  cd ce fa   CALL INIT_VIDEO (face)
@@ -780,7 +782,7 @@ PUT_CHAR:
     fcbc  d5         PUSH DE
     fcbd  e5         PUSH HL
 
-    fcbe  cd 01 fe   CALL fe01                  ; ????
+    fcbe  cd 01 fe   CALL IS_BUTTON_PRESSED (fe01)  ; ????
 
     fcc1  21 85 fd   LXI HL, PUT_CHAR_EXIT (fd85)   ; Put an exit address to the stack (so that subfunction may
     fcc4  e5         PUSH HL                        ; just call RET)
@@ -1080,8 +1082,9 @@ CARRIAGE_RETURN_1:
     fe00  c9         RET
 
 
-
-????:
+; Check if a button is pressed
+;
+IS_BUTTON_PRESSED:
     fe01  3a 02 80   LDA KBD_PORT_C (8002)      ; Check if Rus key is pressed
     fe04  e6 80      ANI A, 80
     fe06  ca 0e fe   JZ fe0e
@@ -1093,7 +1096,7 @@ CARRIAGE_RETURN_1:
 ????:
 fe0e  e5         PUSH HL
 fe0f  2a 09 76   LHLD 7609
-fe12  cd 72 fe   CALL fe72
+fe12  cd 72 fe   CALL KBD_SCAN (fe72)
 fe15  bd         CMP L
 fe16  6f         MOV L, A
 fe17  ca 2a fe   JZ fe2a
@@ -1108,6 +1111,7 @@ fe22  22 09 76   SHLD 7609
 fe25  e1         POP HL
 fe26  32 05 76   STA 7605
 fe29  c9         RET
+
 ????:
 fe2a  25         DCR H
 fe2b  c2 21 fe   JNZ fe21
@@ -1132,12 +1136,13 @@ fe4e  c3 22 fe   JMP fe22
 fe51  3a 02 80   LDA KBD_PORT_C (8002)
 fe54  e6 80      ANI A, 80
 fe56  ca 51 fe   JZ fe51
-fe59  3a 06 76   LDA 7606
+fe59  3a 06 76   LDA CYRILLIC_ENABLED (7606)
 fe5c  2f         CMA
-fe5d  32 06 76   STA 7606
+fe5d  32 06 76   STA CYRILLIC_ENABLED (7606)
 fe60  c3 1a fe   JMP fe1a
-????:
-fe63  cd 01 fe   CALL fe01
+
+KBD_INPUT:
+fe63  cd 01 fe   CALL IS_BUTTON_PRESSED (fe01)
 fe66  b7         ORA A
 fe67  ca 63 fe   JZ fe63
 fe6a  af         XRA A
@@ -1145,160 +1150,253 @@ fe6b  32 05 76   STA 7605
 fe6e  3a 09 76   LDA 7609
 fe71  c9         RET
 
-????:
-fe72  3a 02 80   LDA KBD_PORT_C (8002)
-fe75  e6 80      ANI A, 80
-fe77  c2 7d fe   JNZ fe7d
-fe7a  3e fe      MVI A, fe
-fe7c  c9         RET
 
-????:
-fe7d  af         XRA A
-fe7e  32 00 80   STA KBD_PORT_A (8000)
-fe81  32 02 80   STA KBD_PORT_C (8002)
-fe84  3a 06 76   LDA 7606
-fe87  e6 01      ANI A, 01
-fe89  f6 06      ORI A, 06
-fe8b  32 03 80   STA KBD_CTRL_PORT (8003)
-fe8e  3a 01 80   LDA KBD_PORT_B (8001)
-fe91  3c         INR A
-fe92  c2 97 fe   JNZ fe97
-fe95  3d         DCR A
-fe96  c9         RET
+; Scan the keyboard matrix, and return a key char code
+;
+; This function scans keyboard matrix, and return the scan code, if a button is pressed, or 0xff if
+; nothing is pressed. Function returns 0xfe if Rus/Lat key is pressed.
+;
+; The function sequentally selects one column in the keyboard matrix, by setting the corresponding
+; bit in the keyboard 8255 port A. The column scanning is performed by reading the port B. If a bit
+; is 0, then the button is pressed.
+;
+; Here is the keyboard matrix. The header row specifies the column selection bit sent to Port A.
+; The left column represent the code read via Port B. 
+;
+;      |     0xfe    |     0xfd    |   0xfb   |   0xf7   |   0xef   |   0xdf   |   0xbf   |   0x7f   |
+; 0xfe | 0x0c home   | 0x09 home   | 0x30 '0' | 0x38 '8' | 0x40 '@' | 0x48 'H' | 0x50 'P' | 0x58 'X' |
+; 0xfd | 0x1f clrscr | 0x0a lf     | 0x31 '1' | 0x39 '9' | 0x41 'A' | 0x49 'I' | 0x51 'Q' | 0x59 'Y' |
+; 0xfb | 0x1b escape | 0x0d cr     | 0x32 '2' | 0x3a ':' | 0x42 'B' | 0x4a 'G' | 0x52 'R' | 0x5a 'Z' |
+; 0xf7 | 0x00 F1     | 0x7f rubout | 0x33 '3' | 0x3b ';' | 0x43 'C' | 0x4b 'K' | 0x53 'S' | 0x5b '[' |
+; 0xef | 0x01 F2     | 0x08 left   | 0x34 '4' | 0x2c ',' | 0x44 'D' | 0x4c 'L' | 0x54 'T' | 0x5c '\' |
+; 0xdf | 0x02 F3     | 0x19 up     | 0x35 '5' | 0x2d '-' | 0x45 'E' | 0x4d 'M' | 0x55 'U' | 0x5d ']' |
+; 0xbf | 0x03 F4     | 0x18 right  | 0x36 '6' | 0x2e '.' | 0x46 'F' | 0x4e 'N' | 0x56 'V' | 0x5e '^' |
+; 0x7f | 0x04 F5     | 0x1a down   | 0x37 '7' | 0x2f '/' | 0x47 'G' | 0x4f 'O' | 0x57 'W' | 0x5f ' ' |
+; 
+; First stage of the algorithm is to detect the scan code which is essentially a row and column of the
+; pressed key. If a button is pressed, then the algorithm starts conversion the scan code to the char code:
+; - keys in columns 0 and 1 are converted via lookup tables
+; - For most of the chars simple addition a 0x20 to the scan code is enough. Some characters require 
+;   additional character codes remapping.
+;
+; The final stage of the algorithm is to apply alteration keys (by reading the port C):
+; - RUS key - toggles the Rus/Lat (cyrillic) flag and turn on/off the Rus LED.  If Cyryllic mode is
+;   currently on, latin letters (0x41-0x5e) are converted to cyrillic (0x60-0x7e)
+; - Symbol - alters numeric key and some symbol keys in order to enter another set of symbols (this
+;   is an analog of a Shift key on the modern computers, but works only for numeric and symbol keys.
+;   Note, that there is no upper and lower case of letters on this computer)
+; - Ctrl - alters some keys to produce codes in 0x00 - 0x1f range. This range contains control codes
+;   (e.g. cursor movements, as well as some graphics)
+; 
+KBD_SCAN:
+    fe72  3a 02 80   LDA KBD_PORT_C (8002)      ; Check if Rus key is pressed
+    fe75  e6 80      ANI A, 80
+    fe77  c2 7d fe   JNZ KBD_SCAN_1 (fe7d)
 
-????:
-fe97  e5         PUSH HL
-fe98  2e 01      MVI L, 01
-fe9a  26 07      MVI H, 07
-????:
-fe9c  7d         MOV A, L
-fe9d  0f         RRC
-fe9e  6f         MOV L, A
-fe9f  2f         CMA
-fea0  32 00 80   STA KBD_PORT_A (8000)
-fea3  3a 01 80   LDA KBD_PORT_B (8001)
-fea6  2f         CMA
-fea7  b7         ORA A
-fea8  c2 b3 fe   JNZ feb3
-feab  25         DCR H
-feac  f2 9c fe   JP fe9c
-????:
-feaf  3e ff      MVI A, ff
-feb1  e1         POP HL
-feb2  c9         RET
-????:
-feb3  2e 20      MVI L, 20
-????:
-feb5  3a 01 80   LDA KBD_PORT_B (8001)
-feb8  2f         CMA
-feb9  b7         ORA A
-feba  ca af fe   JZ feaf
-febd  2d         DCR L
-febe  c2 b5 fe   JNZ feb5
-fec1  2e 08      MVI L, 08
-????:
-fec3  2d         DCR L
-fec4  07         RLC
-fec5  d2 c3 fe   JNC fec3
-fec8  7c         MOV A, H
-fec9  65         MOV H, L
-feca  6f         MOV L, A
-fecb  fe 01      CPI A, 01
-fecd  ca fa fe   JZ fefa
-fed0  da f3 fe   JC fef3
-fed3  07         RLC
-fed4  07         RLC
-fed5  07         RLC
-fed6  c6 20      ADI A, 20
-fed8  b4         ORA H
-fed9  fe 5f      CPI A, 5f
-fedb  c2 06 ff   JNZ ff06
-fede  3e 20      MVI A, 20
-fee0  e1         POP HL
-fee1  c9         RET
-????:
-fee2  09         DAD BC
-fee3  0a         LDAX BC
-fee4  0d         DCR C
-fee5  7f         MOV A, A
-fee6  08         db 08
-fee7  19         DAD DE
-fee8  18         db 18
-fee9  1a         LDAX DE
-????:
-feea  0c         INR C
-feeb  1f         RAR
-feec  1b         DCX DE
-feed  00         NOP
-feee  01 02 03   LXI BC, 0302
-fef1  04         INR B
-fef2  05         DCR B
-????:
-fef3  7c         MOV A, H
-fef4  21 ea fe   LXI HL, feea
-fef7  c3 fe fe   JMP fefe
-????:
-fefa  7c         MOV A, H
-fefb  21 e2 fe   LXI HL, fee2
-????:
-fefe  85         ADD L
-feff  6f         MOV L, A
-ff00  7e         MOV A, M
-ff01  fe 40      CPI A, 40
-ff03  e1         POP HL
-ff04  d8         RC
-ff05  e5         PUSH HL
-????:
-ff06  6f         MOV L, A
-ff07  3a 02 80   LDA KBD_PORT_C (8002)
-ff0a  67         MOV H, A
-ff0b  e6 40      ANI A, 40
-ff0d  c2 1a ff   JNZ ff1a
-ff10  7d         MOV A, L
-ff11  fe 40      CPI A, 40
-ff13  fa 3f ff   JM ff3f
-ff16  e6 1f      ANI A, 1f
-ff18  e1         POP HL
-ff19  c9         RET
-????:
-ff1a  3a 06 76   LDA 7606
-ff1d  b7         ORA A
-ff1e  ca 2a ff   JZ ff2a
-ff21  7d         MOV A, L
-ff22  fe 40      CPI A, 40
-ff24  fa 2a ff   JM ff2a
-ff27  f6 20      ORI A, 20
-ff29  6f         MOV L, A
-????:
-ff2a  7c         MOV A, H
-ff2b  e6 20      ANI A, 20
-ff2d  c2 3f ff   JNZ ff3f
-ff30  7d         MOV A, L
-ff31  fe 40      CPI A, 40
-ff33  fa 3b ff   JM ff3b
-ff36  7d         MOV A, L
-ff37  ee 20      XRI A, 20
-ff39  e1         POP HL
-ff3a  c9         RET
-????:
-ff3b  7d         MOV A, L
-ff3c  e6 2f      ANI A, 2f
-ff3e  6f         MOV L, A
-????:
-ff3f  7d         MOV A, L
-ff40  fe 40      CPI A, 40
-ff42  e1         POP HL
-ff43  f0         RP
-ff44  e5         PUSH HL
-ff45  6f         MOV L, A
-ff46  e6 0f      ANI A, 0f
-ff48  fe 0c      CPI A, 0c
-ff4a  7d         MOV A, L
-ff4b  fa 50 ff   JM ff50
-ff4e  ee 10      XRI A, 10
-????:
-ff50  e1         POP HL
-ff51  c9         RET
+    fe7a  3e fe      MVI A, fe                  ; If pressed - return 0xfe
+    fe7c  c9         RET
+
+KBD_SCAN_1:
+    fe7d  af         XRA A                      ; Output zeros to all columns to check if a button is pressed
+    fe7e  32 00 80   STA KBD_PORT_A (8000)
+
+    fe81  32 02 80   STA KBD_PORT_C (8002)      ; Switch off Rus LED (if enabled)
+
+    fe84  3a 06 76   LDA CYRILLIC_ENABLED (7606); If Cyrillic mode enabled - turn on the Rus LED
+    fe87  e6 01      ANI A, 01
+    fe89  f6 06      ORI A, 06
+    fe8b  32 03 80   STA KBD_CTRL_PORT (8003)
+
+    fe8e  3a 01 80   LDA KBD_PORT_B (8001)      ; Read keyboard matrix
+
+    fe91  3c         INR A                      ; If at least one key is pressed, there will be non-ff value
+    fe92  c2 97 fe   JNZ KBD_SCAN_2 (fe97)
+
+    fe95  3d         DCR A                      ; Otherwise return 0xff (no keys pressed)
+    fe96  c9         RET
+
+KBD_SCAN_2:
+    fe97  e5         PUSH HL
+    fe98  2e 01      MVI L, 01                  ; Initial column
+    fe9a  26 07      MVI H, 07                  ; Number of columns to process - 1
+
+KBD_SCAN_LOOP:
+    fe9c  7d         MOV A, L                   ; Rotate to the next column
+    fe9d  0f         RRC
+    fe9e  6f         MOV L, A
+
+    fe9f  2f         CMA                        ; Enable the column (negate value furst, as the column is enabled
+    fea0  32 00 80   STA KBD_PORT_A (8000)      ; with low signal)
+
+    fea3  3a 01 80   LDA KBD_PORT_B (8001)      ; Read rows. Negate value back, as pressed key will generate
+    fea6  2f         CMA                        ; low signal
+
+    fea7  b7         ORA A                      ; Check if any key was pressed on the selected column
+    fea8  c2 b3 fe   JNZ KBD_SCAN_3 (feb3)
+
+    feab  25         DCR H                      ; Repeat for the next column until counter is zero
+    feac  f2 9c fe   JP KBD_SCAN_LOOP (fe9c)
+
+KBD_SCAN_EXIT:
+    feaf  3e ff      MVI A, ff                  ; If nothing was matched - return 0xff
+    feb1  e1         POP HL
+    feb2  c9         RET
+
+KBD_SCAN_3:
+    feb3  2e 20      MVI L, 20                  ; Debounce loop
+
+KBD_SCAN_DEBOUNCE_LOOP:
+    feb5  3a 01 80   LDA KBD_PORT_B (8001)      ; Repeat reading rows port for debounce
+    feb8  2f         CMA
+    feb9  b7         ORA A                      ; Exit if key was released
+    feba  ca af fe   JZ KBD_SCAN_EXIT (feaf)
+
+    febd  2d         DCR L                      
+    febe  c2 b5 fe   JNZ KBD_SCAN_DEBOUNCE_LOOP (feb5)
+
+    fec1  2e 08      MVI L, 08                  ; Number of bits to process
+
+KBD_SCAN_4:
+    fec3  2d         DCR L                      ; Detect index of the set bit
+    fec4  07         RLC
+    fec5  d2 c3 fe   JNC KBD_SCAN_4 (fec3)
+
+    fec8  7c         MOV A, H                   ; H - row, L - column
+    fec9  65         MOV H, L
+    feca  6f         MOV L, A
+
+    fecb  fe 01      CPI A, 01                  ; Check if the pressed key is in column 1
+    fecd  ca fa fe   JZ KBD_SCAN_SPECIAL_KEYS_1 (fefa)
+
+    fed0  da f3 fe   JC KBD_SCAN_SPECIAL_KEYS_0 (fef3)  ; Check if the pressed key is in column 0
+
+    fed3  07         RLC                        ; Scan Code = b00LLLCCC + 0x20
+    fed4  07         RLC
+    fed5  07         RLC
+    fed6  c6 20      ADI A, 20
+    fed8  b4         ORA H
+
+    fed9  fe 5f      CPI A, 5f                  ; Scan code 0x5f matches the space key
+    fedb  c2 06 ff   JNZ KBD_SCAN_CHECK_CTRL (ff06)
+
+    fede  3e 20      MVI A, 20                  ; Return the 0x20 (' ') key code
+
+    fee0  e1         POP HL
+    fee1  c9         RET
+
+; Lookup table for special keys in column 1
+SPECIAL_KEYS_LUT_1:
+    fee2  09         db 09                      ; tab
+    fee3  0a         db 0a                      ; line feed
+    fee4  0d         db 0d                      ; carriage return
+    fee5  7f         db 7f                      ; back space (rubout symbol)
+    fee6  08         db 08                      ; left arrow
+    fee7  19         db 19                      ; up arrow
+    fee8  18         db 18                      ; right arrow
+    fee9  1a         db 1a                      ; down arrow
+
+; Lookup table for special keys in column 0
+SPECIAL_KEYS_LUT_0:
+    feea  0c         db 0c                      ; home
+    feeb  1f         db 1f                      ; clear screen
+    feec  1b         db 1b                      ; Escape (AR2)
+    feed  00         db 00                      ; F1
+    feee  01         db 01                      ; F2
+    feef  02         db 02                      ; F3
+    fef0  03         db 03                      ; F4
+    fef1  04         db 04                      ; F5
+    fef2  05         db 05                      ; ???
+
+KBD_SCAN_SPECIAL_KEYS_0:
+    fef3  7c         MOV A, H                   ; Load lookup table address for keys in column 0
+    fef4  21 ea fe   LXI HL, feea
+
+    fef7  c3 fe fe   JMP KBD_SCAN_SPECIAL_KEYS (fefe)
+
+KBD_SCAN_SPECIAL_KEYS_1:
+    fefa  7c         MOV A, H                   ; Load lookup table address for keys in column 1
+    fefb  21 e2 fe   LXI HL, SPECIAL_KEYS_LUT_1 (fee2)
+
+KBD_SCAN_SPECIAL_KEYS:
+    fefe  85         ADD L                      ; Select the char code in the lookup table (calculate address)
+    feff  6f         MOV L, A
+
+    ff00  7e         MOV A, M                   ; Get the char code
+
+    ff01  fe 40      CPI A, 40                  ; Codes < 0x40 returned as is
+    ff03  e1         POP HL
+    ff04  d8         RC
+
+    ff05  e5         PUSH HL
+
+KBD_SCAN_CHECK_CTRL:
+    ff06  6f         MOV L, A                   ; Save scan code for now
+
+    ff07  3a 02 80   LDA KBD_PORT_C (8002)
+    ff0a  67         MOV H, A
+
+    ff0b  e6 40      ANI A, 40
+    ff0d  c2 1a ff   JNZ KBD_SCAN_CHECK_RUS (ff1a)
+
+    ff10  7d         MOV A, L                   ; Ctrl key can apply only for chars > 0x40 (letters)
+    ff11  fe 40      CPI A, 40
+    ff13  fa 3f ff   JM KBD_SCAN_NORMAL_CHAR (ff3f)
+
+    ff16  e6 1f      ANI A, 1f                  ; Correct the key code so that it is in 0x01-0x1f range
+    ff18  e1         POP HL
+    ff19  c9         RET
+
+KBD_SCAN_CHECK_RUS:
+    ff1a  3a 06 76   LDA CYRILLIC_ENABLED (7606); Check if we are in cyrillic mode
+    ff1d  b7         ORA A
+    ff1e  ca 2a ff   JZ KBD_SCAN_CHECK_SHIFT (ff2a)
+
+    ff21  7d         MOV A, L                   ; Only letters (char > 0x40) can be converted to cyrillic
+    ff22  fe 40      CPI A, 40
+    ff24  fa 2a ff   JM KBD_SCAN_CHECK_SHIFT (ff2a)
+
+    ff27  f6 20      ORI A, 20                  ; Convert the char to cyrillic char
+    ff29  6f         MOV L, A
+
+KBD_SCAN_CHECK_SHIFT:
+    ff2a  7c         MOV A, H
+    ff2b  e6 20      ANI A, 20
+    ff2d  c2 3f ff   JNZ KBD_SCAN_NORMAL_CHAR (ff3f)
+
+    ff30  7d         MOV A, L                   ; Check if the symbol is a letter (char code > 0x40)
+    ff31  fe 40      CPI A, 40
+    ff33  fa 3b ff   JM KBD_SCAN_CHECK_SHIFT_1 (ff3b)
+
+    ff36  7d         MOV A, L                   ; Convert latin letters to cyrillic, and vice versa
+    ff37  ee 20      XRI A, 20
+    ff39  e1         POP HL
+    ff3a  c9         RET
+
+KBD_SCAN_CHECK_SHIFT_1:
+    ff3b  7d         MOV A, L                   ; Convert char 0x3x to 0x2x
+    ff3c  e6 2f      ANI A, 2f
+    ff3e  6f         MOV L, A
+
+KBD_SCAN_NORMAL_CHAR:
+    ff3f  7d         MOV A, L                   ; Symbols with codes >= 0x40 returnes as is
+    ff40  fe 40      CPI A, 40
+    ff42  e1         POP HL
+    ff43  f0         RP
+
+    ff44  e5         PUSH HL                    ; We are here if the code is >= 0x20 and < 0x40
+    ff45  6f         MOV L, A
+    ff46  e6 0f      ANI A, 0f                  ; This code detects symbol in 0x2c-0x2f or 0x3c-0x3f ranges
+    ff48  fe 0c      CPI A, 0c
+    ff4a  7d         MOV A, L
+    ff4b  fa 50 ff   JM KBD_SCAN_EXIT_2 (ff50)
+
+    ff4e  ee 10      XRI A, 10                  ; Toggle the bit so that 0x2x becomes 0x3x and vice versa
+
+KBD_SCAN_EXIT_2:
+    ff50  e1         POP HL                     ; Return the resulting key code
+    ff51  c9         RET
+
+
 ????:
 ff52  2a 31 76   LHLD 7631
 ff55  c9         RET
