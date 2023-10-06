@@ -121,15 +121,15 @@ class PPI(MemoryDevice):
         
         # Try to read portC bit by bit
         value = 0
-        if not self._portCl_mode_input:
+        if self._portCl_mode_input:
             for bit_number in range(4):
                 if self._portC_bit_handlers[bit_number]:
-                    value = set_bit_value(value, self._portC_bit_handlers[bit_number]())
+                    value = set_bit_value(value, bit_number, self._portC_bit_handlers[bit_number]())
 
-        if not self._portCu_mode_input:
+        if self._portCu_mode_input:
             for bit_number in range(4, 8):
                 if self._portC_bit_handlers[bit_number]:
-                    value = set_bit_value(value, self._portC_bit_handlers[bit_number]())
+                    value = set_bit_value(value, bit_number, self._portC_bit_handlers[bit_number]())
 
         return value
 
