@@ -4,8 +4,12 @@
 ; 0x7600    - current cursor address (points to the video RAM)
 ; 0x7602    - current cursor position (high byte - X, and low byte as Y coordinate)
 ; 0x7604    - Esc-Y escape sequence byte number
-; 0x7605    - ??? Key pressed flag
+; 0x7605    - Key is not pressed flag (0xff - no keys pressed, 0x00 - a key is pressed)
 ; 0x7606    - Cyrilic layout enabled
+;
+; 0x7609    - Currently pressed key (used for autorepeat)
+; 0x760a    - Autorepeat timer (cycles till the next trigger)
+; 0x760b    - Autorepeat flag (value == 0x00 - first trigger of the autorepeat, other values - subsequent calls)
 ; 0x7600 - 0x765f - monitor variables
 ; ??????
 ; 76cf - stack top
@@ -1082,73 +1086,116 @@ CARRIAGE_RETURN_1:
     fe00  c9         RET
 
 
-; Check if a button is pressed
+; Check if a button is pressed. Returns A=0xff if the key is pressed, 0x00 if not pressed
+; 
+; The function is also responsible for auto-repeat feature, which is working like follows:
+; - When a key is just pressed, the function does not report this to the called immediately. Instead it
+;   starts a short timer (0x15 calls of this function) to ensure the key is really pressed, and this is not
+;   a debounce issue, or a mistakely hit key.
+; - If the key is pressed for 0x15 calls of this function, the function finally returns 0xff value, indicating
+;   the key is really pressed, and KBD_INPUT function may return the key code
+; - In the same time the function starts a longer timer (0xe0 calls of this function) for auto repeat feature.
+;   During this timer period the function will not report that the key is pressed (despite it is)
+; - When the timer is due, the function does a short beep, and report that the key is pressed, so that keyboard
+;   reading function can do its job.
 ;
+; The function is also responsible for handling RUS key press. If this happens, the function toggles the 
+; CYRILLIC_ENABLED variable
 IS_BUTTON_PRESSED:
-    fe01  3a 02 80   LDA KBD_PORT_C (8002)      ; Check if Rus key is pressed
-    fe04  e6 80      ANI A, 80
-    fe06  ca 0e fe   JZ fe0e
+    fe01  3a 02 80   LDA KBD_PORT_C (8002)      ; If the Rus key is pressed, the autorepeat feature is
+    fe04  e6 80      ANI A, 80                  ; temporary disabled
+    fe06  ca 0e fe   JZ IS_BUTTON_PRESSED_1 (fe0e)
 
-    fe09  3a 05 76   LDA 7605                   ; Check if a key was already pressed ?????
-    fe0c  b7         ORA A
+    fe09  3a 05 76   LDA KEY_IS_PRESSED (7605)  ; Skip extra keyboard scans if the key is already pressed (but
+    fe0c  b7         ORA A                      ; not yet processed by the keyboar input function)
     fe0d  c0         RNZ
 
-????:
-fe0e  e5         PUSH HL
-fe0f  2a 09 76   LHLD 7609
-fe12  cd 72 fe   CALL KBD_SCAN (fe72)
-fe15  bd         CMP L
-fe16  6f         MOV L, A
-fe17  ca 2a fe   JZ fe2a
-????:
-fe1a  3e 01      MVI A, 01
-fe1c  32 0b 76   STA 760b
-fe1f  26 15      MVI H, 15
-????:
-fe21  af         XRA A
-????:
-fe22  22 09 76   SHLD 7609
-fe25  e1         POP HL
-fe26  32 05 76   STA 7605
-fe29  c9         RET
+IS_BUTTON_PRESSED_1:
+    fe0e  e5         PUSH HL                    ; Load some autorepeat char (L) and autorepeat timer value (H)
+    fe0f  2a 09 76   LHLD AUTOREPEAT_CHAR (7609)
 
-????:
-fe2a  25         DCR H
-fe2b  c2 21 fe   JNZ fe21
-fe2e  3c         INR A
-fe2f  ca 22 fe   JZ fe22
-fe32  3c         INR A
-fe33  ca 51 fe   JZ fe51
-fe36  c5         PUSH BC
-fe37  01 03 50   LXI BC, 5003
-fe3a  cd 27 fd   CALL BEEP_LOOP (fd27)
-fe3d  c1         POP BC
-fe3e  3a 0b 76   LDA 760b
-fe41  26 e0      MVI H, e0
-fe43  3d         DCR A
-fe44  32 0b 76   STA 760b
-fe47  ca 4c fe   JZ fe4c
-fe4a  26 40      MVI H, 40
-????:
-fe4c  3e ff      MVI A, ff
-fe4e  c3 22 fe   JMP fe22
-????:
-fe51  3a 02 80   LDA KBD_PORT_C (8002)
-fe54  e6 80      ANI A, 80
-fe56  ca 51 fe   JZ fe51
-fe59  3a 06 76   LDA CYRILLIC_ENABLED (7606)
-fe5c  2f         CMA
-fe5d  32 06 76   STA CYRILLIC_ENABLED (7606)
-fe60  c3 1a fe   JMP fe1a
+    fe12  cd 72 fe   CALL KBD_SCAN (fe72)       ; Get the key scan code
 
+    fe15  bd         CMP L                      ; Check if scanned symbol differs from autorepeat symbol
+    fe16  6f         MOV L, A                   ; Store the new symbol as autorepeat one
+    fe17  ca 2a fe   JZ IS_BUTTON_PRESSED_3 (fe2a)
+
+IS_BUTTON_PRESSED_2:
+    fe1a  3e 01      MVI A, 01                  ; We've just detected a new keypress. Set the first trigger for
+    fe1c  32 0b 76   STA AUTOREPEAT_FLAG (760b) ; auto repeat (use a longer delay before the autorepeated symbol)
+
+    fe1f  26 15      MVI H, 15                  ; Minimum duration when the key is considered as pressed
+
+IS_BUTTON_PRESSED_EXIT_NO_PRESS:
+    fe21  af         XRA A                      ; Report the key as not pressed for now
+
+IS_BUTTON_PRESSED_EXIT:
+    fe22  22 09 76   SHLD AUTOREPEAT_CHAR (7609); Save autorepeat key and timer value
+    fe25  e1         POP HL
+
+    fe26  32 05 76   STA KEY_IS_PRESSED (7605)  ; Save the key pressed flag, and exit
+    fe29  c9         RET
+
+
+IS_BUTTON_PRESSED_3:
+    fe2a  25         DCR H                      ; Check if autorepeat timer is due
+    fe2b  c2 21 fe   JNZ IS_BUTTON_PRESSED_EXIT_NO_PRESS (fe21)
+
+    fe2e  3c         INR A                      ; A=0xff means no key was pressed, or key was released.
+    fe2f  ca 22 fe   JZ IS_BUTTON_PRESSED_EXIT (fe22)   ; Just exit
+
+    fe32  3c         INR A                      ; A=0xfe means RUS key pressed
+    fe33  ca 51 fe   JZ TOGGLE_RUS_LAT (fe51)
+
+    fe36  c5         PUSH BC                    ; Generate a short beep
+    fe37  01 03 50   LXI BC, 5003
+    fe3a  cd 27 fd   CALL BEEP_LOOP (fd27)
+    fe3d  c1         POP BC
+
+    fe3e  3a 0b 76   LDA AUTOREPEAT_FLAG (760b)
+    fe41  26 e0      MVI H, e0                  ; Set long delay between first press and autorepeat
+    fe43  3d         DCR A                      ; Decrement autorepeat counter
+    fe44  32 0b 76   STA AUTOREPEAT_FLAG (760b)
+
+    fe47  ca 4c fe   JZ IS_BUTTON_PRESSED_4 (fe4c)
+
+    fe4a  26 40      MVI H, 40                  ; Set shorter delay between autorepeats
+
+IS_BUTTON_PRESSED_4:
+    fe4c  3e ff      MVI A, ff                  ; Raise a flag, that key is pressed
+    fe4e  c3 22 fe   JMP IS_BUTTON_PRESSED_EXIT (fe22)
+
+
+TOGGLE_RUS_LAT:
+    fe51  3a 02 80   LDA KBD_PORT_C (8002)      ; Wait until RUS key is released
+    fe54  e6 80      ANI A, 80
+    fe56  ca 51 fe   JZ TOGGLE_RUS_LAT (fe51)
+
+    fe59  3a 06 76   LDA CYRILLIC_ENABLED (7606)    ; Toggle the Cyrillic mode
+    fe5c  2f         CMA
+    fe5d  32 06 76   STA CYRILLIC_ENABLED (7606)
+
+    fe60  c3 1a fe   JMP IS_BUTTON_PRESSED_2 (fe1a) ; Continue through the key release procedures
+
+
+; Wait for a keyboard input
+; 
+; The function waits until a key is pressed, and returns the key code. This function works in pair with
+; the IS_BUTTON_PRESSED function that handles the autorepeat feature, and indicates that key is pressed
+; when autorepeat timer is due. Once KBD_INPUT function detects the keypress, it clears the key pressed
+; flag, despite the key may be still pressed. The IS_BUTTON_PRESSED is responsible for setting it again
+; after the next timer cycle is due.
 KBD_INPUT:
-fe63  cd 01 fe   CALL IS_BUTTON_PRESSED (fe01)
-fe66  b7         ORA A
-fe67  ca 63 fe   JZ fe63
-fe6a  af         XRA A
-fe6b  32 05 76   STA 7605
-fe6e  3a 09 76   LDA 7609
-fe71  c9         RET
+    fe63  cd 01 fe   CALL IS_BUTTON_PRESSED (fe01)  ; Check if a key is pressed
+
+    fe66  b7         ORA A                          ; Repeat keyboard scan until a key is pressed
+    fe67  ca 63 fe   JZ KBD_INPUT (fe63)
+
+    fe6a  af         XRA A                          ; Clear 'key is pressed' flag
+    fe6b  32 05 76   STA KEY_IS_PRESSED (7605)
+
+    fe6e  3a 09 76   LDA AUTOREPEAT_CHAR (7609)     ; Return the entered symbol
+    fe71  c9         RET
 
 
 ; Scan the keyboard matrix, and return a key char code
