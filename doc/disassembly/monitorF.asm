@@ -26,8 +26,9 @@
 ; - f824    - Load a program from tape (HL - offset, returns CRC in BC)
 ; - f827    - Output a program to the tape (HL - start address, DE - end address, BC - CRC)
 ; - f82a    - Calculate CRC for a memory range (HL - start address, DE - end address, Result in BC)
-; - f830 and f833 - 2 unclear functions that get and set some variable, which is never used (perhaps exist for
-;                   compatibility with other Monitors in Radio-86RK computers family)
+; - f82d    - Unused, added for compatibility with Radio-86RK
+; - f830    - Get memory limit, returns the topmost address of the available RAM (Unused by the Monitor)
+; - f833    - Set the new memory limit (Unused by the Monitor)
 ;
 ; Character output function performs printing in a terminal mode, when the symbol is printed at the
 ; cursor position, and cursor advances to the next position. If the cursor reaches the end of line, it
@@ -117,7 +118,7 @@
 ; f7ce - Tape input polarity (0x00 if non-inverted, 0xff if inverted)
 ; f7cf - Tape delay constant when loading
 ; f7d0 - Tape delay constant when saving
-; f7d1 - Unclear 2-byte variable, never used in Monitor F, get and set using f830 and f833 handlers
+; f7d1 - Highest address of the memory (memory limit)
 ; f7d3 - f7f2 - 32-byte command buffer
 ; f7f3 - keyboard repeat counter
 ; f7f4 - flag indicating that the button is pressed (used for key repeat functionality)
@@ -156,8 +157,8 @@ VECTORS:                                        ; Jump vectors to real function 
     f827  c3 24 fb   JMP OUT_PROGRAM (fb24)
     f82a  c3 f6 fa   JMP CALC_CRC (faf6)
     f82d  c9 ff ff   RET
-    f830  c3 77 fe   JMP fe77
-    f833  c3 7b fe   JMP fe7b
+    f830  c3 77 fe   JMP GET_MEMORY_TOP (fe77)
+    f833  c3 7b fe   JMP SET_MEMORY_TOP (fe7b)
 
 
 START:
@@ -188,8 +189,8 @@ START:
     f859  00         NOP
     f85a  00         NOP
 
-    f85b  21 ff df   LXI HL, dfff               ; Set unclear 2-byte variable. Never used in the Monitor F
-    f85e  22 d1 f7   SHLD f7d1
+    f85b  21 ff df   LXI HL, dfff               ; Initialize top memory address. This value is not used by the
+    f85e  22 d1 f7   SHLD MEMORY_TOP (f7d1)     ; Monitor, but probably used by application via the API
 
     f861  21 2a 1d   LXI HL, 1d2a               ; Precalculated tape delay constants (0x2a for loading,
     f864  22 cf f7   SHLD TAPE_IN_DELAY (f7cf)  ; and 0x1d for saving)
@@ -1892,14 +1893,14 @@ IS_BUTTON_PRESSED:
     fe76  c9         RET
 
 
-; Unused function that loads a word at 0xf7d1
-????:
-    fe77  2a d1 f7   LHLD f7d1
+; Get memory limit
+GET_MEMORY_TOP:
+    fe77  2a d1 f7   LHLD MEMORY_TOP (f7d1)
     fe7a  c9         RET
     
-; Unused function that saves a word to 0xf7d1
-?????:
-    fe7b  22 d1 f7   SHLD f7d1
+; Set new memory limit
+SET_MEMORY_TOP:
+    fe7b  22 d1 f7   SHLD MEMORY_TOP (f7d1)
     fe7e  c9         RET
 
 
