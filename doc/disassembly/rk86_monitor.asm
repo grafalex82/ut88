@@ -10,6 +10,20 @@
 ; 0x7609    - Currently pressed key (used for autorepeat)
 ; 0x760a    - Autorepeat timer (cycles till the next trigger)
 ; 0x760b    - Autorepeat flag (value == 0x00 - first trigger of the autorepeat, other values - subsequent calls)
+; 0x7614    - User program PC
+; 0x7616    - User program HL
+; 0x7618    - User program BC
+; 0x761a    - User program DE
+; 0x761c    - User program SP
+; 0x761e    - User program AF
+; 0x7623    - Breakpoint address
+; 0x7625    - Original opcode at the breakpoint address
+; 0x7626    - JMP opcode (used to jump to the user program)
+; 0x7627    - ????? arg1
+;
+; 0x762f    - ???? tape delays
+; 0x7631    - upper limit of the memory available for user programs
+; 0x7633    - line buffer (???? bytes)
 ; 0x7600 - 0x765f - monitor variables
 ; ??????
 ; 76cf - stack top
@@ -23,7 +37,7 @@ VECTORS:
     f80c  c3 46 fc   JMP fc46
     f80f  c3 ba fc   JMP PUT_CHAR (fcba)
     f812  c3 01 fe   JMP IS_BUTTON_PRESSED (fe01)
-    f815  c3 a5 fc   JMP fca5
+    f815  c3 a5 fc   JMP PRINT_HEX_BYTE (fca5)
     f818  c3 22 f9   JMP PRINT_STR (f922)
     f81b  c3 72 fe   JMP KBD_SCAN (fe72)
     f81e  c3 7b fa   JMP fa7b
@@ -54,27 +68,39 @@ START:
     f852  21 5a ff   LXI HL, ff5a               ; Print the hello line
     f855  cd 22 f9   CALL PRINT_STR (f922)
 
-f858  cd ce fa   CALL INIT_VIDEO (face)
-f85b  21 ff 75   LXI HL, 75ff
-f85e  22 31 76   SHLD 7631
-f861  21 2a 1d   LXI HL, 1d2a
-f864  22 2f 76   SHLD 762f
-f867  3e c3      MVI A, c3
-f869  32 26 76   STA 7626
-????:
-f86c  31 cf 76   LXI SP, STACK_TOP (76cf)
-f86f  21 66 ff   LXI HL, ff66
-f872  cd 22 f9   CALL PRINT_STR (f922)
-f875  32 02 80   STA KBD_PORT_C (8002)
-f878  3d         DCR A
-f879  32 02 a0   STA a002
-f87c  cd ee f8   CALL f8ee
-f87f  21 6c f8   LXI HL, f86c
-f882  e5         PUSH HL
-f883  21 33 76   LXI HL, 7633
-f886  7e         MOV A, M
-f887  fe 58      CPI A, 58
-f889  ca d3 ff   JZ ffd3
+    f858  cd ce fa   CALL INIT_VIDEO (face)     ; Reinit the video ???
+
+    f85b  21 ff 75   LXI HL, 75ff               ; Set the upper memory limit
+    f85e  22 31 76   SHLD MEMORY_TOP (7631)
+
+    f861  21 2a 1d   LXI HL, 1d2a               ; Set default values for tape delays
+    f864  22 2f 76   SHLD 762f
+
+    f867  3e c3      MVI A, c3                  ; JMP opcode, used to jump to the user program
+    f869  32 26 76   STA 7626
+
+MAIN_LOOP:
+    f86c  31 cf 76   LXI SP, STACK_TOP (76cf)   ; Restore the stack pointer (just in case)
+
+    f86f  21 66 ff   LXI HL, PROMPT_STR (ff66)
+    f872  cd 22 f9   CALL PRINT_STR (f922)
+
+    f875  32 02 80   STA KBD_PORT_C (8002)      ; Clear the Rus LED
+
+    f878  3d         DCR A                      ; Set 0xff to the extra extension port ???
+    f879  32 02 a0   STA a002
+
+    f87c  cd ee f8   CALL INPUT_LINE (f8ee)     ; Enter the next command
+
+    f87f  21 6c f8   LXI HL, MAIN_LOOP (f86c)   ; Push the MAIN_LOOP to stack as a return address for all commands
+    f882  e5         PUSH HL
+
+    f883  21 33 76   LXI HL, LINE_BUF (7633)    ; Load the first char in the line buf
+    f886  7e         MOV A, M
+
+    f887  fe 58      CPI A, 58                  ; Is this 'X' command
+    f889  ca d3 ff   JZ COMMAND_X (ffd3)
+
 f88c  fe 55      CPI A, 55
 f88e  ca 00 f0   JZ f000
 f891  f5         PUSH PSW
@@ -87,66 +113,92 @@ f89d  eb         XCHG
 f89e  2a 27 76   LHLD 7627
 f8a1  f1         POP PSW
 f8a2  fe 44      CPI A, 44
-f8a4  ca c5 f9   JZ f9c5
+f8a4  ca c5 f9   JZ COMMAND_D (f9c5)
 f8a7  fe 43      CPI A, 43
-f8a9  ca d7 f9   JZ f9d7
+f8a9  ca d7 f9   JZ COMMAND_C (f9d7)
 f8ac  fe 46      CPI A, 46
-f8ae  ca ed f9   JZ MEMSET (f9ed)
+f8ae  ca ed f9   JZ COMMAND_F (f9ed)
 f8b1  fe 53      CPI A, 53
 f8b3  ca f4 f9   JZ f9f4
 f8b6  fe 54      CPI A, 54
-f8b8  ca ff f9   JZ f9ff
+f8b8  ca ff f9   JZ COMMAND_T (f9ff)
 f8bb  fe 4d      CPI A, 4d
-f8bd  ca 26 fa   JZ fa26
+f8bd  ca 26 fa   JZ COMMAND_M (fa26)
 f8c0  fe 47      CPI A, 47
-f8c2  ca 3f fa   JZ fa3f
+f8c2  ca 3f fa   JZ COMMAND_G (fa3f)
 f8c5  fe 49      CPI A, 49
 f8c7  ca 86 fa   JZ fa86
 f8ca  fe 4f      CPI A, 4f
 f8cc  ca 2d fb   JZ fb2d
 f8cf  fe 4c      CPI A, 4c
-f8d1  ca 08 fa   JZ fa08
+f8d1  ca 08 fa   JZ COMMAND_L (fa08)
 f8d4  fe 52      CPI A, 52
-f8d6  ca 68 fa   JZ fa68
+f8d6  ca 68 fa   JZ COMMAND_R (fa68)
 f8d9  c3 00 f0   JMP f000
-????:
-f8dc  3e 33      MVI A, 33
-f8de  bd         CMP L
-f8df  ca f1 f8   JZ f8f1
-f8e2  e5         PUSH HL
-f8e3  21 9e ff   LXI HL, ff9e
-f8e6  cd 22 f9   CALL PRINT_STR (f922)
-f8e9  e1         POP HL
-f8ea  2b         DCX HL
-f8eb  c3 f3 f8   JMP f8f3
-????:
-f8ee  21 33 76   LXI HL, 7633
-????:
-f8f1  06 00      MVI B, 00
-????:
-f8f3  cd 63 fe   CALL KBD_INPUT (fe63)
-f8f6  fe 08      CPI A, 08
-f8f8  ca dc f8   JZ f8dc
-f8fb  fe 7f      CPI A, 7f
-f8fd  ca dc f8   JZ f8dc
-f900  c4 b9 fc   CNZ PUT_CHAR_A (fcb9)
-f903  77         MOV M, A
-f904  fe 0d      CPI A, 0d
-f906  ca 1a f9   JZ f91a
-f909  fe 2e      CPI A, 2e
-f90b  ca 6c f8   JZ f86c
-f90e  06 ff      MVI B, ff
-f910  3e 52      MVI A, 52
-f912  bd         CMP L
-f913  ca ae fa   JZ faae
-f916  23         INX HL
-f917  c3 f3 f8   JMP f8f3
-????:
-f91a  78         MOV A, B
-f91b  17         RAL
-f91c  11 33 76   LXI DE, 7633
-f91f  06 00      MVI B, 00
-f921  c9         RET
+
+; Process the back space button, clear the symbol left to the cursor
+INPUT_LINE_BACKSPACE:
+    f8dc  3e 33      MVI A, 33                  ; We cannot go beyond the left border of the line
+    f8de  bd         CMP L
+    f8df  ca f1 f8   JZ INPUT_LINE_START (f8f1)
+
+    f8e2  e5         PUSH HL
+    f8e3  21 9e ff   LXI HL, BACKSPACE_STR (ff9e)   ; Clear a symbol left to the cursor. Move cursor left.
+    f8e6  cd 22 f9   CALL PRINT_STR (f922)
+    f8e9  e1         POP HL
+
+    f8ea  2b         DCX HL                     ; Decrement line buffer pointer
+    f8eb  c3 f3 f8   JMP INPUT_LINE_LOOP (f8f3)
+
+; Input a line into the line buffer at 0x7633
+; The function inputs up to 31 chars into the buffer. Back space is supported to clear symbol left to the cursor.
+; Line input finishes with EOL (CR) char. 
+;
+; Return:
+; - The function returns the line buffer address in DE. 
+; - C flag indicates that the buffer contains at least one char
+INPUT_LINE:
+    f8ee  21 33 76   LXI HL, LINE_BUF (7633)    ; Load the line buffer address
+
+INPUT_LINE_START:
+    f8f1  06 00      MVI B, 00                  ; Reset symbol entered flag
+
+INPUT_LINE_LOOP:
+    f8f3  cd 63 fe   CALL KBD_INPUT (fe63)      ; Wait for the next key
+
+    f8f6  fe 08      CPI A, 08                  ; Handle left arrow and backspace keys
+    f8f8  ca dc f8   JZ INPUT_LINE_BACKSPACE (f8dc)
+    f8fb  fe 7f      CPI A, 7f
+    f8fd  ca dc f8   JZ INPUT_LINE_BACKSPACE (f8dc)
+
+    f900  c4 b9 fc   CNZ PUT_CHAR_A (fcb9)      ; Echo the entered char
+
+    f903  77         MOV M, A                   ; Store the char in the buffer as well
+
+    f904  fe 0d      CPI A, 0d                  ; Finalize line input on EOL symbol entered
+    f906  ca 1a f9   JZ INPUT_LINE_EOL (f91a)
+
+    f909  fe 2e      CPI A, 2e                  ; '.' (dot) symbol abandon current input, and restart the main loop
+    f90b  ca 6c f8   JZ MAIN_LOOP (f86c)
+
+    f90e  06 ff      MVI B, ff                  ; Raise a flag that a symbol is entered
+
+    f910  3e 52      MVI A, 52                  ; Limit line input to 31 char. If more symbols entered - report
+    f912  bd         CMP L                      ; an error
+    f913  ca ae fa   JZ INPUT_ERROR (faae)
+
+    f916  23         INX HL                     ; Advance line buffer pointer and get ready for the next char
+    f917  c3 f3 f8   JMP INPUT_LINE_LOOP (f8f3)
+
+INPUT_LINE_EOL:
+    f91a  78         MOV A, B                   ; Check if any symbol was entered. Set C flag if any valuable
+    f91b  17         RAL                        ; input is there.
+
+    f91c  11 33 76   LXI DE, LINE_BUF (7633)    ; Return line buffer address in DE
+    f91f  06 00      MVI B, 00
+    f921  c9         RET
+
+
 
 ; Print a NULL-terminated string pointed by HL
 PRINT_STR:
@@ -166,20 +218,21 @@ f92f  11 2d 76   LXI DE, 762d
 f932  0e 00      MVI C, 00
 f934  cd ed f9   CALL MEMSET (f9ed)
 f937  11 34 76   LXI DE, 7634
-f93a  cd 5a f9   CALL f95a
+f93a  cd 5a f9   CALL PARSE_ADDR (f95a)
 f93d  22 27 76   SHLD 7627
 f940  22 29 76   SHLD 7629
 f943  d8         RC
 f944  3e ff      MVI A, ff
 f946  32 2d 76   STA 762d
-f949  cd 5a f9   CALL f95a
+f949  cd 5a f9   CALL PARSE_ADDR (f95a)
 f94c  22 29 76   SHLD 7629
 f94f  d8         RC
-f950  cd 5a f9   CALL f95a
+f950  cd 5a f9   CALL PARSE_ADDR (f95a)
 f953  22 2b 76   SHLD 762b
 f956  d8         RC
-f957  c3 ae fa   JMP faae
-????:
+f957  c3 ae fa   JMP INPUT_ERROR (faae)
+
+PARSE_ADDR:
 f95a  21 00 00   LXI HL, 0000
 ????:
 f95d  1a         LDAX DE
@@ -191,13 +244,13 @@ f966  c8         RZ
 f967  fe 20      CPI A, 20
 f969  ca 5d f9   JZ f95d
 f96c  d6 30      SUI A, 30
-f96e  fa ae fa   JM faae
+f96e  fa ae fa   JM INPUT_ERROR (faae)
 f971  fe 0a      CPI A, 0a
 f973  fa 82 f9   JM f982
 f976  fe 11      CPI A, 11
-f978  fa ae fa   JM faae
+f978  fa ae fa   JM INPUT_ERROR (faae)
 f97b  fe 17      CPI A, 17
-f97d  f2 ae fa   JP faae
+f97d  f2 ae fa   JP INPUT_ERROR (faae)
 f980  d6 07      SUI A, 07
 ????:
 f982  4f         MOV C, A
@@ -205,7 +258,7 @@ f983  29         DAD HL
 f984  29         DAD HL
 f985  29         DAD HL
 f986  29         DAD HL
-f987  da ae fa   JC faae
+f987  da ae fa   JC INPUT_ERROR (faae)
 f98a  09         DAD BC
 f98b  c3 5d f9   JMP f95d
 ????:
@@ -220,7 +273,7 @@ f993  7d         MOV A, L
 f994  bb         CMP E
 f995  c9         RET
 
-????:
+ADVANCE_HL_WITH_BREAK:
 f996  cd a4 f9   CALL f9a4
 
 ADVANCE_HL:
@@ -241,129 +294,275 @@ f9a4  cd 72 fe   CALL KBD_SCAN (fe72)
 f9a7  fe 03      CPI A, 03
 f9a9  c0         RNZ
 f9aa  cd ce fa   CALL INIT_VIDEO (face)
-f9ad  c3 ae fa   JMP faae
+f9ad  c3 ae fa   JMP INPUT_ERROR (faae)
 
-????:
-f9b0  e5         PUSH HL
-f9b1  21 6c ff   LXI HL, ff6c
-f9b4  cd 22 f9   CALL PRINT_STR (f922)
-f9b7  e1         POP HL
-f9b8  c9         RET
-????:
-f9b9  7e         MOV A, M
-????:
-f9ba  c5         PUSH BC
-f9bb  cd a5 fc   CALL fca5
-f9be  3e 20      MVI A, 20
-f9c0  cd b9 fc   CALL PUT_CHAR_A (fcb9)
-f9c3  c1         POP BC
-f9c4  c9         RET
-????:
-f9c5  cd 78 fb   CALL fb78
-????:
-f9c8  cd b9 f9   CALL f9b9
-f9cb  cd 96 f9   CALL f996
-f9ce  7d         MOV A, L
-f9cf  e6 0f      ANI A, 0f
-f9d1  ca c5 f9   JZ f9c5
-f9d4  c3 c8 f9   JMP f9c8
-????:
-f9d7  0a         LDAX BC
-f9d8  be         CMP M
-f9d9  ca e6 f9   JZ f9e6
-f9dc  cd 78 fb   CALL fb78
-f9df  cd b9 f9   CALL f9b9
-f9e2  0a         LDAX BC
-f9e3  cd ba f9   CALL f9ba
-????:
-f9e6  03         INX BC
-f9e7  cd 96 f9   CALL f996
-f9ea  c3 d7 f9   JMP f9d7
+; Print the new line. It also prints a tabulation (4 spaces) so that next information (typically
+; an address or some value) is printed after
+PRINT_NEW_LINE:
+    f9b0  e5         PUSH HL
+    f9b1  21 6c ff   LXI HL, TAB_STR (ff6c)
+    f9b4  cd 22 f9   CALL PRINT_STR (f922)
+    f9b7  e1         POP HL
+    f9b8  c9         RET
 
-; Fill memory at HL-DE with byte in C
+; Print a byte at [HL] as a 2-digit hex value, then add a space
+PRINT_MEMORY_BYTE:
+    f9b9  7e         MOV A, M
+
+; Print a 2-digit hex value in A, then print a space
+PRINT_HEX_BYTE_SPACE:
+    f9ba  c5         PUSH BC                    ; Print the byte
+    f9bb  cd a5 fc   CALL PRINT_HEX_BYTE (fca5)
+
+    f9be  3e 20      MVI A, 20                  ; Print the space
+    f9c0  cd b9 fc   CALL PUT_CHAR_A (fcb9)
+
+    f9c3  c1         POP BC                     ; Exit
+    f9c4  c9         RET
+
+
+; Command D - Dump memory
+; 
+; Arguments:
+; - start address (HL)
+; - end address (DE)
+COMMAND_D:
+    f9c5  cd 78 fb   CALL PRINT_HEX_ADDR (fb78) ; Print new line, and a memory address
+
+COMMAND_D_LOOP:
+    f9c8  cd b9 f9   CALL PRINT_MEMORY_BYTE (f9b9)  ; Print the next byte
+
+    f9cb  cd 96 f9   CALL ADVANCE_HL_WITH_BREAK (f996)  ; Advance HL, exit if reached DE
+
+    f9ce  7d         MOV A, L                   ; Check if we reached end of current line
+    f9cf  e6 0f      ANI A, 0f
+    f9d1  ca c5 f9   JZ COMMAND_D (f9c5)        ; Get to the new line
+
+    f9d4  c3 c8 f9   JMP COMMAND_D_LOOP (f9c8)  ; Repeat for the next byte in the same line
+
+; Command C - Compare memory ranges
+;
+; Arguments:
+; - Range 1 start address (HL)
+; - Range 1 end address (DE)
+; - Range 2 start address (BC)
+COMMAND_C:
+    f9d7  0a         LDAX BC                    ; Compare bytes from both ranges
+    f9d8  be         CMP M
+    f9d9  ca e6 f9   JZ COMMAND_C_NEXT (f9e6)   ; Advance to the next byte if equal
+
+    f9dc  cd 78 fb   CALL PRINT_HEX_ADDR (fb78) ; Print the address of the unmatched byte
+
+    f9df  cd b9 f9   CALL PRINT_MEMORY_BYTE (f9b9)      ; Print source byte
+    f9e2  0a         LDAX BC
+    f9e3  cd ba f9   CALL PRINT_HEX_BYTE_SPACE (f9ba)   ; Print unmatched destination byte
+
+COMMAND_C_NEXT:
+    f9e6  03         INX BC                     ; Advance BC
+
+    f9e7  cd 96 f9   CALL ADVANCE_HL_WITH_BREAK (f996)  ; Advance HL, exit if reached DE
+
+    f9ea  c3 d7 f9   JMP COMMAND_C (f9d7)       ; Repeat for the next byte
+
+
+; Command F - fill a memory range with a specified byte.
+;
+; Command arguments:
+; - start address (HL)
+; - end address (DE)
+; - value to fill with (C)
+COMMAND_F:
+
+; Fill memory with a constant
+; HL    - start address
+; DE    - end address
+; C     - byte to fill
 MEMSET:
     f9ed  71         MOV M, C                   ; Store the byte
     f9ee  cd 99 f9   CALL ADVANCE_HL (f999)     ; Increment HL until it reaches DE
     f9f1  c3 ed f9   JMP MEMSET (f9ed)
 
-????:
-f9f4  79         MOV A, C
-f9f5  be         CMP M
-f9f6  cc 78 fb   CZ fb78
-f9f9  cd 96 f9   CALL f996
-f9fc  c3 f4 f9   JMP f9f4
-????:
-f9ff  7e         MOV A, M
-fa00  02         STAX BC
-fa01  03         INX BC
-fa02  cd 99 f9   CALL ADVANCE_HL (f999)
-fa05  c3 ff f9   JMP f9ff
-????:
-fa08  cd 78 fb   CALL fb78
-????:
-fa0b  7e         MOV A, M
-fa0c  b7         ORA A
-fa0d  fa 15 fa   JM fa15
-fa10  fe 20      CPI A, 20
-fa12  d2 17 fa   JNC fa17
-????:
-fa15  3e 2e      MVI A, 2e
-????:
-fa17  cd b9 fc   CALL PUT_CHAR_A (fcb9)
-fa1a  cd 96 f9   CALL f996
-fa1d  7d         MOV A, L
-fa1e  e6 0f      ANI A, 0f
-fa20  ca 08 fa   JZ fa08
-fa23  c3 0b fa   JMP fa0b
-????:
-fa26  cd 78 fb   CALL fb78
-fa29  cd b9 f9   CALL f9b9
-fa2c  e5         PUSH HL
-fa2d  cd ee f8   CALL f8ee
-fa30  e1         POP HL
-fa31  d2 3b fa   JNC fa3b
-fa34  e5         PUSH HL
-fa35  cd 5a f9   CALL f95a
-fa38  7d         MOV A, L
-fa39  e1         POP HL
-fa3a  77         MOV M, A
-????:
-fa3b  23         INX HL
-fa3c  c3 26 fa   JMP fa26
-????:
-fa3f  cd 90 f9   CALL COMPARE_DE_HL (f990)
-fa42  ca 5a fa   JZ fa5a
-fa45  eb         XCHG
-fa46  22 23 76   SHLD 7623
-fa49  7e         MOV A, M
-fa4a  32 25 76   STA 7625
-fa4d  36 f7      MVI M, f7
-fa4f  3e c3      MVI A, c3
-fa51  32 30 00   STA 0030
-fa54  21 a2 ff   LXI HL, ffa2
-fa57  22 31 00   SHLD 0031
-????:
-fa5a  31 18 76   LXI SP, 7618
-fa5d  c1         POP BC
-fa5e  d1         POP DE
-fa5f  e1         POP HL
-fa60  f1         POP PSW
-fa61  f9         SPHL
-fa62  2a 16 76   LHLD 7616
-fa65  c3 26 76   JMP 7626
-????:
-fa68  3e 90      MVI A, 90
-fa6a  32 03 a0   STA a003
-????:
-fa6d  22 01 a0   SHLD a001
-fa70  3a 00 a0   LDA a000
-fa73  02         STAX BC
-fa74  03         INX BC
-fa75  cd 99 f9   CALL ADVANCE_HL (f999)
-fa78  c3 6d fa   JMP fa6d
+; Search a byte in a memory range
+;
+; Arguments:
+; - start address (HL)
+; - end address (DE)
+; - Byte to search (C)
+COMMAND_S:
+    f9f4  79         MOV A, C                   ; Compare the memory byte
+    f9f5  be         CMP M
+
+    f9f6  cc 78 fb   CZ PRINT_HEX_ADDR (fb78)   ; If found - print the address
+
+    f9f9  cd 96 f9   CALL ADVANCE_HL_WITH_BREAK (f996)  ; Advance HL, exit if reached DE
+    
+    f9fc  c3 f4 f9   JMP COMMAND_S (f9f4)       ; Repeat for the next byte
+
+; Copy memory
+;
+; Arguments:
+; - Start address (HL)
+; - End address (DE)
+; - Target start address (BC)
+COMMAND_T:
+    f9ff  7e         MOV A, M                   ; Copy single byte
+    fa00  02         STAX BC
+
+    fa01  03         INX BC                     ; Advance BC
+    fa02  cd 99 f9   CALL ADVANCE_HL (f999)     ; Advance HL, exit when reached DE
+
+    fa05  c3 ff f9   JMP COMMAND_T (f9ff)       ; Repeat for the next byte
+
+
+; Dump memory in a text representation
+;
+; Arguments:
+; - start address (HL)
+; - end address (DE)
+COMMAND_L:
+    fa08  cd 78 fb   CALL PRINT_HEX_ADDR (fb78) ; Print the starting address
+
+COMMAND_L_LOOP:
+    fa0b  7e         MOV A, M                   ; Load the next byte to print
+
+    fa0c  b7         ORA A                      ; Bytes >= 0x80 are printed as dots
+    fa0d  fa 15 fa   JM COMMAND_L_DOT (fa15)
+
+    fa10  fe 20      CPI A, 20                  ; Bytes < 0x20 are printed as dots
+    fa12  d2 17 fa   JNC COMMAND_L_CHAR (fa17)
+
+COMMAND_L_DOT:
+    fa15  3e 2e      MVI A, 2e                  ; Print '.'
+
+COMMAND_L_CHAR:
+    fa17  cd b9 fc   CALL PUT_CHAR_A (fcb9)     ; Print the char
+
+    fa1a  cd 96 f9   CALL ADVANCE_HL_WITH_BREAK (f996)  ; Advance HL, exit if reached DE
+
+    fa1d  7d         MOV A, L                   ; Move to the new line every 16 symbols
+    fa1e  e6 0f      ANI A, 0f
+    fa20  ca 08 fa   JZ COMMAND_L (fa08)
+
+    fa23  c3 0b fa   JMP COMMAND_L_LOOP (fa0b)  ; Repeat for the new symbol
+
+
+; Command M - edit memory
+;
+; Arguments:
+; - Address to view and edit (HL)
+COMMAND_M:
+    fa26  cd 78 fb   CALL PRINT_HEX_ADDR (fb78) ; Print the address and current byte value
+    fa29  cd b9 f9   CALL PRINT_MEMORY_BYTE (f9b9)
+
+    fa2c  e5         PUSH HL                    ; Input the new value
+    fa2d  cd ee f8   CALL INPUT_LINE (f8ee)
+    fa30  e1         POP HL
+
+    fa31  d2 3b fa   JNC COMMAND_M_NEXT (fa3b)  ; If no new value entered - move to the next byte
+
+    fa34  e5         PUSH HL                    ; If a value entered - parse it
+    fa35  cd 5a f9   CALL PARSE_ADDR (f95a)
+
+    fa38  7d         MOV A, L                   ; Store parsed value to the memory at current address
+    fa39  e1         POP HL
+    fa3a  77         MOV M, A
+
+COMMAND_M_NEXT:
+    fa3b  23         INX HL                     ; Advance to the next address and repeat
+    fa3c  c3 26 fa   JMP COMMAND_M (fa26)
+
+
+; Command G - Run program from specified address
+;
+; Arguments:
+; - Address of the program (HL)
+; - (optional) Breakpoint address (DE)
+;
+; This command runs the user program starting the specified address. Optionally,
+; it is possible to set a breakpoint address, where the program execution will break,
+; and the control flow returns to the Monitor. When the program is stopped at breakpoint, the
+; User can use X Command to display and modify program registers.
+;
+; If the user specified breakpoint address, the following algorithm applies:
+; - Instruction at the breakpoint address is replaced with RST 6 (original byte is
+;   saved at 0x7625)
+; - Bytes 0x0030-0x0032 (which are executed on RST 6) are replaced with JMP ffa2 (breakpoint handler)
+; 
+; When a breakpoint happens:
+; - All registers (including SP, and PC at the breakpoint address) are stored at 0x7614-0x761f.
+; - Instruction at the breakpoint address is restored with the backup at 0x7625
+; - Control flow passed to the main command loop
+;
+; The user may now:
+; - Inspect and edit program data
+; - Inspect and edit CPU registers stored to 0x7614-0x761f by running Commmand X
+; - Run the program from the breakpoint address with Command G. In this case the command handler
+;   will run the following extra actions:
+;   - Restore CPU registers from 0x7614-0x761f
+;   - Run the user program starting from specified address
+COMMAND_G:
+    fa3f  cd 90 f9   CALL COMPARE_DE_HL (f990)  ; Check if the breakpoint address is specified
+    fa42  ca 5a fa   JZ RUN_PROGRAM (fa5a)
+
+    fa45  eb         XCHG                       ; Store breakpoint address at 0x7623 in order to
+    fa46  22 23 76   SHLD BREAKPOINT_ADDR (7623); restore original program later
+
+    fa49  7e         MOV A, M                   ; Load byte under break point and store it at 0x7625
+    fa4a  32 25 76   STA ORIGINAL_OPCODE (7625)
+
+    fa4d  36 f7      MVI M, f7                  ; Put RST 6 instruction instead
+
+    fa4f  3e c3      MVI A, c3                  ; Store JMP BREAKPOINT (ffa2) opcode at RST6 handler (0x0030)
+    fa51  32 30 00   STA 0030
+    fa54  21 a2 ff   LXI HL, BREAKPOINT (ffa2)
+    fa57  22 31 00   SHLD 0031
+
+RUN_PROGRAM:
+    fa5a  31 18 76   LXI SP, USER_BC (7618)     ; Restore registers previously saved to 0x7614-0x761f 
+    fa5d  c1         POP BC
+    fa5e  d1         POP DE
+    fa5f  e1         POP HL
+    fa60  f1         POP PSW
+
+    fa61  f9         SPHL                       ; Restore SP
+
+    fa62  2a 16 76   LHLD USER_HL (7616)        ; Restore HL
+
+    fa65  c3 26 76   JMP USER_PRG_JMP (7626)    ; Jump to the user program (0x7626 contains JMP instruction
+                                                ; opcode, 0x7627 contains the command argument with the user
+                                                ; program address)
+
+; Command R - read external ROM
+;
+; Import specified data range from external ROM to the main RAM.
+;
+; It is supposed that the ROM is connected via a i8255 controller, where ROM address lines are
+; connected to ports B (low byte) and C (high byte), while data is read over port A.
+;
+; Arguments:
+; - ROM start address (HL)
+; - ROM end address (DE)
+; - Target (RAM) start address (BC)
+COMMAND_R:
+    fa68  3e 90      MVI A, 90                  ; Set the 8255 PPI as follows: Port A - Input (data), Ports B
+    fa6a  32 03 a0   STA a003                   ; and C - Output (address)
+
+COMMAND_R_LOOP:
+    fa6d  22 01 a0   SHLD a001                  ; Set the ROM address on ports B (low byte) and C (high byte)
+
+    fa70  3a 00 a0   LDA a000                   ; Read the ROM byte and store it at [BC]
+    fa73  02         STAX BC
+
+    fa74  03         INX BC                     ; Advance ROM and target address
+    fa75  cd 99 f9   CALL ADVANCE_HL (f999)
+
+    fa78  c3 6d fa   JMP COMMAND_R_LOOP (fa6d)  ; Repeat for the next byte
+
+
 ????:
 fa7b  2a 02 76   LHLD CURSOR_POS (7602)
 fa7e  c9         RET
+
 ????:
 fa7f  e5         PUSH HL
 fa80  2a 00 76   LHLD CURSOR_ADDR (7600)
@@ -378,24 +577,27 @@ fa8d  7b         MOV A, E
 fa8e  32 2f 76   STA 762f
 ????:
 fa91  cd b6 fa   CALL fab6
-fa94  cd 78 fb   CALL fb78
+fa94  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
 fa97  eb         XCHG
-fa98  cd 78 fb   CALL fb78
+fa98  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
 fa9b  eb         XCHG
 fa9c  c5         PUSH BC
 fa9d  cd 16 fb   CALL fb16
 faa0  60         MOV H, B
 faa1  69         MOV L, C
-faa2  cd 78 fb   CALL fb78
+faa2  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
 faa5  d1         POP DE
 faa6  cd 90 f9   CALL COMPARE_DE_HL (f990)
 faa9  c8         RZ
 faaa  eb         XCHG
-faab  cd 78 fb   CALL fb78
-????:
-faae  3e 3f      MVI A, 3f
-fab0  cd b9 fc   CALL PUT_CHAR_A (fcb9)
-fab3  c3 6c f8   JMP f86c
+faab  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
+
+INPUT_ERROR:
+    faae  3e 3f      MVI A, 3f                  ; Print '?' char
+    fab0  cd b9 fc   CALL PUT_CHAR_A (fcb9)
+
+    fab3  c3 6c f8   JMP MAIN_LOOP (f86c)       ; Restart the main loop
+
 ????:
 fab6  3e ff      MVI A, ff
 fab8  cd ff fa   CALL faff
@@ -506,14 +708,14 @@ fb32  32 30 76   STA 7630
 fb35  e5         PUSH HL
 fb36  cd 16 fb   CALL fb16
 fb39  e1         POP HL
-fb3a  cd 78 fb   CALL fb78
+fb3a  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
 fb3d  eb         XCHG
-fb3e  cd 78 fb   CALL fb78
+fb3e  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
 fb41  eb         XCHG
 fb42  e5         PUSH HL
 fb43  60         MOV H, B
 fb44  69         MOV L, C
-fb45  cd 78 fb   CALL fb78
+fb45  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
 fb48  e1         POP HL
 ????:
 fb49  c5         PUSH BC
@@ -538,15 +740,23 @@ fb6e  cd 46 fc   CALL fc46
 fb71  e1         POP HL
 fb72  cd 90 fb   CALL fb90
 fb75  c3 ce fa   JMP INIT_VIDEO (face)
-????:
-fb78  c5         PUSH BC
-fb79  cd b0 f9   CALL f9b0
-fb7c  7c         MOV A, H
-fb7d  cd a5 fc   CALL fca5
-fb80  7d         MOV A, L
-fb81  cd ba f9   CALL f9ba
-fb84  c1         POP BC
-fb85  c9         RET
+
+; Prints an address as a 4 byte hex value on a new line.
+; Parameters: HL - address to print
+PRINT_HEX_ADDR:
+    fb78  c5         PUSH BC
+    fb79  cd b0 f9   CALL PRINT_NEW_LINE (f9b0)
+
+    fb7c  7c         MOV A, H
+    fb7d  cd a5 fc   CALL PRINT_HEX_BYTE (fca5)
+
+    fb80  7d         MOV A, L
+    fb81  cd ba f9   CALL PRINT_HEX_BYTE_SPACE (f9ba)
+
+    fb84  c1         POP BC
+    fb85  c9         RET
+
+
 ????:
 fb86  4e         MOV C, M
 fb87  cd 46 fc   CALL fc46
@@ -658,7 +868,7 @@ fc37  f9         SPHL
 fc38  cd ce fa   CALL INIT_VIDEO (face)
 fc3b  7a         MOV A, D
 fc3c  b7         ORA A
-fc3d  f2 ae fa   JP faae
+fc3d  f2 ae fa   JP INPUT_ERROR (faae)
 fc40  cd a4 f9   CALL f9a4
 fc43  c3 9c fb   JMP fb9c
 ????:
@@ -721,7 +931,8 @@ fca1  d1         POP DE
 fca2  c1         POP BC
 fca3  e1         POP HL
 fca4  c9         RET
-????:
+
+PRINT_HEX_BYTE:
 fca5  f5         PUSH PSW
 fca6  0f         RRC
 fca7  0f         RRC
@@ -1445,10 +1656,10 @@ KBD_SCAN_EXIT_2:
 
 
 ????:
-ff52  2a 31 76   LHLD 7631
+ff52  2a 31 76   LHLD MEMORY_TOP (7631)
 ff55  c9         RET
 ????:
-ff56  22 31 76   SHLD 7631
+ff56  22 31 76   SHLD MEMORY_TOP (7631)
 ff59  c9         RET
 
 HELLO_STR:
@@ -1456,71 +1667,26 @@ HELLO_STR:
     ff62  36 72 6b 00                   db "6РК", 0x00
 
 
-????:
-ff66  0d         DCR C
-ff67  0a         LDAX BC
-ff68  2d         DCR L
-ff69  2d         DCR L
-ff6a  3e 00      MVI A, 00
-????:
-ff6c  0d         DCR C
-ff6d  0a         LDAX BC
-ff6e  18         db 18
-ff6f  18         db 18
-ff70  18         db 18
-ff71  18         db 18
-ff72  00         NOP
-????:
-ff73  0d         DCR C
-ff74  0a         LDAX BC
-ff75  20         db 20
-ff76  50         MOV D, B
-ff77  43         MOV B, E
-ff78  2d         DCR L
-ff79  0d         DCR C
-ff7a  0a         LDAX BC
-ff7b  20         db 20
-ff7c  48         MOV C, B
-ff7d  4c         MOV C, H
-ff7e  2d         DCR L
-ff7f  0d         DCR C
-ff80  0a         LDAX BC
-ff81  20         db 20
-ff82  42         MOV B, D
-ff83  43         MOV B, E
-ff84  2d         DCR L
-ff85  0d         DCR C
-ff86  0a         LDAX BC
-ff87  20         db 20
-ff88  44         MOV B, H
-ff89  45         MOV B, L
-ff8a  2d         DCR L
-ff8b  0d         DCR C
-ff8c  0a         LDAX BC
-ff8d  20         db 20
-ff8e  53         MOV D, E
-ff8f  50         MOV D, B
-ff90  2d         DCR L
-ff91  0d         DCR C
-ff92  0a         LDAX BC
-ff93  20         db 20
-ff94  41         MOV B, C
-ff95  46         MOV B, M
-ff96  2d         DCR L
-ff97  19         DAD DE
-ff98  19         DAD DE
-ff99  19         DAD DE
-ff9a  19         DAD DE
-ff9b  19         DAD DE
-ff9c  19         DAD DE
-ff9d  00         NOP
-????:
-ff9e  08         db 08
-ff9f  20         db 20
-ffa0  08         db 08
-ffa1  00         NOP
-????:
-ffa2  22 16 76   SHLD 7616
+PROMPT_STR:
+    ff66  0d 0a 2d 2d 3e 00             db 0x0d, 0x0a, "-->", 0x00
+
+TAB_STR:
+    ff6c  0d 0a 18 18 18 18 00          db 0x0d, 0x0a, 0x18, 0x18, 0x18, 0x18, 0x00
+
+REGISTERS_STR:
+    ff73  0d 0a 20 50 43 2d     db 0x0d, 0x0a, " PC-"
+    ff79  0d 0a 20 48 4c 2d     db 0x0d, 0x0a, " HL-"
+    ff7f  0d 0a 20 42 43 2d     db 0x0d, 0x0a, " BC-"
+    ff85  0d 0a 20 44 45 2d     db 0x0d, 0x0a, " DE-"
+    ff8b  0d 0a 20 53 50 2d     db 0x0d, 0x0a, " SP-"
+    ff91  0d 0a 20 41 46 2d     db 0x0d, 0x0a, " AF-"
+    ff97  19 19 19 19 19 19 00  db 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x00 ; 6 lines up
+
+BACKSPACE_STR:
+    ff9e  08 20 08 00          db 0x08, 0x20, 0x08, 0x00    ; Literally a back space: print a space on the left
+
+BREAKPOINT:
+ffa2  22 16 76   SHLD USER_HL (7616)
 ffa5  f5         PUSH PSW
 ffa6  e1         POP HL
 ffa7  22 1e 76   SHLD 761e
@@ -1536,42 +1702,56 @@ ffb7  d5         PUSH DE
 ffb8  c5         PUSH BC
 ffb9  2a 14 76   LHLD 7614
 ffbc  31 cf 76   LXI SP, STACK_TOP (76cf)
-ffbf  cd 78 fb   CALL fb78
+ffbf  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
 ffc2  eb         XCHG
 ffc3  2a 23 76   LHLD 7623
 ffc6  cd 90 f9   CALL COMPARE_DE_HL (f990)
-ffc9  c2 6c f8   JNZ f86c
-ffcc  3a 25 76   LDA 7625
+ffc9  c2 6c f8   JNZ MAIN_LOOP (f86c)
+ffcc  3a 25 76   LDA ORIGINAL_OPCODE (7625)
 ffcf  77         MOV M, A
-ffd0  c3 6c f8   JMP f86c
-????:
-ffd3  21 73 ff   LXI HL, ff73
-ffd6  cd 22 f9   CALL PRINT_STR (f922)
-ffd9  21 14 76   LXI HL, 7614
-ffdc  06 06      MVI B, 06
-????:
-ffde  5e         MOV E, M
-ffdf  23         INX HL
-ffe0  56         MOV D, M
-ffe1  c5         PUSH BC
-ffe2  e5         PUSH HL
-ffe3  eb         XCHG
-ffe4  cd 78 fb   CALL fb78
-ffe7  cd ee f8   CALL f8ee
-ffea  d2 f6 ff   JNC fff6
-ffed  cd 5a f9   CALL f95a
-fff0  d1         POP DE
-fff1  d5         PUSH DE
-fff2  eb         XCHG
-fff3  72         MOV M, D
-fff4  2b         DCX HL
-fff5  73         MOV M, E
-????:
-fff6  e1         POP HL
-fff7  c1         POP BC
-fff8  05         DCR B
-fff9  23         INX HL
-fffa  c2 de ff   JNZ ffde
-fffd  c9         RET
-fffe  ff         RST 7
-ffff  ff         RST 7
+ffd0  c3 6c f8   JMP MAIN_LOOP (f86c)
+
+
+; Command X - Dump CPU registers
+;
+; Print 6 register pairs stored at addresses 7614-761f (in the order of PC, HL, BC, DE, SP, AF).
+; Allow the User to enter a new register value.
+COMMAND_X:
+    ffd3  21 73 ff   LXI HL, REGISTERS_STR (ff73)   ; Print the registers string
+    ffd6  cd 22 f9   CALL PRINT_STR (f922)
+
+    ffd9  21 14 76   LXI HL, 7614               ; Print 6 registers starting the PC
+    ffdc  06 06      MVI B, 06
+
+COMMAND_X_LOOP:
+    ffde  5e         MOV E, M                   ; Load the next register value in DE
+    ffdf  23         INX HL
+    ffe0  56         MOV D, M
+
+    ffe1  c5         PUSH BC                    ; Print the register pair
+    ffe2  e5         PUSH HL
+    ffe3  eb         XCHG
+    ffe4  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
+
+    ffe7  cd ee f8   CALL INPUT_LINE (f8ee)     ; Enter the new register value
+    ffea  d2 f6 ff   JNC COMMAND_X_NEXT (fff6)  ; Advance to the next register if no value was entered
+
+    ffed  cd 5a f9   CALL PARSE_ADDR (f95a)     ; Parse the value
+
+    fff0  d1         POP DE                     ; Restore the register address in HL
+    fff1  d5         PUSH DE
+    fff2  eb         XCHG
+
+    fff3  72         MOV M, D                   ; Store the new value
+    fff4  2b         DCX HL
+    fff5  73         MOV M, E
+
+COMMAND_X_NEXT:
+    fff6  e1         POP HL                     ; Restore registers
+    fff7  c1         POP BC
+
+    fff8  05         DCR B                      ; Advance to the next register
+    fff9  23         INX HL                     ; Repeat until all 6 registers are printed
+    fffa  c2 de ff   JNZ COMMAND_X_LOOP (ffde)
+
+    fffd  c9         RET                        ; Exit
