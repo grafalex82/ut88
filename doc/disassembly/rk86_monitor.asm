@@ -10,6 +10,7 @@
 ; 0x7609    - Currently pressed key (used for autorepeat)
 ; 0x760a    - Autorepeat timer (cycles till the next trigger)
 ; 0x760b    - Autorepeat flag (value == 0x00 - first trigger of the autorepeat, other values - subsequent calls)
+; 0x760d    - SP storage when doing tape operations
 ; 0x7614    - User program PC
 ; 0x7616    - User program HL
 ; 0x7618    - User program BC
@@ -19,12 +20,14 @@
 ; 0x7623    - Breakpoint address
 ; 0x7625    - Original opcode at the breakpoint address
 ; 0x7626    - JMP opcode (used to jump to the user program)
-; 0x7627    - ????? arg1
-;
+; 0x7627    - 1st argument of the executed command
+; 0x7629    - 2nd argument of the executed command
+; 0x762b    - 3rd argument of the executed command
+; 0x762e    - tape polarity
 ; 0x762f    - tape input delay
 ; 0x7630    - tape output delay
 ; 0x7631    - upper limit of the memory available for user programs
-; 0x7633    - line buffer (???? bytes)
+; 0x7633    - line buffer (32 bytes)
 ; 0x7600 - 0x765f - monitor variables
 ; ??????
 ; 76cf - stack top
@@ -47,8 +50,8 @@ VECTORS:
     f827  c3 49 fb   JMP TAPE_OUT_PROGRAM (fb49)
     f82a  c3 16 fb   JMP CALC_CRC (fb16)
     f82d  c3 ce fa   JMP INIT_VIDEO (face)
-    f830  c3 52 ff   JMP ff52
-    f833  c3 56 ff   JMP ff56
+    f830  c3 52 ff   JMP GET_MEMORY_TOP (ff52)
+    f833  c3 56 ff   JMP SET_MEMORY_TOP (ff56)
 
 START:
     f836  3e 8a      MVI A, 8a                  ; Initialize keyboard port: Port A - output, Port B - input,
@@ -63,13 +66,13 @@ START:
     f847  0e 00      MVI C, 00
     f849  cd ed f9   CALL MEMSET (f9ed)
 
-    f84c  21 cf 76   LXI HL, STACK_TOP (76cf)   ; ???? User SP????
-    f84f  22 1c 76   SHLD 761c
+    f84c  21 cf 76   LXI HL, STACK_TOP (76cf)   ; Initialize User SP
+    f84f  22 1c 76   SHLD USER_SP (761c)
 
-    f852  21 5a ff   LXI HL, ff5a               ; Print the hello line
+    f852  21 5a ff   LXI HL, HELLO_STR (ff5a)   ; Print the hello line
     f855  cd 22 f9   CALL PRINT_STR (f922)
 
-    f858  cd ce fa   CALL INIT_VIDEO (face)     ; Reinit the video ???
+    f858  cd ce fa   CALL INIT_VIDEO (face)     ; Reinit the video
 
     f85b  21 ff 75   LXI HL, 75ff               ; Set the upper memory limit
     f85e  22 31 76   SHLD MEMORY_TOP (7631)
@@ -99,43 +102,60 @@ MAIN_LOOP:
     f883  21 33 76   LXI HL, LINE_BUF (7633)    ; Load the first char in the line buf
     f886  7e         MOV A, M
 
-    f887  fe 58      CPI A, 58                  ; Is this 'X' command
+    f887  fe 58      CPI A, 58                  ; Handle 'X' command
     f889  ca d3 ff   JZ COMMAND_X (ffd3)
 
-f88c  fe 55      CPI A, 55
-f88e  ca 00 f0   JZ f000
-f891  f5         PUSH PSW
-f892  cd 2c f9   CALL f92c
-f895  2a 2b 76   LHLD 762b
-f898  4d         MOV C, L
-f899  44         MOV B, H
-f89a  2a 29 76   LHLD 7629
-f89d  eb         XCHG
-f89e  2a 27 76   LHLD 7627
-f8a1  f1         POP PSW
-f8a2  fe 44      CPI A, 44
-f8a4  ca c5 f9   JZ COMMAND_D (f9c5)
-f8a7  fe 43      CPI A, 43
-f8a9  ca d7 f9   JZ COMMAND_C (f9d7)
-f8ac  fe 46      CPI A, 46
-f8ae  ca ed f9   JZ COMMAND_F (f9ed)
-f8b1  fe 53      CPI A, 53
-f8b3  ca f4 f9   JZ f9f4
-f8b6  fe 54      CPI A, 54
-f8b8  ca ff f9   JZ COMMAND_T (f9ff)
-f8bb  fe 4d      CPI A, 4d
-f8bd  ca 26 fa   JZ COMMAND_M (fa26)
-f8c0  fe 47      CPI A, 47
-f8c2  ca 3f fa   JZ COMMAND_G (fa3f)
-f8c5  fe 49      CPI A, 49
-f8c7  ca 86 fa   JZ COMMAND_I (fa86)
-f8ca  fe 4f      CPI A, 4f
-f8cc  ca 2d fb   JZ COMMAND_O (fb2d)
-f8cf  fe 4c      CPI A, 4c
-f8d1  ca 08 fa   JZ COMMAND_L (fa08)
-f8d4  fe 52      CPI A, 52
-f8d6  ca 68 fa   JZ COMMAND_R (fa68)
-f8d9  c3 00 f0   JMP f000
+    f88c  fe 55      CPI A, 55                  ; Is this 'U' command? Jump to extra ROM at 0xf000
+    f88e  ca 00 f0   JZ f000
+
+    f891  f5         PUSH PSW                   ; Other commands may require parsing arguments
+    f892  cd 2c f9   CALL PARSE_ARGUMENTS (f92c)
+
+    f895  2a 2b 76   LHLD ARG3 (762b)           ; Load 3rd argument into BC
+    f898  4d         MOV C, L
+    f899  44         MOV B, H
+
+    f89a  2a 29 76   LHLD ARG2 (7629)           ; Load 2nd argument into DE
+    f89d  eb         XCHG
+
+    f89e  2a 27 76   LHLD ARG1 (7627)           ; Load 1st argument into HL
+    f8a1  f1         POP PSW
+
+    f8a2  fe 44      CPI A, 44                  ; Handle command 'D' (dump memory)
+    f8a4  ca c5 f9   JZ COMMAND_D (f9c5)
+
+    f8a7  fe 43      CPI A, 43                  ; Handle command 'C' (compare memory)
+    f8a9  ca d7 f9   JZ COMMAND_C (f9d7)
+
+    f8ac  fe 46      CPI A, 46                  ; Handle command 'F' (fill memory)
+    f8ae  ca ed f9   JZ COMMAND_F (f9ed)
+
+    f8b1  fe 53      CPI A, 53                  ; Handle command 'S' (search in memory)
+    f8b3  ca f4 f9   JZ COMMAND_S (f9f4)
+
+    f8b6  fe 54      CPI A, 54                  ; Handle command 'T' (transfer/copy memory)
+    f8b8  ca ff f9   JZ COMMAND_T (f9ff)
+
+    f8bb  fe 4d      CPI A, 4d                  ; Handle command 'M' (edit memory)
+    f8bd  ca 26 fa   JZ COMMAND_M (fa26)
+
+    f8c0  fe 47      CPI A, 47                  ; Handle command 'G' (run program)
+    f8c2  ca 3f fa   JZ COMMAND_G (fa3f)
+
+    f8c5  fe 49      CPI A, 49                  ; Handle command 'I' (input program from the tape)
+    f8c7  ca 86 fa   JZ COMMAND_I (fa86)
+    
+    f8ca  fe 4f      CPI A, 4f                  ; Handle command 'O' (output program to the tape)
+    f8cc  ca 2d fb   JZ COMMAND_O (fb2d)
+
+    f8cf  fe 4c      CPI A, 4c                  ; Handle command 'L' (list memory as text)
+    f8d1  ca 08 fa   JZ COMMAND_L (fa08)
+
+    f8d4  fe 52      CPI A, 52                  ; Handle command 'R' (read external ROM)
+    f8d6  ca 68 fa   JZ COMMAND_R (fa68)
+
+    f8d9  c3 00 f0   JMP f000                   ; Unrecognized command, perhaps has a handler in the extra ROM
+
 
 ; Process the back space button, clear the symbol left to the cursor
 INPUT_LINE_BACKSPACE:
@@ -213,89 +233,162 @@ PRINT_STR:
     f928  23         INX HL                     ; Advance to the next char
     f929  c3 22 f9   JMP PRINT_STR (f922)
 
-????:
-f92c  21 27 76   LXI HL, 7627
-f92f  11 2d 76   LXI DE, HAS_MANY_ARGS (762d)
-f932  0e 00      MVI C, 00
-f934  cd ed f9   CALL MEMSET (f9ed)
-f937  11 34 76   LXI DE, 7634
-f93a  cd 5a f9   CALL PARSE_ADDR (f95a)
-f93d  22 27 76   SHLD 7627
-f940  22 29 76   SHLD 7629
-f943  d8         RC
-f944  3e ff      MVI A, ff
-f946  32 2d 76   STA HAS_MANY_ARGS (762d)
-f949  cd 5a f9   CALL PARSE_ADDR (f95a)
-f94c  22 29 76   SHLD 7629
-f94f  d8         RC
-f950  cd 5a f9   CALL PARSE_ADDR (f95a)
-f953  22 2b 76   SHLD 762b
-f956  d8         RC
-f957  c3 ae fa   JMP INPUT_ERROR (faae)
 
+; Parse command arguments
+;
+; This function parses up to 3 command arguments (4 digit hex addresses or values).
+;
+; Arguments are stored at the following addresses:
+; f7c7  - 1st argument
+; f7c9  - 2nd argument (if exists)
+; f7cb  - 3rd argument (if exists)
+; f7cd  - flag indicating there is more than 1 argument (0xff - 2 or more arguments, 0x00 - 1 arg only)
+; 
+; Unused arguments are zeroed
+PARSE_ARGUMENTS:
+    f92c  21 27 76   LXI HL, ARG1 (7627)            ; Zero all arguments
+    f92f  11 2d 76   LXI DE, ARG1 + 6 (762d)
+    f932  0e 00      MVI C, 00
+    f934  cd ed f9   CALL MEMSET (f9ed)
+
+    f937  11 34 76   LXI DE, LINE_BUF + 1(7634)     ; Start parsing from the first symbol after command char
+    f93a  cd 5a f9   CALL PARSE_ADDR (f95a)
+
+    f93d  22 27 76   SHLD ARG1 (7627)               ; Store parsed value as both arg1 and arg2
+    f940  22 29 76   SHLD ARG2 (7629)
+
+    f943  d8         RC                             ; Return if end of line reached
+
+    f944  3e ff      MVI A, ff                      ; Indicate that we have more than 1 parameters
+    f946  32 2d 76   STA HAS_MANY_ARGS (762d)
+
+    f949  cd 5a f9   CALL PARSE_ADDR (f95a)         ; Parse the 2nd arg and store the value in its variable
+    f94c  22 29 76   SHLD ARG2 (7629)
+
+    f94f  d8         RC                             ; Return if end of line reached
+
+    f950  cd 5a f9   CALL PARSE_ADDR (f95a)         ; Parse the 3rd arg and store the value in its variable
+    f953  22 2b 76   SHLD ARG3 (762b)
+
+    f956  d8         RC                             ; Return if end of line reached
+
+    f957  c3 ae fa   JMP INPUT_ERROR (faae)         ; If more than 3 arguments - it is a bad input
+
+
+; Parse 4-digit address from the provided string buffer
+; Stop parsing on ',' separator, or end of line (0x0d).
+; Spaces are ignored.
+;
+; Parameters:
+; DE - string buffer to parse
+;
+; Result:
+; HL - parsed address, in case of success
+; carry flag set if the end of line reached
 PARSE_ADDR:
-f95a  21 00 00   LXI HL, 0000
-????:
-f95d  1a         LDAX DE
-f95e  13         INX DE
-f95f  fe 0d      CPI A, 0d
-f961  ca 8e f9   JZ f98e
-f964  fe 2c      CPI A, 2c
-f966  c8         RZ
-f967  fe 20      CPI A, 20
-f969  ca 5d f9   JZ f95d
-f96c  d6 30      SUI A, 30
-f96e  fa ae fa   JM INPUT_ERROR (faae)
-f971  fe 0a      CPI A, 0a
-f973  fa 82 f9   JM f982
-f976  fe 11      CPI A, 11
-f978  fa ae fa   JM INPUT_ERROR (faae)
-f97b  fe 17      CPI A, 17
-f97d  f2 ae fa   JP INPUT_ERROR (faae)
-f980  d6 07      SUI A, 07
-????:
-f982  4f         MOV C, A
-f983  29         DAD HL
-f984  29         DAD HL
-f985  29         DAD HL
-f986  29         DAD HL
-f987  da ae fa   JC INPUT_ERROR (faae)
-f98a  09         DAD BC
-f98b  c3 5d f9   JMP f95d
-????:
-f98e  37         STC
-f98f  c9         RET
+    f95a  21 00 00   LXI HL, 0000               ; Clear the result accumulator
 
+PARSE_ADDR_LOOP:
+    f95d  1a         LDAX DE                    ; Load the next byte, increment the pointer
+    f95e  13         INX DE
+
+    f95f  fe 0d      CPI A, 0d                  ; Handle end of line
+    f961  ca 8e f9   JZ PARSE_ADDR_EOL (f98e)
+
+    f964  fe 2c      CPI A, 2c                  ; Stop on ','
+    f966  c8         RZ
+
+    f967  fe 20      CPI A, 20                  ; Skip spaces
+    f969  ca 5d f9   JZ PARSE_ADDR_LOOP (f95d)
+
+    f96c  d6 30      SUI A, 30                  ; Symbols below 0x30 are bad input
+    f96e  fa ae fa   JM INPUT_ERROR (faae)
+
+    f971  fe 0a      CPI A, 0a                  ; Match numbers (0x30-0x39)
+    f973  fa 82 f9   JM PARSE_ADDR_DIGIT (f982)
+
+    f976  fe 11      CPI A, 11                  ; Match hex letter ('A' - 'F')
+    f978  fa ae fa   JM INPUT_ERROR (faae)      ; Other character is a bad input
+
+    f97b  fe 17      CPI A, 17
+    f97d  f2 ae fa   JP INPUT_ERROR (faae)
+
+    f980  d6 07      SUI A, 07                  ; Convert letter to a number
+
+PARSE_ADDR_DIGIT:
+    f982  4f         MOV C, A                   ; Store parsed digit in C (assuming B==0x00, but why???)
+
+    f983  29         DAD HL                     ; Shift parsed address 4 bits left
+    f984  29         DAD HL
+    f985  29         DAD HL
+    f986  29         DAD HL
+
+    f987  da ae fa   JC INPUT_ERROR (faae)      ; If more than 4 digits in the address - it is a bad input
+
+    f98a  09         DAD BC                     ; Add parsed digit to the result in HL
+
+    f98b  c3 5d f9   JMP PARSE_ADDR_LOOP (f95d) ; Repeat until end of line, or ',' separator found
+
+PARSE_ADDR_EOL:
+    f98e  37         STC                        ; Raise C flag if end of line reached
+    f98f  c9         RET
+
+
+; Compare HL and DE
+; Set Z flag if equal
 COMPARE_DE_HL:
-f990  7c         MOV A, H
-f991  ba         CMP D
-f992  c0         RNZ
-f993  7d         MOV A, L
-f994  bb         CMP E
-f995  c9         RET
+    f990  7c         MOV A, H
+    f991  ba         CMP D
+    f992  c0         RNZ
+    f993  7d         MOV A, L
+    f994  bb         CMP E
+    f995  c9         RET
 
+
+; Advance HL register until it reaches DE
+;
+; The aim of this function is to organize loops in the Monitor in a common fashion.
+; Typically loop goes through some addresses pointed by HL, advanching the HL pointer
+; on each iteration. Execution finishes when HL reaches DE.
+;
+; The key feature of this function is that it exits from the caller function as well, when
+; HL reaches DE. Calling this function is the way to exit the loop.
+;
+; There are 2 versions of this function:
+; - ADVANCE_HL is a normal version, when HL is advanced until reached DE
+; - ADVANCE_HL_WITH_BREAK - similar to previous, but checks if the user pressed Ctrl-C. If
+;   this key combination is pressed, execution of the program stops, and the Monitor gets
+;   back to the main command loop. Unfortunately this mode is not really implemented in UT-88
+;   and this variant works same way as previous.
 ADVANCE_HL_WITH_BREAK:
-f996  cd a4 f9   CALL f9a4
+    f996  cd a4 f9   CALL CHECK_CTRL_C (f9a4)
 
+; Advance HL until it reaches DE
 ADVANCE_HL:
-f999  cd 90 f9   CALL COMPARE_DE_HL (f990)
-f99c  c2 a2 f9   JNZ f9a2
+    f999  cd 90 f9   CALL COMPARE_DE_HL (f990)
+    f99c  c2 a2 f9   JNZ ADVANCE_HL_1 (f9a2)
 
-????:
-f99f  33         INX SP
-f9a0  33         INX SP
-f9a1  c9         RET
+; Exit from caller function
+EXIT_FROM_CALLER:
+    f99f  33         INX SP                     ; Exit from the caller function as well
+    f9a0  33         INX SP
+    f9a1  c9         RET
 
-????:
-f9a2  23         INX HL
-f9a3  c9         RET
+ADVANCE_HL_1:
+    f9a2  23         INX HL                     ; Advance the HL pointer
+    f9a3  c9         RET
 
-????:
-f9a4  cd 72 fe   CALL KBD_SCAN (fe72)
-f9a7  fe 03      CPI A, 03
-f9a9  c0         RNZ
-f9aa  cd ce fa   CALL INIT_VIDEO (face)
-f9ad  c3 ae fa   JMP INPUT_ERROR (faae)
+
+; Check the keyboard for Ctrl-C key press (0x03 code). 
+CHECK_CTRL_C:
+    f9a4  cd 72 fe   CALL KBD_SCAN (fe72)       ; Get the pressed key (if any)
+
+    f9a7  fe 03      CPI A, 03                  ; Check that the key is a Ctrl-C combination
+    f9a9  c0         RNZ                        ; Return if not.
+
+    f9aa  cd ce fa   CALL INIT_VIDEO (face)     ; If Ctrl-C pressed - reinitialize the vide and restart the
+    f9ad  c3 ae fa   JMP INPUT_ERROR (faae)     ; main loop
+
 
 ; Print the new line. It also prints a tabulation (4 spaces) so that next information (typically
 ; an address or some value) is printed after
@@ -681,7 +774,7 @@ TAPE_IN_PROGRAM:
 ;   - DMA will transfer 0x924 bytes (which is 30 rows by 78 chars each)
 INIT_VIDEO:
     face  e5         PUSH HL                    ; Set HL to 8275 control register address
-    facf  21 01 c0   LXI HL, c001
+    facf  21 01 c0   LXI HL, VIDEO_CTRL (c001)
 
     fad2  36 00      MVI M, 00                  ; Send the i8275 reset command
 
@@ -702,7 +795,7 @@ INIT_VIDEO_WAIT_LOOP:
     fae2  e6 20      ANI A, 20                  ; (waiting until current frame is shown so that we can load the
     fae4  ca e1 fa   JZ INIT_VIDEO_WAIT_LOOP (fae1) ; new frame)
 
-    fae7  21 08 e0   LXI HL, e008               ; Init DMA controller, set autoload flag
+    fae7  21 08 e0   LXI HL, DMA_CTRL (e008)    ; Init DMA controller, set autoload flag
     faea  36 80      MVI M, 80
 
     faec  2e 04      MVI L, 04                  ; Set 0x76d0 as a video memory start (start address for DMA
@@ -771,7 +864,8 @@ CALC_CRC_LOOP:
     fb1c  f5         PUSH PSW
 
     fb1d  cd 90 f9   CALL COMPARE_DE_HL (f990)  ; Check if reached the end address
-    fb20  ca 9f f9   JZ f99f                    ; ????
+
+    fb20  ca 9f f9   JZ EXIT_FROM_CALLER (f99f) ; Exit not only from CRC calculation, but from caller as well
 
     fb23  f1         POP PSW                    ; Add the next byte to B
     fb24  78         MOV A, B
@@ -902,6 +996,7 @@ TAPE_OUT_WORD:
     fb94  4d         MOV C, L
     fb95  c3 46 fc   JMP TAPE_OUT_BYTE (fc46)
 
+
 ; Receive a byte from tape
 ;
 ; Parameters:
@@ -913,170 +1008,259 @@ TAPE_OUT_WORD:
 ;
 ; Returns received byte in A
 TAPE_IN_BYTE:
-fb98  e5         PUSH HL
-fb99  c5         PUSH BC
-fb9a  d5         PUSH DE
-fb9b  57         MOV D, A
-????:
-fb9c  3e 80      MVI A, 80
-fb9e  32 08 e0   STA e008
-fba1  21 00 00   LXI HL, 0000
-fba4  39         DAD SP
-fba5  31 00 00   LXI SP, 0000
-fba8  22 0d 76   SHLD 760d
-fbab  0e 00      MVI C, 00
-fbad  3a 02 80   LDA KBD_PORT_C (8002)
-fbb0  0f         RRC
-fbb1  0f         RRC
-fbb2  0f         RRC
-fbb3  0f         RRC
-fbb4  e6 01      ANI A, 01
-fbb6  5f         MOV E, A
-????:
-fbb7  f1         POP PSW
-fbb8  79         MOV A, C
-fbb9  e6 7f      ANI A, 7f
-fbbb  07         RLC
-fbbc  4f         MOV C, A
-fbbd  26 00      MVI H, 00
-????:
-fbbf  25         DCR H
-fbc0  ca 34 fc   JZ fc34
-fbc3  f1         POP PSW
-fbc4  3a 02 80   LDA KBD_PORT_C (8002)
-fbc7  0f         RRC
-fbc8  0f         RRC
-fbc9  0f         RRC
-fbca  0f         RRC
-fbcb  e6 01      ANI A, 01
-fbcd  bb         CMP E
-fbce  ca bf fb   JZ fbbf
-fbd1  b1         ORA C
-fbd2  4f         MOV C, A
-fbd3  15         DCR D
-fbd4  3a 2f 76   LDA TAPE_IN_DELAY (762f)
-fbd7  c2 dc fb   JNZ fbdc
-fbda  d6 12      SUI A, 12
-????:
-fbdc  47         MOV B, A
-????:
-fbdd  f1         POP PSW
-fbde  05         DCR B
-fbdf  c2 dd fb   JNZ fbdd
-fbe2  14         INR D
-fbe3  3a 02 80   LDA KBD_PORT_C (8002)
-fbe6  0f         RRC
-fbe7  0f         RRC
-fbe8  0f         RRC
-fbe9  0f         RRC
-fbea  e6 01      ANI A, 01
-fbec  5f         MOV E, A
-fbed  7a         MOV A, D
-fbee  b7         ORA A
-fbef  f2 0b fc   JP fc0b
-fbf2  79         MOV A, C
-fbf3  fe e6      CPI A, e6
-fbf5  c2 ff fb   JNZ fbff
-fbf8  af         XRA A
-fbf9  32 2e 76   STA 762e
-fbfc  c3 09 fc   JMP fc09
-????:
-fbff  fe 19      CPI A, 19
-fc01  c2 b7 fb   JNZ fbb7
-fc04  3e ff      MVI A, ff
-fc06  32 2e 76   STA 762e
-????:
-fc09  16 09      MVI D, 09
-????:
-fc0b  15         DCR D
-fc0c  c2 b7 fb   JNZ fbb7
-fc0f  21 04 e0   LXI HL, e004
-fc12  36 d0      MVI M, d0
-fc14  36 76      MVI M, 76
-fc16  23         INX HL
-fc17  36 23      MVI M, 23
-fc19  36 49      MVI M, 49
-fc1b  3e 27      MVI A, 27
-fc1d  32 01 c0   STA c001
-fc20  3e e0      MVI A, e0
-fc22  32 01 c0   STA c001
-fc25  2e 08      MVI L, 08
-fc27  36 a4      MVI M, a4
-fc29  2a 0d 76   LHLD 760d
-fc2c  f9         SPHL
-fc2d  3a 2e 76   LDA 762e
-fc30  a9         XRA C
-fc31  c3 a1 fc   JMP fca1
-????:
-fc34  2a 0d 76   LHLD 760d
-fc37  f9         SPHL
-fc38  cd ce fa   CALL INIT_VIDEO (face)
-fc3b  7a         MOV A, D
-fc3c  b7         ORA A
-fc3d  f2 ae fa   JP INPUT_ERROR (faae)
-fc40  cd a4 f9   CALL f9a4
-fc43  c3 9c fb   JMP fb9c
+    fb98  e5         PUSH HL
+    fb99  c5         PUSH BC
+    fb9a  d5         PUSH DE
+    fb9b  57         MOV D, A
 
+TAPE_IN_BYTE_1:
+    fb9c  3e 80      MVI A, 80                  ; Disable all DMA channels
+    fb9e  32 08 e0   STA DMA_CTRL (e008)
+
+    fba1  21 00 00   LXI HL, 0000               ; Save SP, and set SP to 0000
+    fba4  39         DAD SP
+    fba5  31 00 00   LXI SP, 0000
+    fba8  22 0d 76   SHLD SAVE_SP (760d)
+
+    fbab  0e 00      MVI C, 00                  ; Reset byte accumulator
+
+    fbad  3a 02 80   LDA KBD_PORT_C (8002)      ; Input the tape bit to E register
+    fbb0  0f         RRC
+    fbb1  0f         RRC
+    fbb2  0f         RRC
+    fbb3  0f         RRC
+    fbb4  e6 01      ANI A, 01
+    fbb6  5f         MOV E, A
+
+TAPE_IN_BYTE_LOOP:
+    fbb7  f1         POP PSW                    
+
+    fbb8  79         MOV A, C                   ; Shift the received byte left, reserving rightmost bit
+    fbb9  e6 7f      ANI A, 7f                  ; for the next input bit
+    fbbb  07         RLC
+    fbbc  4f         MOV C, A
+
+    fbbd  26 00      MVI H, 00
+
+TAPE_IN_BYTE_WAIT:
+    fbbf  25         DCR H                      ; If phase does not change for too long - signal an error
+    fbc0  ca 34 fc   JZ TAPE_IN_BYTE_ERROR (fc34)
+
+    fbc3  f1         POP PSW
+
+    fbc4  3a 02 80   LDA KBD_PORT_C (8002)      ; Input the bit 
+    fbc7  0f         RRC
+    fbc8  0f         RRC
+    fbc9  0f         RRC
+    fbca  0f         RRC
+
+    fbcb  e6 01      ANI A, 01                  ; Repeat reading the bit until the next phase is detected
+    fbcd  bb         CMP E
+    fbce  ca bf fb   JZ TAPE_IN_BYTE_WAIT (fbbf)
+
+    fbd1  b1         ORA C                      ; Store received bit in the received byte register (C)
+    fbd2  4f         MOV C, A
+
+    fbd3  15         DCR D
+    fbd4  3a 2f 76   LDA TAPE_IN_DELAY (762f)
+    fbd7  c2 dc fb   JNZ TAPE_IN_BYTE_DELAY (fbdc)
+
+    fbda  d6 12      SUI A, 12                  ; Compensate the delay between bytes
+
+TAPE_IN_BYTE_DELAY:
+    fbdc  47         MOV B, A
+
+TAPE_IN_BYTE_DELAY_LOOP:
+    fbdd  f1         POP PSW
+    fbde  05         DCR B
+    fbdf  c2 dd fb   JNZ TAPE_IN_BYTE_DELAY_LOOP (fbdd)
+
+    fbe2  14         INR D                      ; Start receiving the next bit
+    fbe3  3a 02 80   LDA KBD_PORT_C (8002)
+    fbe6  0f         RRC
+    fbe7  0f         RRC
+    fbe8  0f         RRC
+    fbe9  0f         RRC
+    fbea  e6 01      ANI A, 01
+    fbec  5f         MOV E, A
+
+    fbed  7a         MOV A, D                   ; Check if synchronization has already happened
+    fbee  b7         ORA A
+    fbef  f2 0b fc   JP TAPE_IN_BYTE_4 (fc0b)
+
+    fbf2  79         MOV A, C                   ; Check if the received byte is a synchronization byte
+    fbf3  fe e6      CPI A, e6
+    fbf5  c2 ff fb   JNZ TAPE_IN_BYTE_2 (fbff)
+
+    fbf8  af         XRA A                      ; Save the input polarity
+    fbf9  32 2e 76   STA TAPE_POLARITY (762e)
+
+    fbfc  c3 09 fc   JMP TAPE_IN_BYTE_3 (fc09)
+
+TAPE_IN_BYTE_2:
+    fbff  fe 19      CPI A, 19                  ; Check if we received an inverted sync byte (~0x19 = 0xe6)
+    fc01  c2 b7 fb   JNZ TAPE_IN_BYTE_LOOP (fbb7)   ; Wait until a sync byte is received
+
+    fc04  3e ff      MVI A, ff                  ; Save the input polarity
+    fc06  32 2e 76   STA TAPE_POLARITY (762e)
+
+TAPE_IN_BYTE_3:
+    fc09  16 09      MVI D, 09                  ; Now we can receive 8 data bits
+
+TAPE_IN_BYTE_4:
+    fc0b  15         DCR D                      ; Repeat for all 8 bits
+    fc0c  c2 b7 fb   JNZ TAPE_IN_BYTE_LOOP (fbb7)
+
+    fc0f  21 04 e0   LXI HL, DMA_CH2_ADDR (e004); Restore DMA start address as 0x76d0
+    fc12  36 d0      MVI M, d0
+    fc14  36 76      MVI M, 76
+
+    fc16  23         INX HL                     ; Restore Video RAM size (78*30), RAM read mode
+    fc17  36 23      MVI M, 23
+    fc19  36 49      MVI M, 49
+
+    fc1b  3e 27      MVI A, 27                  ; Send Display Start command to the video controller
+    fc1d  32 01 c0   STA VIDEO_CTRL (c001)
+
+    fc20  3e e0      MVI A, e0                  ; Reset Video Controller counters
+    fc22  32 01 c0   STA VIDEO_CTRL (c001)
+
+    fc25  2e 08      MVI L, 08                  ; Enable DMA transfter
+    fc27  36 a4      MVI M, a4
+
+    fc29  2a 0d 76   LHLD SAVE_SP (760d)        ; Restore SP
+    fc2c  f9         SPHL
+
+    fc2d  3a 2e 76   LDA TAPE_POLARITY (762e)   ; Apply polarity of the received byte
+    fc30  a9         XRA C
+
+    fc31  c3 a1 fc   JMP TAPE_IN_OUT_EXIT (fca1); We are done
+
+TAPE_IN_BYTE_ERROR:
+    fc34  2a 0d 76   LHLD SAVE_SP (760d)        ; Restore SP
+    fc37  f9         SPHL
+
+    fc38  cd ce fa   CALL INIT_VIDEO (face)     ; Reinitialize video controller
+
+    fc3b  7a         MOV A, D                   ; Report an error if syncronization did not happen
+    fc3c  b7         ORA A
+    fc3d  f2 ae fa   JP INPUT_ERROR (faae)
+
+    fc40  cd a4 f9   CALL CHECK_CTRL_C (f9a4)   ; Exit the program import on Ctrl-C
+
+    fc43  c3 9c fb   JMP TAPE_IN_BYTE_1 (fb9c)  ; something went wrong, try receiving another byte
+
+
+; Output a byte to the tape (byte in С)
+;
+; This function outputs a byte to the tape, according to 2-phase coding algorithm.
+; 
+; Data storage format is based on the 2-phase coding algorithm. Each bit is 
+; coded as 2 periods with opposite values. The actual bit value is determined
+; at the transition between the periods:
+; - transition from 1 to 0 represents value 0
+; - transition from 0 to 1 represents value 1
+;    
+; Bytes are written MSB first. Typical recording speed is 1500 bits per second, but
+; adjusted with the output delay constant
+;
+;                       Example of 0xA5 byte transfer
+;      D7=1 |  D6=0 |  D5=1 |  D4=0 |  D3=0 |  D2=1 |  D1=0 |  D0=1 |
+;       +---|---+   |   +---|---+   |---+   |   +---|---+   |   +---|
+;       |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
+;    ---+   |   +---|---+   |   +---|   +---|---+   |   +---|---+   |
+;           |<--T-->|       |       |       |       |       |       |
+; 
+; Note: this function uses a non-typical way for making delays between bits. Instead of
+; using NOPs, it sets stack pointer to 0000, and does random memory stack reads. Unlike
+; NOP operation, which is just 4 cycles, POP operation takes 10 cycles. This is not a problem
+; for the real hardware, but emulator treats stack and memory operations differently, and
+; therefore must take this into account. Overall this looks like a strange solution - setting
+; SP, and restoring it back take precious bytes, while extra NOPs could be just accounted
+; in the delay constant.
 TAPE_OUT_BYTE:
-fc46  e5         PUSH HL
-fc47  c5         PUSH BC
-fc48  d5         PUSH DE
-fc49  f5         PUSH PSW
-fc4a  3e 80      MVI A, 80
-fc4c  32 08 e0   STA e008
-fc4f  21 00 00   LXI HL, 0000
-fc52  39         DAD SP
-fc53  31 00 00   LXI SP, 0000
-fc56  16 08      MVI D, 08
-????:
-fc58  f1         POP PSW
-fc59  79         MOV A, C
-fc5a  07         RLC
-fc5b  4f         MOV C, A
-fc5c  3e 01      MVI A, 01
-fc5e  a9         XRA C
-fc5f  32 02 80   STA KBD_PORT_C (8002)
-fc62  3a 30 76   LDA TAPE_OUT_DELAY (7630)
-fc65  47         MOV B, A
-????:
-fc66  f1         POP PSW
-fc67  05         DCR B
-fc68  c2 66 fc   JNZ fc66
-fc6b  3e 00      MVI A, 00
-fc6d  a9         XRA C
-fc6e  32 02 80   STA KBD_PORT_C (8002)
-fc71  15         DCR D
-fc72  3a 30 76   LDA TAPE_OUT_DELAY (7630)
-fc75  c2 7a fc   JNZ fc7a
-fc78  d6 0e      SUI A, 0e
-????:
-fc7a  47         MOV B, A
-????:
-fc7b  f1         POP PSW
-fc7c  05         DCR B
-fc7d  c2 7b fc   JNZ fc7b
-fc80  14         INR D
-fc81  15         DCR D
-fc82  c2 58 fc   JNZ fc58
-fc85  f9         SPHL
-fc86  21 04 e0   LXI HL, e004
-fc89  36 d0      MVI M, d0
-fc8b  36 76      MVI M, 76
-fc8d  23         INX HL
-fc8e  36 23      MVI M, 23
-fc90  36 49      MVI M, 49
-fc92  3e 27      MVI A, 27
-fc94  32 01 c0   STA c001
-fc97  3e e0      MVI A, e0
-fc99  32 01 c0   STA c001
-fc9c  2e 08      MVI L, 08
-fc9e  36 a4      MVI M, a4
-fca0  f1         POP PSW
-????:
-fca1  d1         POP DE
-fca2  c1         POP BC
-fca3  e1         POP HL
-fca4  c9         RET
+    fc46  e5         PUSH HL                    ; Save all registers
+    fc47  c5         PUSH BC
+    fc48  d5         PUSH DE
+    fc49  f5         PUSH PSW
+
+    fc4a  3e 80      MVI A, 80                  ; Stop video RAM DMA transfter
+    fc4c  32 08 e0   STA DMA_CTRL (e008)
+
+    fc4f  21 00 00   LXI HL, 0000               ; Save current SP at HL
+    fc52  39         DAD SP
+    fc53  31 00 00   LXI SP, 0000
+
+    fc56  16 08      MVI D, 08                  ; Will be sending 8 bits to output
+
+TAPE_OUT_BYTE_LOOP:
+    fc58  f1         POP PSW
+
+    fc59  79         MOV A, C                   ; Roll to the next bit
+    fc5a  07         RLC
+    fc5b  4f         MOV C, A
+
+    fc5c  3e 01      MVI A, 01                  ; Output negative pulse
+    fc5e  a9         XRA C
+    fc5f  32 02 80   STA KBD_PORT_C (8002)
+
+    fc62  3a 30 76   LDA TAPE_OUT_DELAY (7630)  ; Do a short delay (specified in output tape delay constant)
+    fc65  47         MOV B, A
+
+TAPE_OUT_BYTE_DELAY_L1:
+    fc66  f1         POP PSW
+    fc67  05         DCR B
+    fc68  c2 66 fc   JNZ TAPE_OUT_BYTE_DELAY_L1 (fc66)
+
+    fc6b  3e 00      MVI A, 00                  ; Output positive pulse
+    fc6d  a9         XRA C
+    fc6e  32 02 80   STA KBD_PORT_C (8002)
+
+    fc71  15         DCR D                      ; Prepare for delay after positive pulse
+    fc72  3a 30 76   LDA TAPE_OUT_DELAY (7630)
+    fc75  c2 7a fc   JNZ fc7a
+
+    fc78  d6 0e      SUI A, 0e                  ; Do a shorter delay between bytes
+
+TAPE_OUT_BYTE_1:
+    fc7a  47         MOV B, A                   ; Do the delay
+
+TAPE_OUT_BYTE_DELAY_L2:
+    fc7b  f1         POP PSW
+    fc7c  05         DCR B
+    fc7d  c2 7b fc   JNZ TAPE_OUT_BYTE_DELAY_L2 (fc7b)
+
+    fc80  14         INR D                      ; Repeat for the next bit
+    fc81  15         DCR D
+    fc82  c2 58 fc   JNZ TAPE_OUT_BYTE_LOOP (fc58)
+
+    fc85  f9         SPHL                       ; Restore original SP
+    fc86  21 04 e0   LXI HL, DMA_CH2_ADDR (e004)
+
+    fc89  36 d0      MVI M, d0                  ; Restore DMA start address as 0x76d0 
+    fc8b  36 76      MVI M, 76
+    fc8d  23         INX HL
+
+    fc8e  36 23      MVI M, 23                  ; Restore Video RAM size (78*30), RAM read mode
+    fc90  36 49      MVI M, 49
+
+    fc92  3e 27      MVI A, 27                  ; Send Display Start command to the video controller
+    fc94  32 01 c0   STA VIDEO_CTRL (c001)
+
+    fc97  3e e0      MVI A, e0                  ; Reset Video controller counters
+    fc99  32 01 c0   STA VIDEO_CTRL (c001)
+
+    fc9c  2e 08      MVI L, 08                  ; Enable DMA Channel 2 for video RAM transfer
+    fc9e  36 a4      MVI M, a4
+    fca0  f1         POP PSW
+
+TAPE_IN_OUT_EXIT:
+    fca1  d1         POP DE                     ; Restore all registers and exit
+    fca2  c1         POP BC
+    fca3  e1         POP HL
+    fca4  c9         RET
+
+
 
 ; Print a byte in A as 2-digit hex value
 PRINT_HEX_BYTE:
@@ -1104,6 +1288,8 @@ PRINT_HEX_DIGIT_1:
 ; Print a char in A register
 PUT_CHAR_A:
     fcb9  4f         MOV C, A
+
+
 
 ; Print a char
 ; C - char to print
@@ -1327,7 +1513,7 @@ PUT_CHAR_EXIT:
     fd89  22 02 76   SHLD CURSOR_POS (7602)
 
     fd8c  3e 80      MVI A, 80                  ; Set the new cursor position in i8275 cursor register
-    fd8e  32 01 c0   STA c001
+    fd8e  32 01 c0   STA VIDEO_CTRL (c001)
     fd91  7d         MOV A, L                   ; X
     fd92  32 00 c0   STA c000
     fd95  7c         MOV A, H                   ; Y
@@ -1807,12 +1993,13 @@ KBD_SCAN_EXIT_2:
     ff51  c9         RET
 
 
-????:
-ff52  2a 31 76   LHLD MEMORY_TOP (7631)
-ff55  c9         RET
-????:
-ff56  22 31 76   SHLD MEMORY_TOP (7631)
-ff59  c9         RET
+GET_MEMORY_TOP:
+    ff52  2a 31 76   LHLD MEMORY_TOP (7631)
+    ff55  c9         RET
+
+SET_MEMORY_TOP:
+    ff56  22 31 76   SHLD MEMORY_TOP (7631)
+    ff59  c9         RET
 
 HELLO_STR:
     ff5a  1f 72 61 64 69 6f 2d 38       db 0x1f, "РАДИО-8"
@@ -1837,31 +2024,48 @@ REGISTERS_STR:
 BACKSPACE_STR:
     ff9e  08 20 08 00          db 0x08, 0x20, 0x08, 0x00    ; Literally a back space: print a space on the left
 
+
+; Breakpoint handler
+;
+; The handler is executed as a result of G command, that replaces an instruction at desired 
+; address to RST 6, which eventually jumps here. The handler stores user program registers
+; to f7b4-f7bf memory cells, so that they may be reviewed/changed with X command. Finally,
+; the breakpoint restores original instruction byte under the breakpoint address, and jumps to
+; the command main loop.
+;
+; See Command G description for more information
 BREAKPOINT:
-ffa2  22 16 76   SHLD USER_HL (7616)
-ffa5  f5         PUSH PSW
-ffa6  e1         POP HL
-ffa7  22 1e 76   SHLD 761e
-ffaa  e1         POP HL
-ffab  2b         DCX HL
-ffac  22 14 76   SHLD 7614
-ffaf  21 00 00   LXI HL, 0000
-????:
-ffb2  39         DAD SP
-ffb3  31 1e 76   LXI SP, 761e
-ffb6  e5         PUSH HL
-ffb7  d5         PUSH DE
-ffb8  c5         PUSH BC
-ffb9  2a 14 76   LHLD 7614
-ffbc  31 cf 76   LXI SP, STACK_TOP (76cf)
-ffbf  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
-ffc2  eb         XCHG
-ffc3  2a 23 76   LHLD 7623
-ffc6  cd 90 f9   CALL COMPARE_DE_HL (f990)
-ffc9  c2 6c f8   JNZ MAIN_LOOP (f86c)
-ffcc  3a 25 76   LDA ORIGINAL_OPCODE (7625)
-ffcf  77         MOV M, A
-ffd0  c3 6c f8   JMP MAIN_LOOP (f86c)
+    ffa2  22 16 76   SHLD USER_HL (7616)        ; Store HL value
+
+    ffa5  f5         PUSH PSW                   ; Store AF value
+    ffa6  e1         POP HL
+    ffa7  22 1e 76   SHLD USER_AF (761e)
+
+    ffaa  e1         POP HL                     ; Store return address-1 (address of the breakpoint instruction)
+    ffab  2b         DCX HL
+    ffac  22 14 76   SHLD USER_PC (7614)
+
+    ffaf  21 00 00   LXI HL, 0000               ; Move SP to HL
+    ffb2  39         DAD SP
+
+    ffb3  31 1e 76   LXI SP, USER_AF (761e)     ; Store BC, DE, and previous SP
+    ffb6  e5         PUSH HL
+    ffb7  d5         PUSH DE
+    ffb8  c5         PUSH BC
+
+    ffb9  2a 14 76   LHLD USER_PC (7614)        ; Set stack to monitor area, print previous PC
+    ffbc  31 cf 76   LXI SP, STACK_TOP (76cf)
+    ffbf  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
+
+    ffc2  eb         XCHG                       ; Check if the PC address really matches breakpoint
+    ffc3  2a 23 76   LHLD BREAKPOINT_ADDR (7623)
+    ffc6  cd 90 f9   CALL COMPARE_DE_HL (f990)
+    ffc9  c2 6c f8   JNZ MAIN_LOOP (f86c)
+
+    ffcc  3a 25 76   LDA ORIGINAL_OPCODE (7625) ; Restore the original instruction under the breakpoint
+    ffcf  77         MOV M, A
+
+    ffd0  c3 6c f8   JMP MAIN_LOOP (f86c)       ; Jump to the main command loop
 
 
 ; Command X - Dump CPU registers
@@ -1872,7 +2076,7 @@ COMMAND_X:
     ffd3  21 73 ff   LXI HL, REGISTERS_STR (ff73)   ; Print the registers string
     ffd6  cd 22 f9   CALL PRINT_STR (f922)
 
-    ffd9  21 14 76   LXI HL, 7614               ; Print 6 registers starting the PC
+    ffd9  21 14 76   LXI HL, USER_PC (7614)     ; Print 6 registers starting the PC
     ffdc  06 06      MVI B, 06
 
 COMMAND_X_LOOP:
