@@ -17,7 +17,7 @@
 ; - f809    - Put a char to the display at cursor location (C - char to print)
 ; - f80c    - Output a byte to the tape (C - byte to output)
 ; - f80f    - Put a char to the display at cursor location (C - char to print)
-; - f812    - Check if any button is pressed on the keyboard (returns A=00 if no buttons pressed, 0xff otherwise)
+; - f812    - Check if any button is pressed on the keyboard (A=00 if no buttons pressed, 0xff otherwise)
 ; - f815    - Print a byte in a 2-digit hexadecimal form (A - byte to print)
 ; - f818    - print a NULL terminated string at cursor position (HL - pointer to the string)
 ; - f81b    - Scan a keyboard, return when a stable scan code is read (returns scan code in A)
@@ -1582,7 +1582,7 @@ MOVE_CUR_DIRECT_B2:
 MOVE_CUR_DIRECT_L2:
     fd46  0d         DCR C                      ; Move cursor down by C positions
 
-    fd47  3e 04      MVI A, 04
+    fd47  3e 04      MVI A, 04                  ; Prepare for the 4-th char in sequence
     fd49  fa 70 fc   JN MOVE_CUR_DIRECT_STORE (fc70)
 
     fd4c  cd f3 fc   CALL MOVE_CUR_DOWN (fcf3)
