@@ -21,7 +21,8 @@
 ; 0x7626    - JMP opcode (used to jump to the user program)
 ; 0x7627    - ????? arg1
 ;
-; 0x762f    - ???? tape delays
+; 0x762f    - tape input delay
+; 0x7630    - tape output delay
 ; 0x7631    - upper limit of the memory available for user programs
 ; 0x7633    - line buffer (???? bytes)
 ; 0x7600 - 0x765f - monitor variables
@@ -32,19 +33,19 @@
 VECTORS:
     f800  c3 36 f8   JMP START (f836)
     f803  c3 63 fe   JMP KBD_INPUT (fe63)
-    f806  c3 98 fb   JMP fb98
+    f806  c3 98 fb   JMP TAPE_IN_BYTE (fb98)
     f809  c3 ba fc   JMP PUT_CHAR (fcba)
-    f80c  c3 46 fc   JMP fc46
+    f80c  c3 46 fc   JMP TAPE_OUT_BYTE (fc46)
     f80f  c3 ba fc   JMP PUT_CHAR (fcba)
     f812  c3 01 fe   JMP IS_BUTTON_PRESSED (fe01)
     f815  c3 a5 fc   JMP PRINT_HEX_BYTE (fca5)
     f818  c3 22 f9   JMP PRINT_STR (f922)
     f81b  c3 72 fe   JMP KBD_SCAN (fe72)
-    f81e  c3 7b fa   JMP fa7b
-    f821  c3 7f fa   JMP fa7f
-    f824  c3 b6 fa   JMP fab6
-    f827  c3 49 fb   JMP fb49
-    f82a  c3 16 fb   JMP fb16
+    f81e  c3 7b fa   JMP GET_CURSOR_POS (fa7b)
+    f821  c3 7f fa   JMP GET_CHAR_AT_CURS (fa7f)
+    f824  c3 b6 fa   JMP TAPE_IN_PROGRAM (fab6)
+    f827  c3 49 fb   JMP TAPE_OUT_PROGRAM (fb49)
+    f82a  c3 16 fb   JMP CALC_CRC (fb16)
     f82d  c3 ce fa   JMP INIT_VIDEO (face)
     f830  c3 52 ff   JMP ff52
     f833  c3 56 ff   JMP ff56
@@ -74,7 +75,7 @@ START:
     f85e  22 31 76   SHLD MEMORY_TOP (7631)
 
     f861  21 2a 1d   LXI HL, 1d2a               ; Set default values for tape delays
-    f864  22 2f 76   SHLD 762f
+    f864  22 2f 76   SHLD TAPE_IN_DELAY (762f)
 
     f867  3e c3      MVI A, c3                  ; JMP opcode, used to jump to the user program
     f869  32 26 76   STA 7626
@@ -127,9 +128,9 @@ f8bd  ca 26 fa   JZ COMMAND_M (fa26)
 f8c0  fe 47      CPI A, 47
 f8c2  ca 3f fa   JZ COMMAND_G (fa3f)
 f8c5  fe 49      CPI A, 49
-f8c7  ca 86 fa   JZ fa86
+f8c7  ca 86 fa   JZ COMMAND_I (fa86)
 f8ca  fe 4f      CPI A, 4f
-f8cc  ca 2d fb   JZ fb2d
+f8cc  ca 2d fb   JZ COMMAND_O (fb2d)
 f8cf  fe 4c      CPI A, 4c
 f8d1  ca 08 fa   JZ COMMAND_L (fa08)
 f8d4  fe 52      CPI A, 52
@@ -214,7 +215,7 @@ PRINT_STR:
 
 ????:
 f92c  21 27 76   LXI HL, 7627
-f92f  11 2d 76   LXI DE, 762d
+f92f  11 2d 76   LXI DE, HAS_MANY_ARGS (762d)
 f932  0e 00      MVI C, 00
 f934  cd ed f9   CALL MEMSET (f9ed)
 f937  11 34 76   LXI DE, 7634
@@ -223,7 +224,7 @@ f93d  22 27 76   SHLD 7627
 f940  22 29 76   SHLD 7629
 f943  d8         RC
 f944  3e ff      MVI A, ff
-f946  32 2d 76   STA 762d
+f946  32 2d 76   STA HAS_MANY_ARGS (762d)
 f949  cd 5a f9   CALL PARSE_ADDR (f95a)
 f94c  22 29 76   SHLD 7629
 f94f  d8         RC
@@ -559,60 +560,109 @@ COMMAND_R_LOOP:
     fa78  c3 6d fa   JMP COMMAND_R_LOOP (fa6d)  ; Repeat for the next byte
 
 
-????:
-fa7b  2a 02 76   LHLD CURSOR_POS (7602)
-fa7e  c9         RET
+; Get current cursor position (X and Y coordinate)
+GET_CURSOR_POS:
+    fa7b  2a 02 76   LHLD CURSOR_POS (7602)
+    fa7e  c9         RET
 
-????:
-fa7f  e5         PUSH HL
-fa80  2a 00 76   LHLD CURSOR_ADDR (7600)
-fa83  7e         MOV A, M
-fa84  e1         POP HL
-fa85  c9         RET
-????:
-fa86  3a 2d 76   LDA 762d
-fa89  b7         ORA A
-fa8a  ca 91 fa   JZ fa91
-fa8d  7b         MOV A, E
-fa8e  32 2f 76   STA 762f
-????:
-fa91  cd b6 fa   CALL fab6
-fa94  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
-fa97  eb         XCHG
-fa98  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
-fa9b  eb         XCHG
-fa9c  c5         PUSH BC
-fa9d  cd 16 fb   CALL fb16
-faa0  60         MOV H, B
-faa1  69         MOV L, C
-faa2  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
-faa5  d1         POP DE
-faa6  cd 90 f9   CALL COMPARE_DE_HL (f990)
-faa9  c8         RZ
-faaa  eb         XCHG
-faab  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
 
+; Get symbol at cursor position
+;
+; Return: A - symbol under cursor
+GET_CHAR_AT_CURS:
+    fa7f  e5         PUSH HL
+    fa80  2a 00 76   LHLD CURSOR_ADDR (7600)    ; Get address in the video RAM
+
+    fa83  7e         MOV A, M                   ; Load the symbol at cursor position
+    fa84  e1         POP HL
+    fa85  c9         RET
+
+; Command I - load data from tape
+;
+; The function loads tape data using the TAPE_IN_PROGRAM function, then checks the CRC.
+; If CRC does not match the stored one, both values are printed for troubleshooting purposes.
+;
+; Arguments:
+; - Offset (HL)
+; - (Optional) Tape constant (E)
+COMMAND_I:
+    fa86  3a 2d 76   LDA HAS_MANY_ARGS (762d)   ; Check if tape constant is set
+    fa89  b7         ORA A
+    fa8a  ca 91 fa   JZ COMMAND_I_1 (fa91)
+
+    fa8d  7b         MOV A, E                   ; Save tape constant at 0x762f
+    fa8e  32 2f 76   STA TAPE_IN_DELAY (762f)
+
+COMMAND_I_1:
+    fa91  cd b6 fa   CALL TAPE_IN_PROGRAM (fab6); Perform data loading from the tape
+
+    fa94  cd 78 fb   CALL PRINT_HEX_ADDR (fb78) ; Print start and end address
+    fa97  eb         XCHG
+    fa98  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
+    fa9b  eb         XCHG
+
+    fa9c  c5         PUSH BC                    ; Calculate the loaded data CRC
+    fa9d  cd 16 fb   CALL CALC_CRC (fb16)
+
+    faa0  60         MOV H, B                   ; Print the CRC
+    faa1  69         MOV L, C
+    faa2  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
+
+    faa5  d1         POP DE                     ; Compare calculated CRC with recorded one
+    faa6  cd 90 f9   CALL COMPARE_DE_HL (f990)
+
+    faa9  c8         RZ                         ; If everything is ok - just exit
+    
+    faaa  eb         XCHG                       ; If CRC does not match - print it, and show an error
+    faab  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
+
+
+; Print '?' as input error, and restart the main loop
 INPUT_ERROR:
     faae  3e 3f      MVI A, 3f                  ; Print '?' char
     fab0  cd b9 fc   CALL PUT_CHAR_A (fcb9)
 
     fab3  c3 6c f8   JMP MAIN_LOOP (f86c)       ; Restart the main loop
 
-????:
-fab6  3e ff      MVI A, ff
-fab8  cd ff fa   CALL faff
-fabb  e5         PUSH HL
-fabc  09         DAD BC
-fabd  eb         XCHG
-fabe  cd fd fa   CALL fafd
-fac1  e1         POP HL
-fac2  09         DAD BC
-fac3  eb         XCHG
-fac4  e5         PUSH HL
-fac5  cd 0a fb   CALL fb0a
-fac8  3e ff      MVI A, ff
-faca  cd ff fa   CALL faff
-facd  e1         POP HL
+
+; Load a program from the tape
+;
+; Parameters:
+; - offset (HL)
+;
+; Return:
+; - stored CRC (BC)
+;
+; This function loads a program from the tape. The program typically contains synchronization
+; sequence, then start and end address of the program. User may apply an offset (passed in HL)
+; and load the program to a different memory area. After all data bytes are loaded, the function
+; reads the CRC which is also stored on the tape.
+TAPE_IN_PROGRAM:
+    fab6  3e ff      MVI A, ff                  ; Receive start address to BC (wait for syncronization
+    fab8  cd ff fa   CALL TAPE_IN_WORD_SYNC (faff)  ; byte first)
+
+    fabb  e5         PUSH HL                    ; Apply start address offset
+    fabc  09         DAD BC
+    fabd  eb         XCHG
+
+    fabe  cd fd fa   CALL TAPE_IN_WORD (fafd)   ; Receive end address to BC
+
+    fac1  e1         POP HL                     ; Apply end address offset
+    fac2  09         DAD BC
+    fac3  eb         XCHG
+
+    fac4  e5         PUSH HL                    ; At this point HL - start address, DE - end address
+
+    fac5  cd 0a fb   CALL TAPE_IN_LOOP (fb0a)
+
+    fac8  3e ff      MVI A, ff                  ; Wait for a sync byte, and then CRC
+    faca  cd ff fa   CALL TAPE_IN_WORD_SYNC (faff)  ; Return CRC in BC
+
+    facd  e1         POP HL                     ; No RET intentionally. Tape input requires stopping the DMA
+                                                ; transfer of the video memory to avoid unexpected CPU halts.
+                                                ; As result, after the tape operation is performed, the video
+                                                ; controller and DMA controller shall be reinitialized.
+
 
 ; The function re-initializes video controller and DMA transfer for video memory
 ;
@@ -669,77 +719,149 @@ INIT_VIDEO_WAIT_LOOP:
     fafb  e1         POP HL                     ; Exit
     fafc  c9         RET
 
+; Receive 2 bytes from tape
+; Result in BC
+TAPE_IN_WORD:
+    fafd  3e 08      MVI A, 08                  ; Will receive a byte, no syncronization needed
+
+; Receive 2 bytes from tape. A=ff if sync is needed, 0x08 otherwise
+; Result in BC
+TAPE_IN_WORD_SYNC:
+    faff  cd 98 fb   CALL TAPE_IN_BYTE (fb98)   ; Receive high byte
+    fb02  47         MOV B, A
+
+    fb03  3e 08      MVI A, 08                  ; Receive low byte
+    fb05  cd 98 fb   CALL TAPE_IN_BYTE (fb98)
+    fb08  4f         MOV C, A
+    fb09  c9         RET
+
+
+; Load bytes from the tape
+;
+; Parameters:
+; HL - current address, where the next received byte will be received to
+; DE - end address
+TAPE_IN_LOOP:
+    fb0a  3e 08      MVI A, 08                  ; Receive a byte (no sync)
+    fb0c  cd 98 fb   CALL TAPE_IN_BYTE (fb98)
+
+    fb0f  77         MOV M, A                   ; Store the byte
+
+    fb10  cd 99 f9   CALL ADVANCE_HL (f999)     ; Advance HL and repeat
+    fb13  c3 0a fb   JMP TAPE_IN_LOOP (fb0a)
+
+
+; Calculate CRC for a memory range
+; The algorithm is a simple addition of all bytes in the range.
+;
+; Arguments:
+; - start address (HL)
+; - end address (DE)
+;
+; Result:
+; - C contains raw sum of all bytes not respecting the carry flag
+; - B contains raw sum of all bytes respecting the carry flag (except for the last byte)
+CALC_CRC:
+    fb16  01 00 00   LXI BC, 0000               ; Zero result accumulator
+    
+CALC_CRC_LOOP:
+    fb19  7e         MOV A, M                   ; Simply add the next byte to C
+    fb1a  81         ADD C
+    fb1b  4f         MOV C, A
+    fb1c  f5         PUSH PSW
+
+    fb1d  cd 90 f9   CALL COMPARE_DE_HL (f990)  ; Check if reached the end address
+    fb20  ca 9f f9   JZ f99f                    ; ????
+
+    fb23  f1         POP PSW                    ; Add the next byte to B
+    fb24  78         MOV A, B
+    fb25  8e         ADC M
+    fb26  47         MOV B, A
+
+    fb27  cd 99 f9   CALL ADVANCE_HL (f999)     ; Advance HL to the next byte, repeat until reached DE
+    fb2a  c3 19 fb   JMP CALC_CRC_LOOP (fb19)
+
+
+; Command O - output data to the tape
+;
+; Arguments:
+; - Start address (HL)
+; - End address (DE)
+; - Tape constant (C)
+COMMAND_O:
+    fb2d  79         MOV A, C                   ; Check if the delay constant is specified
+    fb2e  b7         ORA A
+    fb2f  ca 35 fb   JZ fb35
+
+    fb32  32 30 76   STA TAPE_OUT_DELAY (7630)  ; Save the new delay constant
+
 ????:
-fafd  3e 08      MVI A, 08
-????:
-faff  cd 98 fb   CALL fb98
-fb02  47         MOV B, A
-fb03  3e 08      MVI A, 08
-fb05  cd 98 fb   CALL fb98
-fb08  4f         MOV C, A
-fb09  c9         RET
-????:
-fb0a  3e 08      MVI A, 08
-fb0c  cd 98 fb   CALL fb98
-fb0f  77         MOV M, A
-fb10  cd 99 f9   CALL ADVANCE_HL (f999)
-fb13  c3 0a fb   JMP fb0a
-????:
-fb16  01 00 00   LXI BC, 0000
-????:
-fb19  7e         MOV A, M
-fb1a  81         ADD C
-fb1b  4f         MOV C, A
-fb1c  f5         PUSH PSW
-fb1d  cd 90 f9   CALL COMPARE_DE_HL (f990)
-fb20  ca 9f f9   JZ f99f
-fb23  f1         POP PSW
-fb24  78         MOV A, B
-fb25  8e         ADC M
-fb26  47         MOV B, A
-fb27  cd 99 f9   CALL ADVANCE_HL (f999)
-fb2a  c3 19 fb   JMP fb19
-????:
-fb2d  79         MOV A, C
-fb2e  b7         ORA A
-fb2f  ca 35 fb   JZ fb35
-fb32  32 30 76   STA 7630
-????:
-fb35  e5         PUSH HL
-fb36  cd 16 fb   CALL fb16
-fb39  e1         POP HL
-fb3a  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
-fb3d  eb         XCHG
-fb3e  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
-fb41  eb         XCHG
-fb42  e5         PUSH HL
-fb43  60         MOV H, B
-fb44  69         MOV L, C
-fb45  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
-fb48  e1         POP HL
-????:
-fb49  c5         PUSH BC
-fb4a  01 00 00   LXI BC, 0000
-????:
-fb4d  cd 46 fc   CALL fc46
-fb50  05         DCR B
-fb51  e3         XTHL
-fb52  e3         XTHL
-fb53  c2 4d fb   JNZ fb4d
-fb56  0e e6      MVI C, e6
-fb58  cd 46 fc   CALL fc46
-fb5b  cd 90 fb   CALL fb90
-fb5e  eb         XCHG
-fb5f  cd 90 fb   CALL fb90
-fb62  eb         XCHG
-fb63  cd 86 fb   CALL fb86
-fb66  21 00 00   LXI HL, 0000
-fb69  cd 90 fb   CALL fb90
-fb6c  0e e6      MVI C, e6
-fb6e  cd 46 fc   CALL fc46
-fb71  e1         POP HL
-fb72  cd 90 fb   CALL fb90
-fb75  c3 ce fa   JMP INIT_VIDEO (face)
+    fb35  e5         PUSH HL                    ; Calculate CRC for data to be output
+    fb36  cd 16 fb   CALL CALC_CRC (fb16)
+    fb39  e1         POP HL
+
+    fb3a  cd 78 fb   CALL PRINT_HEX_ADDR (fb78) ; Print start and end address
+    fb3d  eb         XCHG
+    fb3e  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
+    fb41  eb         XCHG
+
+    fb42  e5         PUSH HL                    ; Print CRC
+    fb43  60         MOV H, B
+    fb44  69         MOV L, C
+    fb45  cd 78 fb   CALL PRINT_HEX_ADDR (fb78)
+    fb48  e1         POP HL
+
+; Output the program to the tape
+;
+; The function outputs the memory range to the tape in the following format:
+; - 256 x 0x00  - pilot tone
+; - 0xe6        - Synchronization byte
+; - 2 byte      - start address (high byte first)
+; - 2 byte      - end address (high byte first)
+; - data bytes  - program data bytes
+; - 0x0000      - micro-pilot tone (2 bytes)
+; - 0xe6        - Synchronization byte
+; - 2 byte      - Calculated CRC (high byte first)
+;
+; Arguments:
+; - Start address (HL)
+; - End address (DE)
+; - Calculated CRC (BC)
+TAPE_OUT_PROGRAM:
+    fb49  c5         PUSH BC
+    fb4a  01 00 00   LXI BC, 0000               ; Output 256 zeros
+
+TAPE_OUT_SYNC_LOOP:
+    fb4d  cd 46 fc   CALL TAPE_OUT_BYTE (fc46)  ; Output the next byte
+    fb50  05         DCR B
+    fb51  e3         XTHL                       ; ???? Delay?
+    fb52  e3         XTHL
+    fb53  c2 4d fb   JNZ TAPE_OUT_SYNC_LOOP (fb4d)  ; Repeat 256 times
+
+    fb56  0e e6      MVI C, e6                  ; Output synchronization byte 0xe6
+    fb58  cd 46 fc   CALL TAPE_OUT_BYTE (fc46)
+
+    fb5b  cd 90 fb   CALL TAPE_OUT_WORD (fb90)  ; Output start address
+    fb5e  eb         XCHG
+
+    fb5f  cd 90 fb   CALL TAPE_OUT_WORD (fb90)  ; Output end address
+    fb62  eb         XCHG
+
+    fb63  cd 86 fb   CALL TAPE_OUT_RANGE (fb86) ; Output data bytes in the start-end memory range
+
+    fb66  21 00 00   LXI HL, 0000               ; Mimic a short synchronization sequence
+    fb69  cd 90 fb   CALL TAPE_OUT_WORD (fb90)
+
+    fb6c  0e e6      MVI C, e6                  ; Write another synchronization byte
+    fb6e  cd 46 fc   CALL TAPE_OUT_BYTE (fc46)
+
+    fb71  e1         POP HL                     ; Output the CRC
+    fb72  cd 90 fb   CALL TAPE_OUT_WORD (fb90)
+
+    fb75  c3 ce fa   JMP INIT_VIDEO (face)      ; Tape recorder is time-critical routine. It must switch off DMA
+                                                ; transfer of the video memory to avoid tape data corruption.
+                                                ; When tape operation is finished, video controller and DMA 
+                                                ; controller have to be reinitialized.
 
 ; Prints an address as a 4 byte hex value on a new line.
 ; Parameters: HL - address to print
@@ -756,18 +878,41 @@ PRINT_HEX_ADDR:
     fb84  c1         POP BC
     fb85  c9         RET
 
+; Output a memory range specified by HL-DE registers to the tape
+;
+; Arguments:
+; HL - start of the memory range to output
+; DE - end of the memory range
+TAPE_OUT_RANGE:
+    fb86  4e         MOV C, M                   ; Output the next byte
+    fb87  cd 46 fc   CALL TAPE_OUT_BYTE (fc46)
 
-????:
-fb86  4e         MOV C, M
-fb87  cd 46 fc   CALL fc46
-fb8a  cd 99 f9   CALL ADVANCE_HL (f999)
-fb8d  c3 86 fb   JMP fb86
-????:
-fb90  4c         MOV C, H
-fb91  cd 46 fc   CALL fc46
-fb94  4d         MOV C, L
-fb95  c3 46 fc   JMP fc46
-????:
+    fb8a  cd 99 f9   CALL ADVANCE_HL (f999)     ; Advance HL, repeat until it reaches DE
+    fb8d  c3 86 fb   JMP TAPE_OUT_RANGE (fb86)
+
+
+; Output HL word to the tape
+; Outputs high byte first
+;
+; Arguments:
+; HL - word to output
+TAPE_OUT_WORD:
+    fb90  4c         MOV C, H
+    fb91  cd 46 fc   CALL TAPE_OUT_BYTE (fc46)
+    fb94  4d         MOV C, L
+    fb95  c3 46 fc   JMP TAPE_OUT_BYTE (fc46)
+
+; Receive a byte from tape
+;
+; Parameters:
+; A - number of bits to receive (typically 8), or 0xff if synchronization is required first.
+;
+; If the synchronization procedure is required (A=0xff as a parameter), the function will wait for
+; a pilot tone, then a synchronization byte (0xe6 or 0x19) to determine polarity. Then the requested
+; byte is received. Polarity is stored at 0xf7ce.
+;
+; Returns received byte in A
+TAPE_IN_BYTE:
 fb98  e5         PUSH HL
 fb99  c5         PUSH BC
 fb9a  d5         PUSH DE
@@ -809,7 +954,7 @@ fbce  ca bf fb   JZ fbbf
 fbd1  b1         ORA C
 fbd2  4f         MOV C, A
 fbd3  15         DCR D
-fbd4  3a 2f 76   LDA 762f
+fbd4  3a 2f 76   LDA TAPE_IN_DELAY (762f)
 fbd7  c2 dc fb   JNZ fbdc
 fbda  d6 12      SUI A, 12
 ????:
@@ -871,7 +1016,8 @@ fc3c  b7         ORA A
 fc3d  f2 ae fa   JP INPUT_ERROR (faae)
 fc40  cd a4 f9   CALL f9a4
 fc43  c3 9c fb   JMP fb9c
-????:
+
+TAPE_OUT_BYTE:
 fc46  e5         PUSH HL
 fc47  c5         PUSH BC
 fc48  d5         PUSH DE
@@ -890,7 +1036,7 @@ fc5b  4f         MOV C, A
 fc5c  3e 01      MVI A, 01
 fc5e  a9         XRA C
 fc5f  32 02 80   STA KBD_PORT_C (8002)
-fc62  3a 30 76   LDA 7630
+fc62  3a 30 76   LDA TAPE_OUT_DELAY (7630)
 fc65  47         MOV B, A
 ????:
 fc66  f1         POP PSW
@@ -900,7 +1046,7 @@ fc6b  3e 00      MVI A, 00
 fc6d  a9         XRA C
 fc6e  32 02 80   STA KBD_PORT_C (8002)
 fc71  15         DCR D
-fc72  3a 30 76   LDA 7630
+fc72  3a 30 76   LDA TAPE_OUT_DELAY (7630)
 fc75  c2 7a fc   JNZ fc7a
 fc78  d6 0e      SUI A, 0e
 ????:
@@ -932,21 +1078,27 @@ fca2  c1         POP BC
 fca3  e1         POP HL
 fca4  c9         RET
 
+; Print a byte in A as 2-digit hex value
 PRINT_HEX_BYTE:
-fca5  f5         PUSH PSW
-fca6  0f         RRC
-fca7  0f         RRC
-fca8  0f         RRC
-fca9  0f         RRC
-fcaa  cd ae fc   CALL fcae
-fcad  f1         POP PSW
-????:
-fcae  e6 0f      ANI A, 0f
-fcb0  fe 0a      CPI A, 0a
-fcb2  fa b7 fc   JM fcb7
-fcb5  c6 07      ADI A, 07
-????:
-fcb7  c6 30      ADI A, 30
+    fca5  f5         PUSH PSW
+    fca6  0f         RRC                        ; Print upper nibble
+    fca7  0f         RRC
+    fca8  0f         RRC
+    fca9  0f         RRC
+    fcaa  cd ae fc   CALL PRINT_HEX_DIGIT (fcae)
+
+    fcad  f1         POP PSW                    ; Restore A, and print lower nibble
+
+; Print a single hex digit in A (lower half-byte)
+PRINT_HEX_DIGIT:
+    fcae  e6 0f      ANI A, 0f
+    fcb0  fe 0a      CPI A, 0a
+    fcb2  fa b7 fc   JM PRINT_HEX_DIGIT_1 (fcb7)
+
+    fcb5  c6 07      ADI A, 07
+
+PRINT_HEX_DIGIT_1:
+    fcb7  c6 30      ADI A, 30                  ; Finish digit to char conversion. Fall trough Put Char function.
 
 
 ; Print a char in A register
