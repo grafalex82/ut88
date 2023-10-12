@@ -264,6 +264,7 @@ MAIN_LOOP:
     f8d6  ca 68 fa   JZ COMMAND_R (fa68)
 
     f8d9  c3 00 f0   JMP f000                   ; Unrecognized command, perhaps has a handler in the extra ROM
+                                                ; BUG: additional ROM may not be installed in the system
 
 
 ; Process the back space button, clear the symbol left to the cursor
