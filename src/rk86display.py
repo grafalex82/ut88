@@ -39,6 +39,8 @@ class RK86Display(MemoryDevice):
         
         self._cursor_x = None
         self._cursor_y = None
+        self._cursor_invert = False
+        self._cursor_timer = 0
 
         self._burst_space_code = None
         self._burst_count_code = None
@@ -168,7 +170,13 @@ class RK86Display(MemoryDevice):
         for y in range(self._screen_height):
             for x in range(self._screen_width):
                 ch = data[index]
+                if x == self._cursor_x and y==self._cursor_y and self._cursor_invert:
+                    ch |= 0x80
                 screen.blit(self._chars[ch], (x*CHAR_WIDTH, y*CHAR_HEIGHT))
 
                 index += 1
     
+        # Toggle cursor when time comes
+        if pygame.time.get_ticks() - self._cursor_timer > 500:
+            self._cursor_timer = pygame.time.get_ticks()
+            self._cursor_invert = not self._cursor_invert
