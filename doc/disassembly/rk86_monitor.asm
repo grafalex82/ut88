@@ -1,37 +1,146 @@
+; The Monitor serves as the primary firmware for the Radio-86RK computer.
+;
+; It encompasses the following general-purpose routines:
+; - Initial setup of the computer and peripherals.
+; - Display routines, including functions to print a character, clear the screen, handle cursor
+;   movement, and perform display scrolling.
+; - Keyboard routines, enabling the waiting for a button press and converting the keyboard matrix
+;   scan code to an ASCII symbol.
+; - Input and output operations for data on a tape recorder.
+;
+; General purpose routines are accessed through the predefined entry points, located
+; at the following addresses:
+; - f800    - Software reset
+; - f803    - Wait for a keyboard press, returns the entered symbol in register A
+; - f806    - Input a byte from the tape (A - number of bits to receive, or 0xff if synchronization is
+;             needed. Returns the received byte in A)
+; - f809    - Put a character to the display at the cursor location (C - character to print)
+; - f80c    - Output a byte to the tape (C - byte to output)
+; - f80f    - Put a character to the display at the cursor location (C - character to print)
+; - f812    - Check if any button is pressed on the keyboard (A=00 if no buttons are pressed, 0xff otherwise)
+; - f815    - Print a byte in a 2-digit hexadecimal form (A - byte to print)
+; - f818    - Print a NULL-terminated string at the cursor position (HL - pointer to the string)
+; - f81b    - Scan a keyboard, return when a stable scan code is read (returns scan code in A)
+; - f81e    - Get the current cursor position (offset from 0xe800 video memory start, return in HL)
+; - f821    - Get the character under the cursor (return in A)
+; - f824    - Load a program from tape (HL - offset, returns CRC in BC)
+; - f827    - Output a program to the tape (HL - start address, DE - end address, BC - CRC)
+; - f82a    - Calculate CRC for a memory range (HL - start address, DE - end address, Result in BC)
+; - f82d    - (Re-)Initialize the video controller
+; - f830    - Get memory limit, returns the topmost address of the available RAM
+; - f833    - Set the new memory limit
+;
+; The character output function works in a terminal mode: when a symbol is printed at the cursor position, 
+; the cursor advances to the next position. When the cursor reaches the end of a line, it moves to the next 
+; line. If the cursor reaches the bottom-right position of the screen, the screen is scrolled up by one line.
+;
+; The character output function also supports several control symbols for moving the cursor or clearing the
+; screen. Refer to the PUT_CHAR_C function description for more details.
+;
+; In addition to general-purpose routines, Monitor provides a basic command console that offers users the
+; ability to:
+; - View, modify, copy, and fill memory data
+; - Input from and output programs to the tape recorder
+; - Run user programs with a breakpoint possibility
+; - Handle time interrupts and display the current time
+;
+; The following commands are supported:
+; - Memory commands:
+;   - D <addr1>, <addr2>        - Dump the memory range in hexadecimal form.
+;   - L <addr1>, <addr2>        -  List the memory range in text form ('.' is printed for non-printable characters).
+;   - F <addr1>, <addr2>, <val> - Fill the memory range with the provided constant.
+;   - S <addr1>, <addr2>, <val> - Search for the specified byte in the memory range.
+;   - T <src1>, <src2>, <dst>   - Copy (Transfer) the <src1>-<src2> memory range to <dst>.
+;   - C <src1>, <src2>, <dst>   - Compare the <src1>-<src2> memory range with the range starting at <dst>.
+;   - M <addr>                  - View and edit memory starting from <addr>.
+; - Tape commands:
+;   - O <start>, <end>[, <spd>] - Save the memory range to the tape. Use the speed constant if provided.
+;   - I <offset>[, <spd>]       - Load a program from the tape and apply the specified offset. Use the speed constant.
+; - Program execution:
+;   - G <addr>[, <brk>]         - Start or continue the program from <addr> and set a breakpoint at <brk>.
+;   - X                         - View/modify CPU registers when a breakpoint is hit.
+; - External ROM:
+;   - R <start>, <end>, <dst>   - Import the <start>-<end> data range from an external ROM.
+;
+; The Radio-86RK computer features a video adapter based on the Intel 8275 chip, working in conjunction
+; with the Intel 8257 DMA controller. This collaboration facilitates the transfer of video RAM contents 
+; into the video controller without direct involvement from the main CPU. However, it's important to note
+; that the DMA controller shares the same address and data buses with the CPU, resulting in the CPU being
+; halted during data transfer. This interruption can negatively impact time-critical routines, such as tape
+; input and output. To address this, tape functions temporarily disable video output and re-enable it upon
+; completion.
+;
+; Unlike some other systems, the Radio-86RK schematics don't allocate a dedicated video RAM. Instead, the
+; screen buffer is located in the main memory. The DMA controller is configured to transfer the video RAM
+; contents to the video controller. The screen size is 78x30 characters, and the video buffer of 78x30=2340
+; (0x924) bytes is situated at 0x76d0. However, not all characters are visible on the screen due to CRT
+; margins. To address this, 8 characters on the left, 6 characters on the right, 3 lines at the top, and 2
+; lines at the bottom are programmatically disable. The monitor is responsible for managing these margins
+; and ensuring that no valuable data is written into non-visible areas. Consequently, the effective screen
+; size is only 64x25 lines, and part of the video memory is unused.
+;
+; The Monitor incorporates functions for scanning an 8x8 keyboard matrix and converting key codes to ASCII
+; symbols or control codes. It programmatically handles Shift and Ctrl key modifiers, converting scan codes
+; into ASCII codes accordingly. The Rus key is handled separately and toggles between Cyrillic and Latin
+; letters. However, it's worth noting that control characters are not handled by the Monitor's line input
+; function. As a result, function keys and Ctrl key combinations may produce unexpected characters on the
+; screen.
+;
+; Data storage format is based on the 2-phase coding algorithm. Each bit is coded as 2 periods with
+; opposite values. The actual bit value is determined at the transition between the periods:
+; - transition from 1 to 0 represents value 0
+; - transition from 0 to 1 represents value 1
+;    
+; Bytes are written MSB first. Typical recording speed is 1500 bits per second, but
+; adjusted with the output delay constant
+;
+;                       Example of 0xA5 byte transfer
+;      D7=1 |  D6=0 |  D5=1 |  D4=0 |  D3=0 |  D2=1 |  D1=0 |  D0=1 |
+;       +---|---+   |   +---|---+   |---+   |   +---|---+   |   +---|
+;       |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
+;    ---+   |   +---|---+   |   +---|   +---|---+   |   +---|---+   |
+;           |<--T-->|       |       |       |       |       |       |
+;
+; Tape recording format:
+; - 256 x 0x00  - pilot tone
+; - 0xe6        - Synchronization byte
+; - 2 byte      - start address (high byte first)
+; - 2 byte      - end address (high byte first)
+; - data bytes  - program data bytes
+; - 0x0000      - micro-pilot tone (2 bytes)
+; - 0xe6        - Synchronization byte
+; - 2 byte      - Calculated CRC (high byte first)
 ; 
-
-; Variables:
+; Monitor Variables:
 ; 0x7600    - current cursor address (points to the video RAM)
 ; 0x7602    - current cursor position (high byte - X, and low byte as Y coordinate)
 ; 0x7604    - Esc-Y escape sequence byte number
 ; 0x7605    - Key is not pressed flag (0xff - no keys pressed, 0x00 - a key is pressed)
 ; 0x7606    - Cyrilic layout enabled
-;
 ; 0x7609    - Currently pressed key (used for autorepeat)
 ; 0x760a    - Autorepeat timer (cycles till the next trigger)
 ; 0x760b    - Autorepeat flag (value == 0x00 - first trigger of the autorepeat, other values - subsequent calls)
-; 0x760d    - SP storage when doing tape operations
-; 0x7614    - User program PC
-; 0x7616    - User program HL
-; 0x7618    - User program BC
-; 0x761a    - User program DE
-; 0x761c    - User program SP
-; 0x761e    - User program AF
-; 0x7623    - Breakpoint address
-; 0x7625    - Original opcode at the breakpoint address
-; 0x7626    - JMP opcode (used to jump to the user program)
+; 0x760d    - A temporary placeholder for the SP register in tape in/out routines
+; 0x7614    - User program PC register (when stopping at breakpoint)
+; 0x7616    - User program HL register (when stopping at breakpoint)
+; 0x7618    - User program BC register (when stopping at breakpoint)
+; 0x761a    - User program DE register (when stopping at breakpoint)
+; 0x761c    - User program SP register (when stopping at breakpoint)
+; 0x761e    - User program AF register (when stopping at breakpoint)
+; 0x7623    - Breakpoint address (when running user program with Command G)
+; 0x7625    - Original opcode under breakpoint address (see Command G description)
+; 0x7626    - JMP instruction opcode. Use in Command G to jump to the address entered to 7627
 ; 0x7627    - 1st argument of the executed command
 ; 0x7629    - 2nd argument of the executed command
 ; 0x762b    - 3rd argument of the executed command
-; 0x762e    - tape polarity
-; 0x762f    - tape input delay
-; 0x7630    - tape output delay
+; 0x762d    - flag indicating there is more than 1 argument (0xff - 2 or more arguments, 0x00 - 1 arg only)
+; 0x762e    - Tape input polarity (0x00 if non-inverted, 0xff if inverted)
+; 0x762f    - Tape delay constant when loading
+; 0x7630    - Tape delay constant when saving
 ; 0x7631    - upper limit of the memory available for user programs
 ; 0x7633    - line buffer (32 bytes)
-; 0x7600 - 0x765f - monitor variables
-; ??????
-; 76cf - stack top
-; 0x76d0 - Video RAM (0x924 bytes)
+; 0x76cf    - stack top
+; 0x76d0    - Video RAM (0x924 bytes)
 
 VECTORS:
     f800  c3 36 f8   JMP START (f836)
@@ -782,7 +891,7 @@ INIT_VIDEO:
     fad5  36 4d      MVI M, 4d                  ; Screen width: 78 chars
     fad7  36 1d      MVI M, 1d                  ; Screen height: 30 chars
     fad9  36 99      MVI M, 99                  ; Char height: 10 lines, underline height: 10 lines
-    fadb  36 d3      MVI M, d3			        ; Non offset mode, non-transparrent attribute mode (shall be transparent???)
+    fadb  36 d3      MVI M, d3			        ; Non offset mode, non-transparrent attribute mode
                                                 ; Blinking cursor, Horisontal retracing - 8
 
     fadd  23         INX HL                     ; Send the i8275 start display command (7 chars burst delay
@@ -885,11 +994,11 @@ CALC_CRC_LOOP:
 COMMAND_O:
     fb2d  79         MOV A, C                   ; Check if the delay constant is specified
     fb2e  b7         ORA A
-    fb2f  ca 35 fb   JZ fb35
+    fb2f  ca 35 fb   JZ COMMAND_O_1 (fb35)
 
     fb32  32 30 76   STA TAPE_OUT_DELAY (7630)  ; Save the new delay constant
 
-????:
+COMMAND_O_1:
     fb35  e5         PUSH HL                    ; Calculate CRC for data to be output
     fb36  cd 16 fb   CALL CALC_CRC (fb16)
     fb39  e1         POP HL
@@ -1154,23 +1263,7 @@ TAPE_IN_BYTE_ERROR:
 ; Output a byte to the tape (byte in С)
 ;
 ; This function outputs a byte to the tape, according to 2-phase coding algorithm.
-; 
-; Data storage format is based on the 2-phase coding algorithm. Each bit is 
-; coded as 2 periods with opposite values. The actual bit value is determined
-; at the transition between the periods:
-; - transition from 1 to 0 represents value 0
-; - transition from 0 to 1 represents value 1
-;    
-; Bytes are written MSB first. Typical recording speed is 1500 bits per second, but
-; adjusted with the output delay constant
 ;
-;                       Example of 0xA5 byte transfer
-;      D7=1 |  D6=0 |  D5=1 |  D4=0 |  D3=0 |  D2=1 |  D1=0 |  D0=1 |
-;       +---|---+   |   +---|---+   |---+   |   +---|---+   |   +---|
-;       |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
-;    ---+   |   +---|---+   |   +---|   +---|---+   |   +---|---+   |
-;           |<--T-->|       |       |       |       |       |       |
-; 
 ; Note: this function uses a non-typical way for making delays between bits. Instead of
 ; using NOPs, it sets stack pointer to 0000, and does random memory stack reads. Unlike
 ; NOP operation, which is just 4 cycles, POP operation takes 10 cycles. This is not a problem
@@ -1335,7 +1428,7 @@ PUT_CHAR:
     fcbc  d5         PUSH DE
     fcbd  e5         PUSH HL
 
-    fcbe  cd 01 fe   CALL IS_BUTTON_PRESSED (fe01)  ; ????
+    fcbe  cd 01 fe   CALL IS_BUTTON_PRESSED (fe01)  ; Spin keyboard processing, even though we are just printing
 
     fcc1  21 85 fd   LXI HL, PUT_CHAR_EXIT (fd85)   ; Put an exit address to the stack (so that subfunction may
     fcc4  e5         PUSH HL                        ; just call RET)
