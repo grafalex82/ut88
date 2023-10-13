@@ -492,7 +492,7 @@ class Radio86RKConfiguration(Configuration):
 
 
     def get_screen_size(self):
-        return (64*12, 28*16)
+        return (78*12, 30*16)
 
 
     def update(self, screen):
