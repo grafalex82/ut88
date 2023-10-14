@@ -30,18 +30,10 @@ def test_press_release(kbd, key, value):
     assert kbd.get_state() == 0x00
 
 def test_io_read(kbd):
-    assert kbd.read_io(0xa0) == 0x00
+    assert kbd.read_byte(0) == 0x00
 
     kbd.press_key("0")
-    assert kbd.read_io(0xa0) == 0x10
+    assert kbd.read_byte(0) == 0x10
 
     kbd.release_key()
-    assert kbd.read_io(0xa0) == 0x00
-
-def test_io_wrong_addr(kbd):
-    with pytest.raises(IOError):
-        kbd.read_io(0x42)
-
-def test_io_write(kbd):
-    with pytest.raises(IOError):
-        kbd.write_io(0x42, 0x24)
+    assert kbd.read_byte(0) == 0x00

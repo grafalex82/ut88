@@ -190,11 +190,11 @@ class BasicConfiguration(Configuration):
         self._lcd = LCD()
         self._machine.add_memory(MemoryDevice(self._lcd, 0x9000))
         self._kbd = HexKeyboard()
-        self._machine.add_io(self._kbd)
+        self._machine.add_io(IODevice(self._kbd, 0xa0))
         self._timer = Timer(self._machine)
         self._machine.add_other_device(self._timer)
         self._recorder = TapeRecorder()
-        self._machine.add_io(self._recorder)
+        self._machine.add_io(IODevice(self._recorder, 0xa1))
 
 
     def configure_logging(self):
@@ -244,9 +244,9 @@ class VideoConfiguration(Configuration):
 
     def create_peripherals(self):
         self._recorder = TapeRecorder()
-        self._machine.add_io(self._recorder)
+        self._machine.add_io(IODevice(self._recorder, 0xa1))
         self._keyboard = Keyboard()
-        self._machine.add_io(self._keyboard)
+        self._machine.add_io(IODevice(self._keyboard, 0x04))
         self._display = Display()
         self._machine.add_memory(MemoryDevice(self._display, 0xe000))
 

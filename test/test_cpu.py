@@ -3,6 +3,7 @@
 
 import pytest
 import sys
+from unittest.mock import MagicMock
 
 sys.path.append('../src')
 
@@ -10,9 +11,9 @@ from machine import Machine
 from cpu import CPU
 from rom import ROM
 from ram import RAM
-from interfaces import MemoryDevice
+from interfaces import MemoryDevice, IODevice
 from utils import *
-from mock import *
+from helper import MockIO
 
 @pytest.fixture
 def cpu():
@@ -1544,18 +1545,22 @@ def test_daa(cpu):
     assert cpu._parity == False
 
 def test_out(cpu):
-    io = MockIO(0x42)
-    cpu._machine.add_io(io)
+    mock = MockIO()
+    mock.write_byte = MagicMock()
+
+    cpu._machine.add_io(IODevice(mock, 0x42))
     cpu._machine.write_memory_byte(0x0000, 0xd3)    # Instruction Opcode
     cpu._machine.write_memory_byte(0x0001, 0x42)    # IO addr
     cpu.a = 0x55
     cpu.step()
-    assert io.read_io(0x42) == 0x55
+
+    mock.write_byte.assert_called_once_with(0, 0x55)
 
 def test_in(cpu):
-    io = MockIO(0x42)
-    io.write_io(0x42, 0x55)
-    cpu._machine.add_io(io)
+    mock = MockIO()
+    mock.read_byte = MagicMock(return_value=0x55)
+
+    cpu._machine.add_io(IODevice(mock, 0x42))
     cpu._machine.write_memory_byte(0x0000, 0xdb)    # Instruction Opcode
     cpu._machine.write_memory_byte(0x0001, 0x42)    # IO addr
     cpu.step()

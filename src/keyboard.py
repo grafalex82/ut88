@@ -1,11 +1,10 @@
 import pygame
-from interfaces import *
 
 def _ctrl_pressed():
     return (pygame.key.get_mods() & pygame.KMOD_CTRL) != 0
 
 
-class Keyboard(IODevice):
+class Keyboard:
     """
     UT-88 Alpha-Numeric keyboard
 
@@ -80,7 +79,6 @@ class Keyboard(IODevice):
     emulator will return port B value according to selected column and button pressed.
     """
     def __init__(self):
-        IODevice.__init__(self, 0x04, 0x07)
         # The only supported configuration is Port A output, B and C - input
         self.configure(0x8b)
 
@@ -259,14 +257,18 @@ class Keyboard(IODevice):
         self._ctrl_codes_map[pygame.K_HOME]     = (0x7f, 0xbf, 0xfd)    # Char code 0x0c, but with Ctrl
 
 
+    def get_size(self):
+        return 4    # Keyboard PPI has 4 registers
+
+
     def configure(self, value):
         self._configuration = value
         assert self._configuration == 0x8b  
 
 
-    def read_io(self, addr):
+    def read_byte(self, offset):
         # Address bits are inverted comparing to i8255 addresses
-        if addr == 0x06:            # Port B
+        if offset == 2:            # Port B
             # Return key scan line if scan column matches previously set on Port A
             if self._pressed_key[0] == self._port_a: 
                 self._port_c = self._pressed_key[2]
@@ -278,19 +280,17 @@ class Keyboard(IODevice):
 
             return 0x7f
         
-        if addr == 0x05:            # Port C
+        if offset == 1:            # Port C
             return self._port_c
 
         raise IOError(f"Reading IO {addr:x} is not supported")
     
 
-    def write_io(self, addr, value):
-        self.validate_io_addr(addr)
-
+    def write_byte(self, offset, value):
         # Address bits are inverted comparing to i8255 addresses
-        if addr == 0x04:            # Configuration register
+        if offset == 0:            # Configuration register
             return self.configure(value)
-        if addr == 0x07:            # Port A
+        if offset == 3:            # Port A
             self._port_a = value         
             return
         

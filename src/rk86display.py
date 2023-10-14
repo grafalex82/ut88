@@ -140,12 +140,12 @@ class RK86Display:
         return 0x20 # TODO: return a meaningful value
     
 
-    def read_byte(self, addr):
-        match addr:
+    def read_byte(self, offset):
+        match offset:
             case 1:
                 return self._read_status_reg()
             case _:
-                raise MemoryError(f"Writing CRT register {offset:04x} is not supported")        
+                raise MemoryError(f"Writing CRT register {offset} is not supported")        
 
 
     def write_byte(self, offset, value):
@@ -155,7 +155,7 @@ class RK86Display:
             case 0:
                 self._handle_parameter(value)
             case _:
-                raise MemoryError(f"Writing CRT register {offset:04x} is not supported")
+                raise MemoryError(f"Writing CRT register {offset} is not supported")
             
 
     def update_screen(self, screen):

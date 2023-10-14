@@ -13,40 +13,40 @@ def test_write_bytes(tmp_path):
     recorder = TapeRecorder()
 
     # Byte 1 (0x5a)
-    recorder.write_io(0xa1, 1)   # Ignore
-    recorder.write_io(0xa1, 0)
-    recorder.write_io(0xa1, 0)   # Ignore
-    recorder.write_io(0xa1, 1)
-    recorder.write_io(0xa1, 1)   # Ignore
-    recorder.write_io(0xa1, 0)
-    recorder.write_io(0xa1, 0)   # Ignore
-    recorder.write_io(0xa1, 1)
-    recorder.write_io(0xa1, 0)   # Ignore
-    recorder.write_io(0xa1, 1)
-    recorder.write_io(0xa1, 1)   # Ignore
-    recorder.write_io(0xa1, 0)
-    recorder.write_io(0xa1, 0)   # Ignore
-    recorder.write_io(0xa1, 1)
-    recorder.write_io(0xa1, 1)   # Ignore
-    recorder.write_io(0xa1, 0)
+    recorder.write_byte(0xa1, 1)   # Ignore
+    recorder.write_byte(0xa1, 0)
+    recorder.write_byte(0xa1, 0)   # Ignore
+    recorder.write_byte(0xa1, 1)
+    recorder.write_byte(0xa1, 1)   # Ignore
+    recorder.write_byte(0xa1, 0)
+    recorder.write_byte(0xa1, 0)   # Ignore
+    recorder.write_byte(0xa1, 1)
+    recorder.write_byte(0xa1, 0)   # Ignore
+    recorder.write_byte(0xa1, 1)
+    recorder.write_byte(0xa1, 1)   # Ignore
+    recorder.write_byte(0xa1, 0)
+    recorder.write_byte(0xa1, 0)   # Ignore
+    recorder.write_byte(0xa1, 1)
+    recorder.write_byte(0xa1, 1)   # Ignore
+    recorder.write_byte(0xa1, 0)
 
     # Byte 2 (0xd2)
-    recorder.write_io(0xa1, 0)   # Ignore
-    recorder.write_io(0xa1, 1)
-    recorder.write_io(0xa1, 0)   # Ignore
-    recorder.write_io(0xa1, 1)
-    recorder.write_io(0xa1, 1)   # Ignore
-    recorder.write_io(0xa1, 0)
-    recorder.write_io(0xa1, 0)   # Ignore
-    recorder.write_io(0xa1, 1)
-    recorder.write_io(0xa1, 1)   # Ignore
-    recorder.write_io(0xa1, 0)
-    recorder.write_io(0xa1, 1)   # Ignore
-    recorder.write_io(0xa1, 0)
-    recorder.write_io(0xa1, 0)   # Ignore
-    recorder.write_io(0xa1, 1)
-    recorder.write_io(0xa1, 1)   # Ignore
-    recorder.write_io(0xa1, 0)
+    recorder.write_byte(0xa1, 0)   # Ignore
+    recorder.write_byte(0xa1, 1)
+    recorder.write_byte(0xa1, 0)   # Ignore
+    recorder.write_byte(0xa1, 1)
+    recorder.write_byte(0xa1, 1)   # Ignore
+    recorder.write_byte(0xa1, 0)
+    recorder.write_byte(0xa1, 0)   # Ignore
+    recorder.write_byte(0xa1, 1)
+    recorder.write_byte(0xa1, 1)   # Ignore
+    recorder.write_byte(0xa1, 0)
+    recorder.write_byte(0xa1, 1)   # Ignore
+    recorder.write_byte(0xa1, 0)
+    recorder.write_byte(0xa1, 0)   # Ignore
+    recorder.write_byte(0xa1, 1)
+    recorder.write_byte(0xa1, 1)   # Ignore
+    recorder.write_byte(0xa1, 0)
 
     testfile = tmp_path / "test.bin"
     recorder.dump_to_file(str(testfile))
@@ -61,39 +61,39 @@ def test_read_bytes(tmp_path):
     recorder.load_from_file(str(testfile))
 
     # Byte 1    
-    assert recorder.read_io(0xa1) == 1  # Inverted bit
-    assert recorder.read_io(0xa1) == 1  # Duplicate bit at the beginning of each byte
-    assert recorder.read_io(0xa1) == 0  # Real data bit
-    assert recorder.read_io(0xa1) == 0  # Inverted bit
-    assert recorder.read_io(0xa1) == 1  # Real data bit
-    assert recorder.read_io(0xa1) == 1  # Inverted bit
-    assert recorder.read_io(0xa1) == 0  # Real data bit
-    assert recorder.read_io(0xa1) == 0  # Inverted bit
-    assert recorder.read_io(0xa1) == 1  # Real data bit
-    assert recorder.read_io(0xa1) == 0  # Inverted bit
-    assert recorder.read_io(0xa1) == 1  # Real data bit
-    assert recorder.read_io(0xa1) == 1  # Inverted bit
-    assert recorder.read_io(0xa1) == 0  # Real data bit
-    assert recorder.read_io(0xa1) == 0  # Inverted bit
-    assert recorder.read_io(0xa1) == 1  # Real data bit
-    assert recorder.read_io(0xa1) == 1  # Inverted bit
-    assert recorder.read_io(0xa1) == 0  # Real data bit
+    assert recorder.read_byte(0xa1) == 1  # Inverted bit
+    assert recorder.read_byte(0xa1) == 1  # Duplicate bit at the beginning of each byte
+    assert recorder.read_byte(0xa1) == 0  # Real data bit
+    assert recorder.read_byte(0xa1) == 0  # Inverted bit
+    assert recorder.read_byte(0xa1) == 1  # Real data bit
+    assert recorder.read_byte(0xa1) == 1  # Inverted bit
+    assert recorder.read_byte(0xa1) == 0  # Real data bit
+    assert recorder.read_byte(0xa1) == 0  # Inverted bit
+    assert recorder.read_byte(0xa1) == 1  # Real data bit
+    assert recorder.read_byte(0xa1) == 0  # Inverted bit
+    assert recorder.read_byte(0xa1) == 1  # Real data bit
+    assert recorder.read_byte(0xa1) == 1  # Inverted bit
+    assert recorder.read_byte(0xa1) == 0  # Real data bit
+    assert recorder.read_byte(0xa1) == 0  # Inverted bit
+    assert recorder.read_byte(0xa1) == 1  # Real data bit
+    assert recorder.read_byte(0xa1) == 1  # Inverted bit
+    assert recorder.read_byte(0xa1) == 0  # Real data bit
 
     # Byte 2 (0xd2)
-    assert recorder.read_io(0xa1) == 0  # Inverted bit
-    assert recorder.read_io(0xa1) == 0  # Duplicate bit at the beginning of each byte
-    assert recorder.read_io(0xa1) == 1  # Real data bit
-    assert recorder.read_io(0xa1) == 0  # Inverted bit
-    assert recorder.read_io(0xa1) == 1  # Real data bit
-    assert recorder.read_io(0xa1) == 1  # Inverted bit
-    assert recorder.read_io(0xa1) == 0  # Real data bit
-    assert recorder.read_io(0xa1) == 0  # Inverted bit
-    assert recorder.read_io(0xa1) == 1  # Real data bit
-    assert recorder.read_io(0xa1) == 1  # Inverted bit
-    assert recorder.read_io(0xa1) == 0  # Real data bit
-    assert recorder.read_io(0xa1) == 1  # Inverted bit
-    assert recorder.read_io(0xa1) == 0  # Real data bit
-    assert recorder.read_io(0xa1) == 0  # Inverted bit
-    assert recorder.read_io(0xa1) == 1  # Real data bit
-    assert recorder.read_io(0xa1) == 1  # Inverted bit
-    assert recorder.read_io(0xa1) == 0  # Real data bit
+    assert recorder.read_byte(0xa1) == 0  # Inverted bit
+    assert recorder.read_byte(0xa1) == 0  # Duplicate bit at the beginning of each byte
+    assert recorder.read_byte(0xa1) == 1  # Real data bit
+    assert recorder.read_byte(0xa1) == 0  # Inverted bit
+    assert recorder.read_byte(0xa1) == 1  # Real data bit
+    assert recorder.read_byte(0xa1) == 1  # Inverted bit
+    assert recorder.read_byte(0xa1) == 0  # Real data bit
+    assert recorder.read_byte(0xa1) == 0  # Inverted bit
+    assert recorder.read_byte(0xa1) == 1  # Real data bit
+    assert recorder.read_byte(0xa1) == 1  # Inverted bit
+    assert recorder.read_byte(0xa1) == 0  # Real data bit
+    assert recorder.read_byte(0xa1) == 1  # Inverted bit
+    assert recorder.read_byte(0xa1) == 0  # Real data bit
+    assert recorder.read_byte(0xa1) == 0  # Inverted bit
+    assert recorder.read_byte(0xa1) == 1  # Real data bit
+    assert recorder.read_byte(0xa1) == 1  # Inverted bit
+    assert recorder.read_byte(0xa1) == 0  # Real data bit

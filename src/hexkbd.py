@@ -1,7 +1,7 @@
 import pygame
 from interfaces import *
 
-class HexKeyboard(IODevice):
+class HexKeyboard:
     """
         The UT-88 compulter at minimum configuration (CPU unit) interacts with
         the user using 17 digits keyboard. The keyboard is connected to the I/O
@@ -11,7 +11,6 @@ class HexKeyboard(IODevice):
         - back button       - 0x80
     """
     def __init__(self):
-        IODevice.__init__(self, 0xa0, 0xa0)
         self._pressed_key = 0
 
 
@@ -52,7 +51,6 @@ class HexKeyboard(IODevice):
         return self._pressed_key
 
 
-    def read_io(self, addr):
-        self.validate_io_addr(addr)
+    def read_byte(self, offset):
         return self._pressed_key
 

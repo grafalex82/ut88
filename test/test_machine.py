@@ -3,6 +3,7 @@
 
 import pytest
 import sys
+from unittest.mock import MagicMock
 
 sys.path.append('../src')
 
@@ -11,7 +12,7 @@ from utils import *
 from interfaces import MemoryDevice, IODevice
 from ram import RAM
 from rom import ROM
-from mock import *
+from helper import MockIO
 
 @pytest.fixture
 def machine():
@@ -49,16 +50,18 @@ def test_memory_addr_validation(machine):
     assert "No memory registered for address 0x1234" in str(e.value)
 
 def test_io_read_write(machine):
-    machine.add_io(MockIO(0x42))
+    mock_io = MockIO()
+    machine.add_io(IODevice(mock_io, 0x42))
 
-    assert machine.read_io(0x42) == 0x00
-
+    mock_io.write_byte = MagicMock()
     machine.write_io(0x42, 0x12)
+    mock_io.write_byte.assert_called_once_with(0, 0x12)
+
+    mock_io.read_byte = MagicMock(return_value=0x12)
     assert machine.read_io(0x42) == 0x12
 
 def test_io_addr_validation(machine):
     machine.set_strict_validation(True)
-    machine.add_io(MockIO(0x42))
     with pytest.raises(IOError) as e:
         machine.read_io(0x24)
     assert "No IO registered for address 0x24" in str(e.value)

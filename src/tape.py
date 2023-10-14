@@ -1,9 +1,8 @@
 import logging
-from interfaces import *
 
 logger = logging.getLogger('tape')
 
-class TapeRecorder(IODevice):
+class TapeRecorder:
     """
     Tape Recorder Port Emulator
 
@@ -52,7 +51,6 @@ class TapeRecorder(IODevice):
 
     """
     def __init__(self):
-        IODevice.__init__(self, 0xa1, 0xa1)
         self._reset_buffer()
 
 
@@ -93,9 +91,7 @@ class TapeRecorder(IODevice):
                 self._buffer = bytearray(f.read())          # Read the buffer as is
 
 
-    def read_io(self, addr):
-        self.validate_io_addr(addr)
-
+    def read_byte(self, offset):
         if len(self._buffer) == 0:
             logger.debug("No more data in the tape buffer")
             return 0
@@ -129,9 +125,7 @@ class TapeRecorder(IODevice):
         return value
     
 
-    def write_io(self, addr, value):
-        self.validate_io_addr(addr)
-
+    def write_byte(self, offset, value):
         self._bits += 1
         if self._bits % 2:
             return # Skip odd calls, only even phase has the data

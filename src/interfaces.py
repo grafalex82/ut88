@@ -6,9 +6,17 @@ class IODevice:
     Some devices are read-only, some devices are write-only. A derived class must reimplement
     read_io() and/or write_io() functions according to the provided functionality
     """
-    def __init__(self, startaddr, endaddr):
+    def __init__(self, device, startaddr, endaddr=None):
+        self._device = device
         self._iostartaddr = startaddr
-        self._ioendaddr = endaddr
+
+        if endaddr:
+            self._ioendaddr = endaddr
+            device.set_size(endaddr - startaddr + 1)
+        elif hasattr(device, "get_size"):
+            self._ioendaddr = startaddr + device.get_size() - 1
+        else:
+            self._ioendaddr = startaddr
 
     def get_addr_space(self):
         return self._iostartaddr, self._ioendaddr
@@ -19,11 +27,12 @@ class IODevice:
 
     def read_io(self, addr):
         self.validate_io_addr(addr)
-        raise IOError(f"Reading IO {addr:x} is not supported")
+        return self._device.read_byte(addr - self._iostartaddr)
 
     def write_io(self, addr, value):
         self.validate_io_addr(addr)
-        raise IOError(f"Writing IO {addr:x} is not supported")
+        print(f"Writing an IO device, addr={addr:02x}, value={value:02x}")
+        self._device.write_byte(addr - self._iostartaddr, value)
     
     def update(self):
         pass

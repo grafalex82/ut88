@@ -7,6 +7,7 @@ sys.path.append('../src')
 from machine import Machine
 from emulator import Emulator
 from keyboard import Keyboard
+from interfaces import IODevice
 
 # Convert bytes array into a string
 def bytes2str(data):
@@ -16,6 +17,8 @@ def bytes2str(data):
 def str2bytes(data):
     return bytearray(data.encode('ascii'))
 
+class MockIO:
+    pass
 
 class EmulatedInstance:
     def __init__(self):
@@ -85,7 +88,7 @@ class EmulatedInstanceWithKeyboard(EmulatedInstance):
         EmulatedInstance.__init__(self)
 
         self._keyboard = Keyboard()
-        self._machine.add_io(self._keyboard)
+        self._machine.add_io(IODevice(self._keyboard, 0x04))
 
 
     @property
