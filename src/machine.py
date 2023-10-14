@@ -172,14 +172,14 @@ class UT88Machine(Machine):
     
     def set_quasi_disk(self, disk):
         self._quasi_disk = disk
-        self.add_io(disk)
 
     def write_io(self, addr, value):
         # Non-ff values in the configuration port will enable quasi disk access on stack reads/write operations
         if addr == 0x40:
             self._quasi_disk_enabled = (value != 0xff)
-    
-        Machine.write_io(self, addr, value)
+            self._quasi_disk.select_page(value)
+        else:
+            Machine.write_io(self, addr, value)
 
     def write_stack(self, addr, value):
         if self._quasi_disk_enabled:

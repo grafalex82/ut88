@@ -1,6 +1,16 @@
 from utils import *
 from interfaces import *
 
+DMA_CH0_START   = 0
+DMA_CH0_COUNT   = 1
+DMA_CH1_START   = 2
+DMA_CH1_COUNT   = 3
+DMA_CH2_START   = 4
+DMA_CH2_COUNT   = 5
+DMA_CH3_START   = 6
+DMA_CH3_COUNT   = 7
+DMA_PORT_CFG    = 8
+
 """
 The Intel 8257 DMA controller emulator.
 
@@ -15,11 +25,9 @@ schematics.
 Note, that this class provides a very limited implementation, and does not provide all the features
 of the original controller. Just a few features that enough to run Radio-86RK use case.
 """
-class DMA(MemoryDevice):
+class DMA:
     
     def __init__(self, machine):
-        MemoryDevice.__init__(self, 0xe000, 0xe008)
-
         self._machine = machine
 
         self._autoload = False
@@ -33,6 +41,10 @@ class DMA(MemoryDevice):
             'read':False, 
             'write':False} for _ in range(4)]
         self._waiting_high_byte = False
+
+
+    def get_size(self):
+        return 9
 
 
     def _enable_channel(self, channel, enable):
@@ -79,15 +91,14 @@ class DMA(MemoryDevice):
             return self._channels[channel]['start_addr']
             
 
-    def write_byte(self, addr, value):
-        self.validate_addr(addr)
-
-        match addr:
-            case addr if addr < 0xe008:     # Start address or counter register
-                channel = (addr >> 1) & 0x03
-                count_register = is_bit_set(addr, 0)
+    def write_byte(self, offset, value):
+        match offset:
+            case offset if offset < DMA_PORT_CFG:       # Start address or counter register
+                channel = (offset >> 1) & 0x03
+                count_register = is_bit_set(offset, 0)
                 self.set_register_value(channel, count_register, value)
-            case 0xe008:            # Mode byte
+
+            case offset if offset == DMA_PORT_CFG:      # Mode byte
                 self._autoload = is_bit_set(value, 7)
                 self._tc_stop = is_bit_set(value, 6)
                 self._extended_write = is_bit_set(value, 5)
@@ -96,8 +107,9 @@ class DMA(MemoryDevice):
                 self._enable_channel(2, is_bit_set(value, 2))
                 self._enable_channel(1, is_bit_set(value, 1))
                 self._enable_channel(0, is_bit_set(value, 0))
+
             case _:
-                raise MemoryError(f"Writing address 0x{addr:04x} is not supported")
+                raise MemoryError(f"Writing DMA register {offset} is not supported")
 
 
     def _get_transfer_settings(self, channel):

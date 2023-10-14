@@ -53,7 +53,7 @@ class Display(RAM):
     """
 
     def __init__(self):
-        RAM.__init__(self, 0xe000, 0xefff)
+        RAM.__init__(self, 0x1000)  # 0x800 bytes for chars, 0x800 bytes for inversion attribute
 
         with open(f"{resources_dir}/font.bin", mode='rb') as f:
             font = f.read()
@@ -83,22 +83,22 @@ class Display(RAM):
 
         return char
     
-    def write_byte(self, addr, value):
+    def write_byte(self, offset, value):
         # Writing to 0xe000-0xe7ff is treated as changing symbol attribute. Take only MSB of the
         # value, and apply the inversion bit to the corresponding character in 0xe800-0xefff range
-        if addr < 0xe800:
-            char_addr = addr + 0x0800
-            value = set_bit_value(RAM.read_byte(self, char_addr), 7, is_bit_set(value, 7))
-            RAM.write_byte(self, char_addr, value)
+        if offset < 0x0800:
+            char_offset = offset + 0x0800
+            value = set_bit_value(RAM.read_byte(self, char_offset), 7, is_bit_set(value, 7))
+            RAM.write_byte(self, char_offset, value)
 
         # Both attribute and char values updated as usual
-        RAM.write_byte(self, addr, value)
+        RAM.write_byte(self, offset, value)
 
         # Then update corresponding char on the screen
-        addr &= 0x07ff
-        ch = RAM.read_byte(self, 0xe800 + addr)
-        col = addr % 0x40
-        row = addr // 0x40
+        offset &= 0x07ff
+        ch = RAM.read_byte(self, 0x0800 + offset)
+        col = offset % 0x40
+        row = offset // 0x40
         self._display.blit(self._chars[ch], (col*CHAR_WIDTH, row*CHAR_HEIGHT))
 
 

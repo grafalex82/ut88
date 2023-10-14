@@ -20,6 +20,7 @@ from dma import DMA
 from ppi import PPI
 from rk86keyboard import RK86Keyboard
 from rk86display import RK86Display
+from interfaces import MemoryDevice, IODevice
 from bios_emulator import *
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
@@ -180,14 +181,14 @@ class BasicConfiguration(Configuration):
 
 
     def create_memories(self):
-        self._machine.add_memory(RAM(0xc000, 0xc3ff))
-        self._machine.add_memory(ROM(f"{resources_dir}/Monitor0.bin", 0x0000))
-        self._machine.add_memory(ROM(f"{resources_dir}/calculator.bin", 0x0800))
+        self._machine.add_memory(MemoryDevice(RAM(), 0xc000, 0xc3ff))
+        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/Monitor0.bin"), 0x0000))
+        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/calculator.bin"), 0x0800))
 
 
     def create_peripherals(self):
         self._lcd = LCD()
-        self._machine.add_memory(self._lcd)
+        self._machine.add_memory(MemoryDevice(self._lcd, 0x9000))
         self._kbd = HexKeyboard()
         self._machine.add_io(self._kbd)
         self._timer = Timer(self._machine)
@@ -235,10 +236,10 @@ class VideoConfiguration(Configuration):
 
 
     def create_memories(self):
-        self._machine.add_memory(RAM(0x0000, 0x7fff))
-        self._machine.add_memory(RAM(0xc000, 0xc3ff))
-        self._machine.add_memory(RAM(0xf400, 0xf7ff))
-        self._machine.add_memory(ROM(f"{resources_dir}/MonitorF.bin", 0xf800))
+        self._machine.add_memory(MemoryDevice(RAM(), 0x0000, 0x7fff))
+        self._machine.add_memory(MemoryDevice(RAM(), 0xc000, 0xc3ff))
+        self._machine.add_memory(MemoryDevice(RAM(), 0xf400, 0xf7ff))
+        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/MonitorF.bin"), 0xf800))
 
 
     def create_peripherals(self):
@@ -247,7 +248,7 @@ class VideoConfiguration(Configuration):
         self._keyboard = Keyboard()
         self._machine.add_io(self._keyboard)
         self._display = Display()
-        self._machine.add_memory(self._display)
+        self._machine.add_memory(MemoryDevice(self._display, 0xe000))
 
 
     def configure_logging(self):
@@ -320,9 +321,9 @@ class QuasiDiskConfiguration(VideoConfiguration):
 
 
     def create_memories(self):
-        self._machine.add_memory(RAM(0x0000, 0xe000))
-        self._machine.add_memory(RAM(0xf400, 0xf7ff))
-        self._machine.add_memory(ROM(f"{resources_dir}/MonitorF.bin", 0xf800))
+        self._machine.add_memory(MemoryDevice(RAM(), 0x0000, 0xe000))
+        self._machine.add_memory(MemoryDevice(RAM(), 0xf400, 0xf7ff))
+        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/MonitorF.bin"), 0xf800))
 
         # Load full CPM64 image, just in case if someone wants start with boot loader
         # Start address: 0x3100
@@ -391,8 +392,8 @@ class UT88OSConfiguration(VideoConfiguration):
 
     def create_memories(self):
         # No ROMS, only memory for all 64k, except for video RAM added by Display component
-        self._machine.add_memory(RAM(0x0000, 0xdfff))
-        self._machine.add_memory(RAM(0xf000, 0xffff))
+        self._machine.add_memory(MemoryDevice(RAM(), 0x0000, 0xdfff))
+        self._machine.add_memory(MemoryDevice(RAM(), 0xf000, 0xffff))
 
         # Load bootstrapped UT-88 OS images
         self._emulator.load_memory(f"{tapes_dir}/ut88os_monitor.rku")   # 0xf800-0xffff
@@ -448,8 +449,8 @@ class Radio86RKConfiguration(Configuration):
 
 
     def create_memories(self):
-        self._machine.add_memory(RAM(0x0000, 0x7fff))
-        self._machine.add_memory(ROM(f"{resources_dir}/rk86_monitor.bin", 0xf800))
+        self._machine.add_memory(MemoryDevice(RAM(), 0x0000, 0x7fff))
+        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/rk86_monitor.bin"), 0xf800))
 
 
     def create_peripherals(self):
@@ -458,8 +459,8 @@ class Radio86RKConfiguration(Configuration):
 
         # self._recorder = TapeRecorder()
         # self._machine.add_io(self._recorder)
-        self._keyboard_port = PPI(0x8000)
-        self._machine.add_memory(self._keyboard_port)
+        self._keyboard_port = PPI()
+        self._machine.add_memory(MemoryDevice(self._keyboard_port, 0x8000))
 
         self._keyboard = RK86Keyboard()
         self._keyboard_port.set_portA_handler(self._keyboard.set_columns)
@@ -469,10 +470,10 @@ class Radio86RKConfiguration(Configuration):
         self._keyboard_port.set_portC_bit_handler(7, self._keyboard.read_rus_key)
 
         self._dma = DMA(self._machine)
-        self._machine.add_memory(self._dma)
+        self._machine.add_memory(MemoryDevice(self._dma, 0xe000))
 
         self._display = RK86Display(self._dma)
-        self._machine.add_memory(self._display)
+        self._machine.add_memory(MemoryDevice(self._display, 0xc000))
 
 
     def configure_logging(self):

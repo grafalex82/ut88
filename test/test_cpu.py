@@ -10,13 +10,14 @@ from machine import Machine
 from cpu import CPU
 from rom import ROM
 from ram import RAM
+from interfaces import MemoryDevice
 from utils import *
 from mock import *
 
 @pytest.fixture
 def cpu():
     machine = Machine()
-    machine.add_memory(RAM(0x0000, 0xffff))
+    machine.add_memory(MemoryDevice(RAM(), 0x0000, 0xffff))
     return CPU(machine) 
 
 def test_reset_values(cpu):

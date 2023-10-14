@@ -2,11 +2,8 @@ import os
 
 from interfaces import *
 
-class QuasiDisk(IODevice, StackDevice):
+class QuasiDisk:
     def __init__(self, fname):
-        IODevice.__init__(self, 0x40, 0x40)
-        StackDevice.__init__(self, 0x0000, 0xffff)
-
         self._page = None
         self._fname = fname
         self.reload()
@@ -15,9 +12,7 @@ class QuasiDisk(IODevice, StackDevice):
     def filename(self):
         return self._fname
 
-    def write_io(self, addr, value):
-        self.validate_io_addr(addr)
-
+    def select_page(self, value):
         match value:
             case 0xff:
                 self._page = None
@@ -33,27 +28,23 @@ class QuasiDisk(IODevice, StackDevice):
                 raise IOError(f"Incorrect quasi disk page selection: {value:02x}")
 
 
-    def write_stack(self, ptr, value):
-        self.validate_stack_addr(ptr)
-
+    def write_stack(self, addr, value):
         if self._page == None:
             raise IOError(f"Quasi disk page was not selected")
 
         page_offset = 64*1024*self._page
-        self._data[page_offset + ptr + 1] = (value >> 8) & 0xff
-        self._data[page_offset + ptr] = value & 0xff
+        self._data[page_offset + addr + 1] = (value >> 8) & 0xff
+        self._data[page_offset + addr] = value & 0xff
         
         self._changed = True
 
 
-    def read_stack(self, ptr):
-        self.validate_stack_addr(ptr)
-
+    def read_stack(self, addr):
         if self._page == None:
             raise IOError(f"Quasi disk page was not selected")
         
         page_offset = 64*1024*self._page
-        return (self._data[page_offset + ptr + 1] << 8) | self._data[page_offset + ptr]
+        return (self._data[page_offset + addr + 1] << 8) | self._data[page_offset + addr]
 
 
     def reload(self):

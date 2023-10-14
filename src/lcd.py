@@ -6,7 +6,7 @@ from interfaces import *
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 
-class LCD(MemoryDevice):
+class LCD:
     """
     Basic UT-88 configuration outputs data to a 6 digit 7-segment LCD display.
     Schematically this display connected to the system as a 3-byte memory space.
@@ -17,13 +17,15 @@ class LCD(MemoryDevice):
         
     """
     def __init__(self):
-        MemoryDevice.__init__(self, 0x9000, 0x9002)
         self._ram = [0] * 3
 
         self._images = [pygame.image.load(f"{resources_dir}/digit_{d:1X}.png") for d in range(0x10)]
 
         self._display = pygame.Surface((75*6, 94))
 
+
+    def get_size(self):
+        return 3
 
     def _draw_byte(self, screen, byte, x):
         digit1 = (byte & 0xf0) >> 4
@@ -49,20 +51,18 @@ class LCD(MemoryDevice):
             raise ValueError(f"Value {value:x} is out of range")
 
 
-    def write_byte(self, addr, value):
-        self.validate_addr(addr)
+    def write_byte(self, offset, value):
         self._check_value(value, 0xff)
 
-        self._ram[addr - self._startaddr] = value
+        self._ram[offset] = value
 
         self._update_screen_buffer()
 
 
-    def write_word(self, addr, value):
-        self.validate_addr(addr)
+    def write_word(self, offset, value):
         self._check_value(value, 0xffff)
 
-        self._ram[addr - self._startaddr] = value & 0xff
-        self._ram[addr - self._startaddr + 1] = value >> 8
+        self._ram[offset] = value & 0xff
+        self._ram[offset + 1] = value >> 8
 
         self._update_screen_buffer()

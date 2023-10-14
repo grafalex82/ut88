@@ -8,6 +8,7 @@ from rom import ROM
 from ram import RAM
 from utils import *
 from helper import EmulatedInstanceWithKeyboard
+from interfaces import MemoryDevice
 
 # CP/M is a UT-88 machine with monitorF ROM, and a 64k RAM + CP/M binary modules loaded.
 #
@@ -17,8 +18,8 @@ class CPM(EmulatedInstanceWithKeyboard):
     def __init__(self):
         EmulatedInstanceWithKeyboard.__init__(self)
 
-        self._machine.add_memory(RAM(0x0000, 0xf7ff))
-        self._machine.add_memory(ROM(f"{resources_dir}/MonitorF.bin", 0xf800))
+        self._machine.add_memory(MemoryDevice(RAM(), 0x0000, 0xf7ff))
+        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/MonitorF.bin"), 0xf800))
 
         self._emulator.load_memory(f"{tapes_dir}/cpm64_bdos.rku")
         self._emulator.load_memory(f"{tapes_dir}/cpm64_bios.rku")

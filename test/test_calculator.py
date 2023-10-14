@@ -26,6 +26,7 @@ from float import *
 from machine import Machine
 from emulator import Emulator
 from cpu import CPU
+from interfaces import MemoryDevice
 from rom import ROM
 from ram import RAM
 from utils import *
@@ -40,9 +41,9 @@ class Calculator(EmulatedInstance):
     def __init__(self):
         EmulatedInstance.__init__(self)
         
-        self._machine.add_memory(RAM(0xc000, 0xc3ff))     # Same as CPU module configuration
-        self._machine.add_memory(ROM(f"{resources_dir}/Monitor0.bin", 0x0000))
-        self._machine.add_memory(ROM(f"{resources_dir}/calculator.bin", 0x0800))
+        self._machine.add_memory(MemoryDevice(RAM(), 0xc000, 0xc3ff))     # Same as CPU module configuration
+        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/Monitor0.bin"), 0x0000))
+        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/calculator.bin"), 0x0800))
 
 
     def _get_sp(self):

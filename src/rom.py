@@ -1,25 +1,22 @@
 from utils import *
-from interfaces import *
 
-class ROM(MemoryDevice):
-    def __init__(self, filename, startaddr):
+class ROM:
+    def __init__(self, filename):
         with open(filename, mode='rb') as f:
             self._rom = [x for x in f.read()]
 
-        MemoryDevice.__init__(self, startaddr, startaddr + len(self._rom) - 1)
+
+    def get_size(self):
+        return len(self._rom)
 
 
-    def read_byte(self, addr):
-        self.validate_addr(addr)
-        return self._rom[addr - self._startaddr]
+    def read_byte(self, offset):
+        return self._rom[offset]
 
 
-    def read_word(self, addr):
-        self.validate_addr(addr)
-        return self._rom[addr - self._startaddr] | self._rom[addr - self._startaddr + 1] << 8
+    def read_word(self, offset):
+        return self._rom[offset] | self._rom[offset + 1] << 8
 
 
-    def read_burst(self, addr, count):
-        self.validate_addr(addr)
-        self.validate_addr(addr + count - 1)
-        return self._rom[addr - self._startaddr : addr - self._startaddr + count]
+    def read_burst(self, offset, count):
+        return self._rom[offset : offset + count]

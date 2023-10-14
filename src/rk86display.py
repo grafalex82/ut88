@@ -9,12 +9,8 @@ resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 CHAR_WIDTH = 12
 CHAR_HEIGHT = 16
 
-
-class RK86Display(MemoryDevice):
-
+class RK86Display:
     def __init__(self, dma):
-        MemoryDevice.__init__(self, 0xc000, 0xc001)
-
         self._dma = dma
 
         with open(f"{resources_dir}/font.bin", mode='rb') as f:
@@ -44,6 +40,10 @@ class RK86Display(MemoryDevice):
 
         self._burst_space_code = None
         self._burst_count_code = None
+
+
+    def get_size(self):
+        return 2    # The Intel 8275 controller has just 2 registers
 
 
     def _create_char(self, font, invert):
@@ -141,25 +141,21 @@ class RK86Display(MemoryDevice):
     
 
     def read_byte(self, addr):
-        self.validate_addr(addr)
-
         match addr:
-            case 0xc001:
+            case 1:
                 return self._read_status_reg()
             case _:
-                raise MemoryError(f"Writing address 0x{addr:04x} is not supported")        
+                raise MemoryError(f"Writing CRT register {offset:04x} is not supported")        
 
 
-    def write_byte(self, addr, value):
-        self.validate_addr(addr)
-
-        match addr:
-            case 0xc001:
+    def write_byte(self, offset, value):
+        match offset:
+            case 1:
                 self._handle_command(value)
-            case 0xc000:
+            case 0:
                 self._handle_parameter(value)
             case _:
-                raise MemoryError(f"Writing address 0x{addr:04x} is not supported")
+                raise MemoryError(f"Writing CRT register {offset:04x} is not supported")
             
 
     def update_screen(self, screen):

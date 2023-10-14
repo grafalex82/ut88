@@ -8,6 +8,7 @@ from emulator import Emulator
 from cpu import CPU
 from rom import ROM
 from ram import RAM
+from interfaces import MemoryDevice
 from keyboard import Keyboard
 from utils import *
 from helper import EmulatedInstanceWithKeyboard
@@ -20,7 +21,7 @@ class UT88OS(EmulatedInstanceWithKeyboard):
     def __init__(self):
         EmulatedInstanceWithKeyboard.__init__(self)
 
-        self._machine.add_memory(RAM(0x0000, 0xffff))
+        self._machine.add_memory(MemoryDevice(RAM(), 0x0000, 0xffff))
 
         self._emulator.load_memory(f"{tapes_dir}/ut88os_monitor.rku")   # 0xf800-0xffff
         self._emulator.load_memory(f"{tapes_dir}/ut88os_monitor2.rku")  # 0xc000-0xcaff

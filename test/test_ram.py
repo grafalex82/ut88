@@ -7,11 +7,19 @@ import sys
 sys.path.append('../src')
 
 from ram import RAM
+from interfaces import MemoryDevice
 from utils import *
 
 @pytest.fixture
 def ram():
-    return RAM(0x0000, 0xffff) 
+    return MemoryDevice(RAM(), 0x0000, 0xffff)
+
+def test_create_by_size():
+    ram = RAM(0x1000)
+    device = MemoryDevice(ram, 0x2000)
+    start, end = device.get_addr_space()
+    assert start == 0x2000
+    assert end == 0x2fff
 
 def test_addr(ram):
     start, end = ram.get_addr_space()
@@ -76,7 +84,7 @@ def test_out_of_word_range_value2(ram):
         ram.write_stack(0x1234, 0xbeef42)
 
 def test_out_of_addr_range_byte():
-    ram = RAM(0x5000, 0x5fff) 
+    ram = MemoryDevice(RAM(), 0x5000, 0x5fff)
     with pytest.raises(MemoryError):
         ram.write_byte(0x1234, 0x42)
     with pytest.raises(MemoryError):
@@ -87,7 +95,7 @@ def test_out_of_addr_range_byte():
         ram.read_byte(0x6789)
 
 def test_out_of_addr_range_word():
-    ram = RAM(0x5000, 0x5fff) 
+    ram = MemoryDevice(RAM(), 0x5000, 0x5fff)
     with pytest.raises(MemoryError):
         ram.write_word(0x1234, 0xbeef)
     with pytest.raises(MemoryError):
@@ -98,7 +106,7 @@ def test_out_of_addr_range_word():
         ram.read_word(0x6789)
 
 def test_out_of_addr_range_stack():
-    ram = RAM(0x5000, 0x5fff) 
+    ram = MemoryDevice(RAM(), 0x5000, 0x5fff)
     with pytest.raises(MemoryError):
         ram.write_stack(0x1234, 0xbeef)
     with pytest.raises(MemoryError):
@@ -109,7 +117,7 @@ def test_out_of_addr_range_stack():
         ram.read_stack(0x6789)
 
 def test_out_of_addr_range_burst():
-    ram = RAM(0x5000, 0x5fff) 
+    ram = MemoryDevice(RAM(), 0x5000, 0x5fff)
     with pytest.raises(MemoryError):
         ram.read_burst(0x1234, 0x10)
     with pytest.raises(MemoryError):

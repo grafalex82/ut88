@@ -8,6 +8,7 @@ sys.path.append('../src')
 
 from machine import Machine
 from utils import *
+from interfaces import MemoryDevice, IODevice
 from ram import RAM
 from rom import ROM
 from mock import *
@@ -15,8 +16,8 @@ from mock import *
 @pytest.fixture
 def machine():
     m = Machine()
-    m.add_memory(ROM("../resources/Monitor0.bin", 0x4000))
-    m.add_memory(RAM(0x8000, 0x8fff))
+    m.add_memory(MemoryDevice(ROM("../resources/Monitor0.bin"), 0x4000))
+    m.add_memory(MemoryDevice(RAM(), 0x8000, 0x8fff))
     return m
 
 def test_ram_read_write(machine):

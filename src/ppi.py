@@ -1,6 +1,11 @@
 from utils import *
 from interfaces import *
 
+PPI_PORT_A      = 0
+PPI_PORT_B      = 1
+PPI_PORT_C      = 2
+PPI_PORT_CFG    = 3
+
 """
     Intel 8255 Parallel Peripheral Interface emulator
 
@@ -19,12 +24,8 @@ from interfaces import *
     the selected port. This allows building simple 'schematics' based on the physical connection of the
     signal lines.
 """
-class PPI(MemoryDevice):
-    def __init__(self, addr):
-        MemoryDevice.__init__(self, addr, addr+3)
-
-        self._base_addr = addr
-
+class PPI:
+    def __init__(self):
         self._portA_mode_input = True
         self._portB_mode_input = True
         self._portCu_mode_input = True
@@ -35,6 +36,10 @@ class PPI(MemoryDevice):
         self._portC_handler = None
         self._portC_value = 0
         self._portC_bit_handlers = [None for _ in range(8)]
+
+
+    def get_size(self):
+        return 4
 
 
     def set_portA_handler(self, func):
@@ -133,45 +138,36 @@ class PPI(MemoryDevice):
 
         return value
 
-    def read_byte(self, addr):
-        self.validate_addr(addr)
 
-        if addr == self._base_addr + 0 and self._portA_mode_input:    # Port A
+    def read_byte(self, offset):
+        if offset == PPI_PORT_A and self._portA_mode_input:
             return self._portA_handler()
-        if addr == self._base_addr + 1 and self._portB_mode_input:    # Port B
+        if offset == PPI_PORT_B and self._portB_mode_input:
             return self._portB_handler()
-        if addr == self._base_addr + 2:    # Port C
+        if offset == PPI_PORT_C:
             return self._handle_portC_input()
-        if addr == self._base_addr + 3:    # Configuration port
+        if offset == PPI_PORT_CFG:
             return 0
         else:
-            raise MemoryError("PPI port at address {addr:04x} is not configured for reading")
+            raise MemoryError("PPI port {offset} is not configured for reading")
 
 
-    def write_byte(self, addr, value):
-        self.validate_addr(addr)
-
-        if addr == self._base_addr + 0 and not self._portA_mode_input:      # Port A
+    def write_byte(self, offset, value):
+        if offset == PPI_PORT_A and not self._portA_mode_input:
             self._portA_handler(value)
 
-        elif addr == self._base_addr + 1 and not self._portB_mode_input:    # Port B
+        elif offset == PPI_PORT_B and not self._portB_mode_input:
             self._portB_handler(value)
 
-        elif addr == self._base_addr + 2:    # Port C
+        elif offset == PPI_PORT_C:
             self._handle_portC_output(value)
             self._handle_portC_bits_output(value)
 
-        elif addr == self._base_addr + 3:    # Configuration port
+        elif offset == PPI_PORT_CFG:
             if is_bit_set(value, 7):    # If MSB is set - this is configuration word
                 self._configure(value)
             else:                       # If MSB is not set - this is BSR mode request
                 self._handle_bsr(value)
         else:
-            raise MemoryError("PPI port at address {addr:04x} is not configured for writing")
-
-
-
-
-
-
+            raise MemoryError("PPI port {offset} is not configured for writing")
 

@@ -6,23 +6,24 @@ import sys
 
 sys.path.append('../src')
 
-from dma import DMA
+from dma import *
 from ram import RAM
 from machine import Machine
 from utils import *
+from interfaces import MemoryDevice
 
 @pytest.fixture
 def dma():
-    ram = RAM(0x0000, 0xffff)
+    ram = MemoryDevice(RAM(), 0x0000, 0xffff)
     machine = Machine()
     machine.add_memory(ram)
     return DMA(machine)
 
 def test_fill_channel_params(dma):
-    dma.write_byte(0xe002, 0x34)    # Fill start address for Channel 1 (low byte first)
-    dma.write_byte(0xe002, 0x12)
-    dma.write_byte(0xe003, 0x78)    # Fill count for Channel 1 (low byte first)
-    dma.write_byte(0xe003, 0x56)    
+    dma.write_byte(DMA_CH1_START, 0x34)    # Fill start address for Channel 1 (low byte first)
+    dma.write_byte(DMA_CH1_START, 0x12)
+    dma.write_byte(DMA_CH1_COUNT, 0x78)    # Fill count for Channel 1 (low byte first)
+    dma.write_byte(DMA_CH1_COUNT, 0x56)    
 
     assert dma.get_register_value(1, False) == 0x1234   # Start address register
     assert dma.get_register_value(1, True) == 0x1679    # Counter register (not including read/write bits)
@@ -30,20 +31,20 @@ def test_fill_channel_params(dma):
 
 
 def test_fill_channel_params_multiple(dma):
-    dma.write_byte(0xe002, 0x34)    # Fill start address for Channel 1 (low byte first)
-    dma.write_byte(0xe002, 0x12)
-    dma.write_byte(0xe003, 0x78)    # Fill count for Channel 1 (low byte first)
-    dma.write_byte(0xe003, 0x56)    
+    dma.write_byte(DMA_CH1_START, 0x34)    # Fill start address for Channel 1 (low byte first)
+    dma.write_byte(DMA_CH1_START, 0x12)
+    dma.write_byte(DMA_CH1_COUNT, 0x78)    # Fill count for Channel 1 (low byte first)
+    dma.write_byte(DMA_CH1_COUNT, 0x56)    
 
     assert dma.get_register_value(1, False) == 0x1234   # Start address register
     assert dma.get_register_value(1, True) == 0x1679    # Counter register (not including read/write bits)
                                                         # Number of bytes to transfer is 1 bigger than param
 
     # Do filling params again
-    dma.write_byte(0xe002, 0x45)    # Fill start address for the same Channel 1 (low byte first)
-    dma.write_byte(0xe002, 0x23)
-    dma.write_byte(0xe003, 0x89)    # Fill count for Channel 1 (low byte first)
-    dma.write_byte(0xe003, 0x67)    
+    dma.write_byte(DMA_CH1_START, 0x45)    # Fill start address for the same Channel 1 (low byte first)
+    dma.write_byte(DMA_CH1_START, 0x23)
+    dma.write_byte(DMA_CH1_COUNT, 0x89)    # Fill count for Channel 1 (low byte first)
+    dma.write_byte(DMA_CH1_COUNT, 0x67)    
 
     assert dma.get_register_value(1, False) == 0x2345   # Start address register
     assert dma.get_register_value(1, True) == 0x278a    # Counter register (not including read/write bits)
@@ -51,11 +52,11 @@ def test_fill_channel_params_multiple(dma):
 
 
 def test_fill_autoload_params(dma):
-    dma.write_byte(0xe008, 0x80)    # Set Autoload flag in the configuration register
-    dma.write_byte(0xe004, 0x34)    # Fill start address for Channel 1 (low byte first)
-    dma.write_byte(0xe004, 0x12)
-    dma.write_byte(0xe005, 0x78)    # Fill count for Channel 1 (low byte first)
-    dma.write_byte(0xe005, 0x56)    
+    dma.write_byte(DMA_PORT_CFG, 0x80)  # Set Autoload flag in the configuration register
+    dma.write_byte(DMA_CH2_START, 0x34) # Fill start address for Channel 1 (low byte first)
+    dma.write_byte(DMA_CH2_START, 0x12)
+    dma.write_byte(DMA_CH2_COUNT, 0x78) # Fill count for Channel 1 (low byte first)
+    dma.write_byte(DMA_CH2_COUNT, 0x56)    
 
     assert dma.get_register_value(2, False) == 0x1234   # Start address register
     assert dma.get_register_value(2, True) == 0x1679    # Counter register (not including read/write bits)
@@ -72,11 +73,11 @@ def test_dma_read(dma):
     dma._machine.write_memory_byte(0x1237, 0x45)
 
     # Configure the DMA channel 0 for reading 4 memory bytes starting 0x1234
-    dma.write_byte(0xe000, 0x34)    # Set channel 0 start address (low byte first)
-    dma.write_byte(0xe000, 0x12)
-    dma.write_byte(0xe001, 0x03)    # Set channel 0 count and read mode
-    dma.write_byte(0xe001, 0x40)
-    dma.write_byte(0xe008, 0x01)    # Enable channel 0
+    dma.write_byte(DMA_CH0_START, 0x34)     # Set channel 0 start address (low byte first)
+    dma.write_byte(DMA_CH0_START, 0x12)
+    dma.write_byte(DMA_CH0_COUNT, 0x03)     # Set channel 0 count and read mode
+    dma.write_byte(DMA_CH0_COUNT, 0x40)
+    dma.write_byte(DMA_PORT_CFG, 0x01)      # Enable channel 0
 
     # Perform the transfer using channel 0
     data = dma.dma_read(0)
@@ -87,11 +88,11 @@ def test_dma_read(dma):
 
 def test_dma_write(dma):
     # Configure the DMA channel 1 for writing 4 memory bytes starting 0x1234
-    dma.write_byte(0xe002, 0x34)    # Set channel 1 start address (low byte first)
-    dma.write_byte(0xe002, 0x12)
-    dma.write_byte(0xe003, 0x03)    # Set channel 1 count and write mode
-    dma.write_byte(0xe003, 0x80)
-    dma.write_byte(0xe008, 0x02)    # Enable channel 1
+    dma.write_byte(DMA_CH1_START, 0x34)     # Set channel 1 start address (low byte first)
+    dma.write_byte(DMA_CH1_START, 0x12)
+    dma.write_byte(DMA_CH1_COUNT, 0x03)     # Set channel 1 count and write mode
+    dma.write_byte(DMA_CH1_COUNT, 0x80)
+    dma.write_byte(DMA_PORT_CFG, 0x02)      # Enable channel 1
 
     # Perform the transfer using channel 1
     data = dma.dma_write(1, [0x42, 0x43, 0x44, 0x45])
@@ -111,12 +112,12 @@ def test_dma_autoload(dma):
     dma._machine.write_memory_byte(0x1237, 0x45)
 
     # Configure the DMA channel 2 for reading 4 memory bytes starting 0x1234 with autoload
-    dma.write_byte(0xe008, 0x80)    # Raise the autoload bit
-    dma.write_byte(0xe004, 0x34)    # Set channel 2 start address (low byte first)
-    dma.write_byte(0xe004, 0x12)
-    dma.write_byte(0xe005, 0x03)    # Set channel 2 count and read mode
-    dma.write_byte(0xe005, 0x40)
-    dma.write_byte(0xe008, 0x84)    # Enable channel 2, autoload
+    dma.write_byte(DMA_PORT_CFG, 0x80)      # Raise the autoload bit
+    dma.write_byte(DMA_CH2_START, 0x34)     # Set channel 2 start address (low byte first)
+    dma.write_byte(DMA_CH2_START, 0x12)
+    dma.write_byte(DMA_CH2_COUNT, 0x03)     # Set channel 2 count and read mode
+    dma.write_byte(DMA_CH2_COUNT, 0x40)
+    dma.write_byte(DMA_PORT_CFG, 0x84)      # Enable channel 2, autoload
 
     # Perform the transfer using channel 2, and check the result
     data = dma.dma_read(2)
@@ -141,12 +142,12 @@ def test_dma_not_autoloaded(dma):
     dma._machine.write_memory_byte(0x1237, 0x45)
 
     # Configure the DMA channel 3 for reading 4 memory bytes starting 0x1234 with autoload
-    dma.write_byte(0xe008, 0x00)    # Clear the autoload bit
-    dma.write_byte(0xe006, 0x34)    # Set channel 3 start address (low byte first)
-    dma.write_byte(0xe006, 0x12)
-    dma.write_byte(0xe007, 0x03)    # Set channel 3 count and read mode
-    dma.write_byte(0xe007, 0x40)
-    dma.write_byte(0xe008, 0x08)    # Enable channel 3
+    dma.write_byte(DMA_PORT_CFG, 0x00)      # Clear the autoload bit
+    dma.write_byte(DMA_CH3_START, 0x34)     # Set channel 3 start address (low byte first)
+    dma.write_byte(DMA_CH3_START, 0x12)
+    dma.write_byte(DMA_CH3_COUNT, 0x03)     # Set channel 3 count and read mode
+    dma.write_byte(DMA_CH3_COUNT, 0x40)
+    dma.write_byte(DMA_PORT_CFG, 0x08)      # Enable channel 3
 
     # Perform the transfer using channel 3, and check the result
     data = dma.dma_read(3)

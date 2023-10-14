@@ -8,10 +8,11 @@ sys.path.append('../src')
 
 from rom import ROM
 from utils import *
+from interfaces import MemoryDevice
 
 @pytest.fixture
 def rom():
-    return ROM("../resources/Monitor0.bin", 0x4000)
+    return MemoryDevice(ROM("../resources/Monitor0.bin"), 0x4000)
 
 def test_addr(rom):
     start, end = rom.get_addr_space()

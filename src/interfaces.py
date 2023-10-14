@@ -42,9 +42,15 @@ class MemoryDevice:
 
     The actual device shall reimplement read* and/or write* functions.
     """
-    def __init__(self, startaddr, endaddr):
+    def __init__(self, device, startaddr, endaddr=None):
+        self._device = device
         self._startaddr = startaddr
-        self._endaddr = endaddr
+
+        if endaddr:
+            self._endaddr = endaddr
+            device.set_size(endaddr - startaddr + 1)
+        else:
+            self._endaddr = startaddr + device.get_size() - 1
 
     def get_addr_space(self):
         return self._startaddr, self._endaddr
@@ -55,63 +61,59 @@ class MemoryDevice:
 
     def read_byte(self, addr):
         self.validate_addr(addr)
-        raise MemoryError(f"Reading address 0x{addr:04x} is not supported")
+        if not hasattr(self._device, "read_byte"):
+            raise MemoryError(f"Reading byte at address 0x{addr:04x} is not supported")
+        return self._device.read_byte(addr - self._startaddr)
 
     def read_word(self, addr):
         self.validate_addr(addr)
-        raise MemoryError(f"Reading address 0x{addr:04x} is not supported")
+        if not hasattr(self._device, "read_word"):
+            raise MemoryError(f"Reading word at address 0x{addr:04x} is not supported")
+        return self._device.read_word(addr - self._startaddr)
+
+    def read_stack(self, addr):
+        self.validate_addr(addr)
+        if not hasattr(self._device, "read_stack"):
+            raise MemoryError(f"Reading stack address 0x{addr:04x} is not supported")
+        return self._device.read_stack(addr - self._startaddr)
 
     def read_burst(self, addr, count):
-        endaddr = addr + len(data) - 1
+        endaddr = addr + count - 1
         self.validate_addr(addr)
         self.validate_addr(endaddr)
-        raise MemoryError(f"Burst reading address range 0x{addr:04x}-0x{endaddr:04x} is not supported")
+        if not hasattr(self._device, "read_burst"):
+            raise MemoryError(f"Burst reading address range 0x{addr:04x}-0x{endaddr:04x} is not supported")
+        return self._device.read_burst(addr - self._startaddr, count)
 
     def write_byte(self, addr, value):
         self.validate_addr(addr)
-        raise MemoryError(f"Writing address 0x{addr:04x} is not supported")
+        if not hasattr(self._device, "write_byte"):
+            raise MemoryError(f"Writing byte ataddress 0x{addr:04x} is not supported")
+        self._device.write_byte(addr - self._startaddr, value)
 
     def write_word(self, addr, value):
         self.validate_addr(addr)
-        raise MemoryError(f"Writing address 0x{addr:04x} is not supported")
+        if not hasattr(self._device, "write_word"):
+            raise MemoryError(f"Writing word at address 0x{addr:04x} is not supported")
+        self._device.write_word(addr - self._startaddr, value)
+
+    def write_stack(self, addr, value):
+        self.validate_addr(addr)
+        if not hasattr(self._device, "write_stack"):
+            raise MemoryError(f"Writing stack address 0x{addr:04x} is not supported")
+        self._device.write_stack(addr - self._startaddr, value)
 
     def write_burst(self, addr, data):
         endaddr = addr + len(data) - 1
         self.validate_addr(addr)
         self.validate_addr(endaddr)
-        raise MemoryError(f"Burst writing address range 0x{addr:04x}-0x{endaddr:04x} is not supported")
+        if not hasattr(self._device, "write_burst"):
+            raise MemoryError(f"Burst writing address range 0x{addr:04x}-0x{endaddr:04x} is not supported")
+        self._device.write_burst(addr - self._startaddr, data)
 
     def update(self):
         pass
 
 
 class StackDevice:
-    """
-    StackDevice class is a base class for all memory type devices connected to the
-    Machine via memory read/write lines. The CPU will reach these devices via stack
-    operations (PUSH and POP). Special handling of stack devices compared to regular
-    memory device allows creating a device in a separate address space (e.g. Quasi disk).
-
-    The actual device shall reimplement read_stack() and/or write_stack() functions.
-    """
-    def __init__(self, startaddr, endaddr):
-        self._stackstartaddr = startaddr
-        self._stackendaddr = endaddr
-
-    def get_addr_space(self):
-        return self._stackstartaddr, self._stackendaddr
-
-    def validate_stack_addr(self, addr):
-        if addr < self._stackstartaddr or addr > self._stackendaddr:
-            raise MemoryError(f"Address 0x{addr:04x} is out of stack memory range 0x{self._stackstartaddr:04x}-0x{self._stackendaddr:04x}")
-
-    def write_stack(self, ptr, value):
-        self.validate_stack_addr(addr)
-        raise MemoryError(f"Writing stack address 0x{addr:04x} is not supported")
-
-    def read_stack(self, ptr):
-        self.validate_stack_addr(addr)
-        raise MemoryError(f"Reading stack address 0x{addr:04x} is not supported")
-
-    def update(self):
-        pass
+    pass
