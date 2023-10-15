@@ -7,24 +7,25 @@ VIDEO_MEMORY_ADDR = 0xe800
 VIDEO_MEMORY_SIZE = 0x0700
 LINE_WIDTH = 0x40
 
-"""
-    MonitorF and CP/M BIOS provide functions to print characters to the console. UT-88 emulator does a
-    good job emulating all the instructions in this code, as they would be executed on a real CPU. 
-    
-    At the same time printing a character is a pretty heavy operation, and consumes a lot of CPU cycles.
-
-    This class hooks calls to the BIOS and Monitor put char functions, and perform the same operations
-    put in python. This provides up to 5x performance boost on operatons that print a lot of data on the
-    screen.
-
-    The implementation of the put char function made as close as possible to the original i8080 code.
-    - Normal characters are printed at the cursor position, and cursor advances 1 position right
-    - If end of the screen is reached, the display contents is scrolled one position up
-    - Clear screen, and cursor move up/down/left/right/home characters processed accordingly
-    - The implementation handles <0x1b> - 'Y' - <y_pos> - <x_pos> sequence for direct cursor movement
-      (MonitorF functionality)
-"""
 class BIOSDisplayEmulator():
+    """
+        MonitorF and CP/M BIOS provide functions to print characters to the console. UT-88 emulator does a
+        good job emulating all the instructions in this code, as they would be executed on a real CPU. 
+        
+        At the same time printing a character is a pretty heavy operation, and consumes a lot of CPU cycles.
+
+        This class hooks calls to the BIOS and Monitor put char functions, and perform the same operations
+        put in python. This provides up to 5x performance boost on operatons that print a lot of data on the
+        screen.
+
+        The implementation of the put char function made as close as possible to the original i8080 code.
+        - Normal characters are printed at the cursor position, and cursor advances 1 position right
+        - If end of the screen is reached, the display contents is scrolled one position up
+        - Clear screen, and cursor move up/down/left/right/home characters processed accordingly
+        - The implementation handles <0x1b> - 'Y' - <y_pos> - <x_pos> sequence for direct cursor movement
+        (MonitorF functionality)
+    """
+
     def __init__(self, machine):
         self._machine = machine
         self._sequence_byte = 0

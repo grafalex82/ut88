@@ -4,50 +4,49 @@ logger = logging.getLogger('tape')
 
 class TapeRecorder:
     """
-    Tape Recorder Port Emulator
+        Tape Recorder Port Emulator
 
-    The TapeRecorder class emulates storing/loading data to/from the tape recorder.
-    Electrically tape recorder is connected to a bit 0 of the 0xA1 port.
+        The TapeRecorder class emulates storing/loading data to/from the tape recorder.
 
-    Data storage format is based on the 2-phase coding algorithm. Each bit is 
-    coded as 2 periods with opposite values. The actual bit value is determined
-    at the transition between the periods:
-    - transition from 1 to 0 represents value 0
-    - transition from 0 to 1 represents value 1
-    
-    Bytes are written MSB first. Typical recording speed is 1500 bits per second.
+        Data storage format is based on the 2-phase coding algorithm. Each bit is 
+        coded as 2 periods with opposite values. The actual bit value is determined
+        at the transition between the periods:
+        - transition from 1 to 0 represents value 0
+        - transition from 0 to 1 represents value 1
+        
+        Bytes are written MSB first. Typical recording speed is 1500 bits per second.
 
-                       Example of 0xA5 byte transfer
-      D7=1 |  D6=0 |  D5=1 |  D4=0 |  D3=0 |  D2=1 |  D1=0 |  D0=1 |
-       +---|---+   |   +---|---+   |---+   |   +---|---+   |   +---|
-       |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
-    ---+   |   +---|---+   |   +---|   +---|---+   |   +---|---+   |
-           |<--T-->|       |       |       |       |       |       |
+                        Example of 0xA5 byte transfer
+           D7=1 |  D6=0 |  D5=1 |  D4=0 |  D3=0 |  D2=1 |  D1=0 |  D0=1 |
+            +---|---+   |   +---|---+   |---+   |   +---|---+   |   +---|
+            |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
+         ---+   |   +---|---+   |   +---|   +---|---+   |   +---|---+   |
+                |<--T-->|       |       |       |       |       |       |
 
-    The Tape Recorder component allows to store written data into a file, as well as
-    load a binary file and emulate tape reading. 
+        The Tape Recorder component allows to store written data into a file, as well as
+        load a binary file and emulate tape reading. 
 
-    The emulation of the tape recorder component is a bit hacky in favor of simplification:
-    - it does not take into account exact timings. Each write or read is considered as a next bit phase
-    - writing data ignores the first phase of each bit, only second phase is taken into account
+        The emulation of the tape recorder component is a bit hacky in favor of simplification:
+        - it does not take into account exact timings. Each write or read is considered as a next bit phase
+        - writing data ignores the first phase of each bit, only second phase is taken into account
 
-    Typically the Monitor will store data in the following format:
-    - 256 x 0x00  - pilot tone
-    - 0xe6        - Synchronization byte
-    - 2 byte      - start address (high byte first)
-    - 2 byte      - end address (high byte first)
-    - data bytes  - program data bytes
-    - 0x0000      - micro-pilot tone (2 bytes)        -+ New fields, stored by Monitor F (Monitor 0 
-    - 0xe6        - Synchronization byte               | does not produce these fields, and will ignore
-    - 2 byte      - Calculated CRC (high byte first)  -+ them on reading)
+        Typically the Monitor will store data in the following format:
+        - 256 x 0x00  - pilot tone
+        - 0xe6        - Synchronization byte
+        - 2 byte      - start address (high byte first)
+        - 2 byte      - end address (high byte first)
+        - data bytes  - program data bytes
+        - 0x0000      - micro-pilot tone (2 bytes)        -+ New fields, stored by Monitor F (Monitor 0 
+        - 0xe6        - Synchronization byte               | does not produce these fields, and will ignore
+        - 2 byte      - Calculated CRC (high byte first)  -+ them on reading)
 
-    The implementation supports storage formats from other similar emulators:
-    - .PKI files (sometimes used with .GAM extensions). The format fully matches the data described above,
-       except for 256 bytes of the pilot tone are not stored in the file. Tape recorder emulator class
-       will generate pilot tone when loading the file
-    - .RK files - same as above, but first synchronization byte is also not stored in the file (and is
-       generated on loading)
-    - raw files - stores everything as is including pilot tone and sync bytes    
+        The implementation supports storage formats from other similar emulators:
+        - .PKI files (sometimes used with .GAM extensions). The format fully matches the data described above,
+        except for 256 bytes of the pilot tone are not stored in the file. Tape recorder emulator class
+        will generate pilot tone when loading the file
+        - .RK files - same as above, but first synchronization byte is also not stored in the file (and is
+        generated on loading)
+        - raw files - stores everything as is including pilot tone and sync bytes    
 
     """
     def __init__(self):

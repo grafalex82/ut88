@@ -11,21 +11,23 @@ DMA_CH3_START   = 6
 DMA_CH3_COUNT   = 7
 DMA_PORT_CFG    = 8
 
-"""
-The Intel 8257 DMA controller emulator.
-
-This class mimics the Intel 8257 DMA controller, providing the following features:
-- controller configuration ports for setting up data transfer
-- Burst data transfer (read or write) using one of 4 channels
-- autoload feature on the channel 2
-
-The controller reside on 0xe000-0xe008 memory addresses for configuration registers, that match Radio-86RK
-schematics.
-
-Note, that this class provides a very limited implementation, and does not provide all the features
-of the original controller. Just a few features that enough to run Radio-86RK use case.
-"""
 class DMA:
+    """
+        The Intel 8257 DMA controller emulator.
+
+        This class mimics the Intel 8257 DMA controller, providing the following features:
+        - controller configuration ports for setting up data transfer
+        - Burst data transfer (read or write) using one of 4 channels
+        - autoload feature on the channel 2
+
+        The controller exposes 9 registers: 8 registers to set start address and data count for 4 channels, and
+        the 9th register is a control register. Typically, in original Radio-86RK schematics the DMA controller
+        resides at 0xe000-0xe008 memory addresses, but setting actual memory address is the MemoryDevice 
+        responsibility.
+
+        Note, that this class provides a very limited implementation, and does not provide all the features
+        of the original controller. Just a few features that enough to run Radio-86RK use case.
+    """
     
     def __init__(self, machine):
         self._machine = machine
@@ -44,7 +46,7 @@ class DMA:
 
 
     def get_size(self):
-        return 9
+        return 9    # 8 registers for 4 DMA channels, and a configuration register
 
 
     def _enable_channel(self, channel, enable):

@@ -25,11 +25,10 @@ class MemoryMgr:
 
 class Machine:
     """
-    Machine class emulates everything related to electrical connectivity within 
-    the computer in a specific configuration. It handles all the relationships
-    between the components, such as memories, I/O devices, and other devices
-    not logically connected, but still a part of the system (e.g. a 1 second timer).
-    
+        Machine class emulates everything related to electrical connectivity within 
+        the computer in a specific configuration. It handles all the relationships
+        between the components, such as memories, I/O devices, and other devices
+        not logically connected, but still a part of the system (e.g. a 1 second timer).    
     """
     def __init__(self):
         self._memories = MemoryMgr()
@@ -160,10 +159,10 @@ class Machine:
 
 class UT88Machine(Machine):
     """
-    UT88Machine is a specialized Machine instance, that may connect quasi_disk to stack read/write
-    lines. The selection between quasi disk and regular memory is done using special configuration
-    register at port 0x40. Value 0xff written to port 0x40 enables regular RAM, values other than 
-    0xff enable quasi disk operations.
+        UT88Machine is a specialized Machine instance, that may connect quasi_disk to stack read/write
+        lines. The selection between quasi disk and regular memory is done using special configuration
+        register at port 0x40. Value 0xff written to port 0x40 enables regular RAM, values other than 
+        0xff enable quasi disk operations.
     """
     def __init__(self):
         Machine.__init__(self)

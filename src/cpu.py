@@ -4,6 +4,20 @@ from utils import *
 logger = logging.getLogger('cpu')
 
 class CPU:
+    """
+        Intel 8080 CPU emulator
+
+        This class is responsible for handling CPU registers, emulating CPU instructions, as well as
+        handling interrupts.
+
+        The class is intentionally not aware about what I/O devices and memories are connected to the
+        CPU. In order to read a byte a real (hardware) CPU would be setting a desired address on the
+        address bus, and read the value through the data bus. It is up to a particular machine implementation
+        to connect the needed device to the bus. Similar to the hardware, the CPU class is working with
+        the Machine object, requesting the memory or I/O data transfer. Devices and memories installed
+        in a particular Machine will respond to the request.
+    """
+
     def __init__(self, machine):
         self._machine = machine
         machine.set_cpu(self)

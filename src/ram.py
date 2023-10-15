@@ -2,19 +2,25 @@ from utils import *
 
 class RAM:
     """
-    This class represent a general purpose memory at a given address space.
-    The RAM memory supports read and write operations. Stack read and write
-    operations are synonims for regular read and write operations as this
-    memory type does not distinguish between memory and stack access.
+        This class represent a general purpose memory at a given address space.
+        The RAM memory supports read and write operations. Stack read and write
+        operations are synonims for regular read and write operations as this
+        memory type does not distinguish between memory and stack access.
+
+        Note: this class maintains only the data buffer. Binding to a particular
+        memory address is MemoryDevice's class responsibility
     """
     def __init__(self, size = 0):
         self.set_size(size)
 
+
     def get_size(self):
         return len(self._ram)
 
+
     def set_size(self, size):
         self._ram = [0] * size
+
 
     def _check_value(self, value, max):
         if value < 0 or value > max:

@@ -2,7 +2,6 @@ import os
 import pygame
 
 from utils import *
-from interfaces import *
 from ram import *
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
@@ -19,8 +18,8 @@ class Display(RAM):
     The most significant bit inverts pixels of the symbol.
 
     The display is based on a two-port 2kb RAM. One port is connected to the computer, and is a regular
-    memory at 0xe800-0xefff range. Other port is used by the video signal generation schematic, that passes
-    the read byte through the font generator to the video output. 
+    memory (at 0xe800-0xefff range). Other port is used by the video signal generation schematic, 
+    that passes the read byte through the font generator to the video output. 
 
     Technically the video controller can display 32 lines, which will fully utilize the memory. But 
     this may not be fully visible on a typical TV. So the range is artificially limited to 28 lines, 
@@ -50,6 +49,12 @@ class Display(RAM):
     In order to decrease amount of calculation during each frame, the Display class detects memory
     write operations, and blit new char on the screen only when data is changing. On a regular display
     update precalculated image is simply blit on the screen.
+
+    MemoryDevice interface notes:
+    According to MemoryDevice guidelines, the Display class does not operate with absolute addresses. Instead, 
+    it works with a memory buffer of a 4k size, while it is MemoryDevice responsibility to map this buffer
+    to a target address (typically 0xe000). The Display class works with offsets in the buffer, where first
+    2k cells (0x800 bytes) represent char attributes array, and second 2k represent char codes array.
     """
 
     def __init__(self):

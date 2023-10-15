@@ -1,5 +1,4 @@
 import pygame
-from interfaces import *
 
 def _ctrl_pressed():
     return (pygame.key.get_mods() & pygame.KMOD_CTRL) != 0

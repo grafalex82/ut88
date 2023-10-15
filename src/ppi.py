@@ -1,30 +1,32 @@
 from utils import *
-from interfaces import *
 
 PPI_PORT_A      = 0
 PPI_PORT_B      = 1
 PPI_PORT_C      = 2
 PPI_PORT_CFG    = 3
 
-"""
-    Intel 8255 Parallel Peripheral Interface emulator
-
-    This class emulates behavior of the Intel 8255 chip, and supports:
-    - Configuring chip ports for input or output (Port A, Port B, upper and lower parts of Port C)
-    - sending data through output ports, and receiving data through input ports
-    - Ports A, B, and C support byte-wide data transfer
-    - Port C supports transferring a single bit of data
-
-    The configuration and usage workflow fully matches the original chip. Refer to the chip documentation
-    for modes and configuration bits description.
-    
-    Only simple I/O mode is supported. Strobbed I/O is not emulated. 
-
-    The class is supposed to be used with handler functions that are called to read or write data on
-    the selected port. This allows building simple 'schematics' based on the physical connection of the
-    signal lines.
-"""
 class PPI:
+    """
+        Intel 8255 Parallel Peripheral Interface
+
+        This class emulates behavior of the Intel 8255 chip, and supports:
+        - Configuring chip ports for input or output (Port A, Port B, upper and lower parts of Port C)
+        - sending data through output ports, and receiving data through input ports
+        - Ports A, B, and C support byte-wide data transfer
+        - Port C supports transferring a single bit of data
+
+        The configuration and usage workflow fully matches the original chip. Refer to the chip documentation
+        for modes and configuration bits description.
+        
+        Only simple I/O mode is supported. Strobbed I/O is not emulated. 
+
+        The class is supposed to be used with handler functions that are called to read or write data on
+        the selected port. This allows building simple 'schematics' based on the physical connection of the
+        signal lines.
+    """
+
+
+
     def __init__(self):
         self._portA_mode_input = True
         self._portB_mode_input = True
@@ -39,7 +41,7 @@ class PPI:
 
 
     def get_size(self):
-        return 4
+        return 4    # The chip offers 4 registers - 3 ports, and configuration register
 
 
     def set_portA_handler(self, func):
