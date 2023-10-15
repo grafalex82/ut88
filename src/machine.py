@@ -8,7 +8,7 @@ class MemoryMgr:
         self._memories = []
 
     def add_memory(self, memory):
-        startaddr, endaddr = memory.get_addr_space()
+        startaddr, endaddr = memory.get_addr_range()
         self._memories.append((startaddr, endaddr, memory))
 
     def get_memory_for_addr(self, addr):
@@ -47,7 +47,7 @@ class Machine:
         self._memories.add_memory(memory)
 
     def add_io(self, io):
-        start, end = io.get_addr_space()
+        start, end = io.get_addr_range()
         for addr in range(start, end+1):
             self._io[addr] = io
 

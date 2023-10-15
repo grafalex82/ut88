@@ -17,12 +17,12 @@ def ram():
 def test_create_by_size():
     ram = RAM(0x1000)
     device = MemoryDevice(ram, 0x2000)
-    start, end = device.get_addr_space()
+    start, end = device.get_addr_range()
     assert start == 0x2000
     assert end == 0x2fff
 
 def test_addr(ram):
-    start, end = ram.get_addr_space()
+    start, end = ram.get_addr_range()
     assert start == 0x0000
     assert end == 0xffff
 

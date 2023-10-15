@@ -15,7 +15,7 @@ def rom():
     return MemoryDevice(ROM("../resources/Monitor0.bin"), 0x4000)
 
 def test_addr(rom):
-    start, end = rom.get_addr_space()
+    start, end = rom.get_addr_range()
     assert start == 0x4000
     assert end == 0x43ff
 

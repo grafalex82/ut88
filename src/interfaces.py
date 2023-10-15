@@ -43,7 +43,7 @@ class IODevice:
             self._ioendaddr = startaddr
 
 
-    def get_addr_space(self):
+    def get_addr_range(self):
         return self._iostartaddr, self._ioendaddr
 
 
@@ -100,7 +100,7 @@ class MemoryDevice:
             self._endaddr = startaddr + device.get_size() - 1
 
 
-    def get_addr_space(self):
+    def get_addr_range(self):
         return self._startaddr, self._endaddr
 
 
