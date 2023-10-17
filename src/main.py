@@ -6,7 +6,7 @@ from tkinter import filedialog
 
 from emulator import Emulator
 from machine import UT88Machine
-from ram import RAM
+from common.ram import RAM
 from common.rom import ROM
 from lcd import LCD
 from hexkbd import HexKeyboard

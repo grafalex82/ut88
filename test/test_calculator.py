@@ -28,7 +28,7 @@ from emulator import Emulator
 from common.cpu import CPU
 from common.interfaces import MemoryDevice
 from common.rom import ROM
-from ram import RAM
+from common.ram import RAM
 from common.utils import *
 from helper import EmulatedInstance
 

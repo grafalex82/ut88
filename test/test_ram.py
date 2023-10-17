@@ -6,7 +6,7 @@ import sys
 
 sys.path.append('../src')
 
-from ram import RAM
+from common.ram import RAM
 from common.interfaces import MemoryDevice
 from common.utils import *
 

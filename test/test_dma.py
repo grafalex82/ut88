@@ -7,7 +7,7 @@ import sys
 sys.path.append('../src')
 
 from common.dma import *
-from ram import RAM
+from common.ram import RAM
 from machine import Machine
 from common.utils import *
 from common.interfaces import MemoryDevice

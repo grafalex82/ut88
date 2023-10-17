@@ -7,7 +7,7 @@ from machine import UT88Machine
 from emulator import Emulator
 from common.cpu import CPU
 from common.rom import ROM
-from ram import RAM
+from common.ram import RAM
 from common.interfaces import MemoryDevice
 from keyboard import Keyboard
 from common.utils import *

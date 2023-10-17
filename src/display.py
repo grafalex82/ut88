@@ -2,7 +2,7 @@ import os
 import pygame
 
 from common.utils import *
-from ram import *
+from common.ram import *
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 
