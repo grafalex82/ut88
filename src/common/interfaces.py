@@ -59,7 +59,6 @@ class IODevice:
 
     def write_io(self, addr, value):
         self.validate_io_addr(addr)
-        print(f"Writing an IO device, addr={addr:02x}, value={value:02x}")
         self._device.write_byte(addr - self._iostartaddr, value)
 
 
