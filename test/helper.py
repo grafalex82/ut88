@@ -5,7 +5,7 @@ sys.path.append('../misc')
 sys.path.append('../src')
 
 from machine import Machine
-from emulator import Emulator
+from common.emulator import Emulator
 from keyboard import Keyboard
 from common.interfaces import IODevice
 

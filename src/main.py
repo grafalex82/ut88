@@ -4,7 +4,7 @@ import pygame
 import argparse
 from tkinter import filedialog
 
-from emulator import Emulator
+from common.emulator import Emulator
 from machine import UT88Machine
 from common.ram import RAM
 from common.rom import ROM
