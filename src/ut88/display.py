@@ -61,7 +61,9 @@ class Display(RAM):
         RAM.__init__(self, 0x1000)  # 0x800 bytes for chars, 0x800 bytes for inversion attribute
 
         with open(f"{resources_dir}/font.bin", mode='rb') as f:
+            f.seek(0x400)
             font = f.read()
+            print(len(font))
 
         self._display = pygame.Surface((CHAR_WIDTH*64, CHAR_HEIGHT*28))
 
