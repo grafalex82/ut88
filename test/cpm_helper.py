@@ -4,7 +4,7 @@ resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 tapes_dir = os.path.join(os.path.dirname(__file__), "../tapes")
 
 from machine import UT88Machine
-from rom import ROM
+from common.rom import ROM
 from ram import RAM
 from common.utils import *
 from helper import EmulatedInstanceWithKeyboard

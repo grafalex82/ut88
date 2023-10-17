@@ -6,7 +6,7 @@ import sys
 
 sys.path.append('../src')
 
-from rom import ROM
+from common.rom import ROM
 from common.utils import *
 from common.interfaces import MemoryDevice
 

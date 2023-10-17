@@ -11,7 +11,7 @@ from machine import Machine
 from common.utils import *
 from common.interfaces import MemoryDevice, IODevice
 from ram import RAM
-from rom import ROM
+from common.rom import ROM
 from helper import MockIO
 
 @pytest.fixture

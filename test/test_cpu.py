@@ -9,7 +9,7 @@ sys.path.append('../src')
 
 from machine import Machine
 from common.cpu import CPU
-from rom import ROM
+from common.rom import ROM
 from ram import RAM
 from common.interfaces import MemoryDevice, IODevice
 from common.utils import *

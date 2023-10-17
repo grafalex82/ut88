@@ -6,7 +6,7 @@ tapes_dir = os.path.join(os.path.dirname(__file__), "../tapes")
 from machine import UT88Machine
 from emulator import Emulator
 from common.cpu import CPU
-from rom import ROM
+from common.rom import ROM
 from ram import RAM
 from common.interfaces import MemoryDevice
 from keyboard import Keyboard
