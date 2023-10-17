@@ -5,7 +5,7 @@ import argparse
 from tkinter import filedialog
 
 from common.emulator import Emulator
-from machine import Machine
+from common.machine import Machine
 from common.interfaces import MemoryDevice, IODevice
 from common.ram import RAM
 from common.rom import ROM

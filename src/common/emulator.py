@@ -1,5 +1,5 @@
 import logging
-from machine import Machine
+from common.machine import Machine
 from common.cpu import CPU
 
 class Emulator:

@@ -4,10 +4,10 @@ import pygame
 sys.path.append('../misc')
 sys.path.append('../src')
 
-from machine import Machine
+from common.machine import Machine
 from common.emulator import Emulator
-from ut88.keyboard import Keyboard
 from common.interfaces import IODevice
+from ut88.keyboard import Keyboard
 
 # Convert bytes array into a string
 def bytes2str(data):

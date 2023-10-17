@@ -23,7 +23,7 @@ resources_dir = os.path.join(os.path.dirname(__file__), "..", "resources")
 
 from float import *
 
-from machine import Machine
+from common.machine import Machine
 from common.emulator import Emulator
 from common.cpu import CPU
 from common.interfaces import MemoryDevice

@@ -1,4 +1,4 @@
-from machine import Machine
+from common.machine import Machine
 
 class UT88Machine(Machine):
     """

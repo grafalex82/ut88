@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 sys.path.append('../src')
 
-from machine import Machine
+from common.machine import Machine
 from common.utils import *
 from common.interfaces import MemoryDevice, IODevice
 from common.ram import RAM
