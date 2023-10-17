@@ -1,7 +1,7 @@
 import os
 
-resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
-tapes_dir = os.path.join(os.path.dirname(__file__), "../tapes")
+resources_dir = os.path.join(os.path.dirname(__file__), "..", "resources")
+tapes_dir = os.path.join(os.path.dirname(__file__), "..", "tapes")
 
 from machine import UT88Machine
 from common.emulator import Emulator

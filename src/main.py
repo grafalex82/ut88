@@ -23,8 +23,8 @@ from ut88.bios_emulator import *
 from radio86rk.keyboard import RK86Keyboard
 from radio86rk.display import RK86Display
 
-resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
-tapes_dir = os.path.join(os.path.dirname(__file__), "../tapes")
+resources_dir = os.path.join(os.path.dirname(__file__), "..", "resources")
+tapes_dir = os.path.join(os.path.dirname(__file__), "..", "tapes")
 
 BASIC_CONFIGURATION_LEGEND = """
 Keys:

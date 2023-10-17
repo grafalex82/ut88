@@ -19,7 +19,7 @@ import logging
 sys.path.append('../misc')
 sys.path.append('../src')
 
-resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
+resources_dir = os.path.join(os.path.dirname(__file__), "..", "resources")
 
 from float import *
 
