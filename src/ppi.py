@@ -1,4 +1,4 @@
-from utils import *
+from common.utils import *
 
 PPI_PORT_A      = 0
 PPI_PORT_B      = 1

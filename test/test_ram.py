@@ -8,7 +8,7 @@ sys.path.append('../src')
 
 from ram import RAM
 from common.interfaces import MemoryDevice
-from utils import *
+from common.utils import *
 
 @pytest.fixture
 def ram():

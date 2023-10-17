@@ -1,5 +1,5 @@
 import logging
-from utils import *
+from common.utils import *
 
 logger = logging.getLogger('cpu')
 

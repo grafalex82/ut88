@@ -1,6 +1,6 @@
 import sys
 
-from utils import set_bit, clear_bit
+from common.utils import set_bit, clear_bit
 
 CURSOR_POS_ADDR = 0xf7b2
 VIDEO_MEMORY_ADDR = 0xe800

@@ -7,7 +7,7 @@ import sys
 sys.path.append('../src')
 
 from rom import ROM
-from utils import *
+from common.utils import *
 from common.interfaces import MemoryDevice
 
 @pytest.fixture

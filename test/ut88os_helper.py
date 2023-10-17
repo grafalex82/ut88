@@ -10,7 +10,7 @@ from rom import ROM
 from ram import RAM
 from common.interfaces import MemoryDevice
 from keyboard import Keyboard
-from utils import *
+from common.utils import *
 from helper import EmulatedInstanceWithKeyboard
 
 # UT88OS is a UT-88 machine with 64k RAM, and UT-88 OS binaries loaded to their appropriate memory ranges.

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 sys.path.append('../src')
 
 from ppi import *
-from utils import *
+from common.utils import *
 from common.interfaces import MemoryDevice
 
 @pytest.fixture

@@ -7,7 +7,7 @@ import sys
 sys.path.append('../src')
 
 from hexkbd import HexKeyboard
-from utils import *
+from common.utils import *
 
 @pytest.fixture
 def kbd():

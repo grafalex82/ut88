@@ -1,6 +1,6 @@
 import os
 
-from utils import *
+from common.utils import *
 
 class QuasiDisk:
     def __init__(self, fname):

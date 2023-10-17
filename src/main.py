@@ -14,7 +14,7 @@ from timer import Timer
 from tape import TapeRecorder
 from keyboard import Keyboard
 from display import Display
-from utils import NestedLogger
+from common.utils import NestedLogger
 from quasidisk import QuasiDisk
 from dma import DMA
 from ppi import PPI

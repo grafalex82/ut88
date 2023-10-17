@@ -12,7 +12,7 @@ from common.cpu import CPU
 from rom import ROM
 from ram import RAM
 from common.interfaces import MemoryDevice, IODevice
-from utils import *
+from common.utils import *
 from helper import MockIO
 
 @pytest.fixture

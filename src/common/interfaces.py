@@ -1,4 +1,4 @@
-from utils import *
+from common.utils import *
 
 """
     Depending on a particular HW configuration, same peripheral may be connected to a memory

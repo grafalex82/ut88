@@ -8,7 +8,7 @@ sys.path.append('../src')
 
 from lcd import LCD
 from common.interfaces import MemoryDevice
-from utils import *
+from common.utils import *
 
 # Base address of the LCD display is 0x9000
 LCD_PTR = 0x9000

@@ -1,4 +1,4 @@
-from utils import *
+from common.utils import *
 from common.interfaces import *
 
 DMA_CH0_START   = 0

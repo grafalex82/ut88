@@ -29,7 +29,7 @@ from common.cpu import CPU
 from common.interfaces import MemoryDevice
 from rom import ROM
 from ram import RAM
-from utils import *
+from common.utils import *
 from helper import EmulatedInstance
 
 # Calculator is a UT-88 in Basic CPU unit configuration + calculator firmware

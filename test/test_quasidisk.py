@@ -7,7 +7,7 @@ import sys
 sys.path.append('../src')
 
 from machine import UT88Machine
-from utils import *
+from common.utils import *
 from quasidisk import QuasiDisk
 from common.interfaces import MemoryDevice
 from ram import RAM
