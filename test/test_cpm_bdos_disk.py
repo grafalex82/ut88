@@ -13,8 +13,8 @@ import pytest
 
 sys.path.append('../misc')
 
+from ut88.quasidisk import QuasiDisk
 from cpm_helper import CPM
-from quasidisk import QuasiDisk
 from cpmdisk import *
 from helper import str2bytes, bytes2str
 

@@ -8,9 +8,9 @@ sys.path.append('../src')
 
 from machine import UT88Machine
 from common.utils import *
-from quasidisk import QuasiDisk
 from common.interfaces import MemoryDevice
 from common.ram import RAM
+from ut88.quasidisk import QuasiDisk
 
 # The Port 0x40 is a configuration port. Writing 0xfe, 0xfd, 0xfb, or 0xf7 to this port will enable
 # 1st, 2nd, 3rd, or 4th page respectively, so that subsequent stack operations will read or write data

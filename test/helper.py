@@ -6,7 +6,7 @@ sys.path.append('../src')
 
 from machine import Machine
 from common.emulator import Emulator
-from keyboard import Keyboard
+from ut88.keyboard import Keyboard
 from common.interfaces import IODevice
 
 # Convert bytes array into a string

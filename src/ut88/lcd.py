@@ -3,7 +3,7 @@ import pygame
 
 from common.utils import *
 
-resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
+resources_dir = os.path.join(os.path.dirname(__file__), "../../resources")
 
 class LCD:
     """

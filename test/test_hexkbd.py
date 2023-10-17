@@ -6,7 +6,7 @@ import sys
 
 sys.path.append('../src')
 
-from hexkbd import HexKeyboard
+from ut88.hexkbd import HexKeyboard
 from common.utils import *
 
 @pytest.fixture

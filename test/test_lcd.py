@@ -6,7 +6,7 @@ import sys
 
 sys.path.append('../src')
 
-from lcd import LCD
+from ut88.lcd import LCD
 from common.interfaces import MemoryDevice
 from common.utils import *
 

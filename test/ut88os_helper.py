@@ -9,7 +9,7 @@ from common.cpu import CPU
 from common.rom import ROM
 from common.ram import RAM
 from common.interfaces import MemoryDevice
-from keyboard import Keyboard
+from ut88.keyboard import Keyboard
 from common.utils import *
 from helper import EmulatedInstanceWithKeyboard
 

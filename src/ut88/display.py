@@ -4,7 +4,7 @@ import pygame
 from common.utils import *
 from common.ram import *
 
-resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
+resources_dir = os.path.join(os.path.dirname(__file__), "../../resources")
 
 CHAR_WIDTH = 12
 CHAR_HEIGHT = 16

@@ -11,7 +11,7 @@
 import pytest
 
 from cpm_helper import CPM
-from quasidisk import QuasiDisk
+from ut88.quasidisk import QuasiDisk
 
 
 # Exposed BIOS functions

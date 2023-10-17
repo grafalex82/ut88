@@ -6,22 +6,22 @@ from tkinter import filedialog
 
 from common.emulator import Emulator
 from machine import UT88Machine
+from common.interfaces import MemoryDevice, IODevice
 from common.ram import RAM
 from common.rom import ROM
-from lcd import LCD
-from hexkbd import HexKeyboard
-from timer import Timer
-from common.tape import TapeRecorder
-from keyboard import Keyboard
-from display import Display
-from common.utils import NestedLogger
-from quasidisk import QuasiDisk
 from common.dma import DMA
 from common.ppi import PPI
+from common.tape import TapeRecorder
+from common.utils import NestedLogger
+from ut88.lcd import LCD
+from ut88.hexkbd import HexKeyboard
+from ut88.timer import Timer
+from ut88.keyboard import Keyboard
+from ut88.display import Display
+from ut88.quasidisk import QuasiDisk
+from ut88.bios_emulator import *
 from rk86keyboard import RK86Keyboard
 from rk86display import RK86Display
-from common.interfaces import MemoryDevice, IODevice
-from bios_emulator import *
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 tapes_dir = os.path.join(os.path.dirname(__file__), "../tapes")
