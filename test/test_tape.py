@@ -6,7 +6,7 @@ import sys
 
 sys.path.append('../src')
 
-from tape import TapeRecorder
+from common.tape import TapeRecorder
 
 
 def test_write_bytes(tmp_path):

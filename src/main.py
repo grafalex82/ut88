@@ -11,13 +11,13 @@ from rom import ROM
 from lcd import LCD
 from hexkbd import HexKeyboard
 from timer import Timer
-from tape import TapeRecorder
+from common.tape import TapeRecorder
 from keyboard import Keyboard
 from display import Display
 from common.utils import NestedLogger
 from quasidisk import QuasiDisk
-from dma import DMA
-from ppi import PPI
+from common.dma import DMA
+from common.ppi import PPI
 from rk86keyboard import RK86Keyboard
 from rk86display import RK86Display
 from common.interfaces import MemoryDevice, IODevice

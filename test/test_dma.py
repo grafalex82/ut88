@@ -6,7 +6,7 @@ import sys
 
 sys.path.append('../src')
 
-from dma import *
+from common.dma import *
 from ram import RAM
 from machine import Machine
 from common.utils import *

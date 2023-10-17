@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 sys.path.append('../src')
 
-from ppi import *
+from common.ppi import *
 from common.utils import *
 from common.interfaces import MemoryDevice
 
