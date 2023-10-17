@@ -20,8 +20,8 @@ from ut88.keyboard import Keyboard
 from ut88.display import Display
 from ut88.quasidisk import QuasiDisk
 from ut88.bios_emulator import *
-from rk86keyboard import RK86Keyboard
-from rk86display import RK86Display
+from radio86rk.keyboard import RK86Keyboard
+from radio86rk.display import RK86Display
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 tapes_dir = os.path.join(os.path.dirname(__file__), "../tapes")
