@@ -1,6 +1,6 @@
 import logging
 from machine import Machine
-from cpu import CPU
+from common.cpu import CPU
 
 class Emulator:
     def __init__(self, machine):

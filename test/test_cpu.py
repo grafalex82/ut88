@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 sys.path.append('../src')
 
 from machine import Machine
-from cpu import CPU
+from common.cpu import CPU
 from rom import ROM
 from ram import RAM
 from interfaces import MemoryDevice, IODevice
