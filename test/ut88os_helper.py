@@ -3,14 +3,14 @@ import os
 resources_dir = os.path.join(os.path.dirname(__file__), "..", "resources")
 tapes_dir = os.path.join(os.path.dirname(__file__), "..", "tapes")
 
-from machine import UT88Machine
 from common.emulator import Emulator
 from common.cpu import CPU
 from common.rom import ROM
 from common.ram import RAM
 from common.interfaces import MemoryDevice
-from ut88.keyboard import Keyboard
 from common.utils import *
+from ut88.keyboard import Keyboard
+from ut88.machine import UT88Machine
 from helper import EmulatedInstanceWithKeyboard
 
 # UT88OS is a UT-88 machine with 64k RAM, and UT-88 OS binaries loaded to their appropriate memory ranges.

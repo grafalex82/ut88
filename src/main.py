@@ -5,7 +5,7 @@ import argparse
 from tkinter import filedialog
 
 from common.emulator import Emulator
-from machine import UT88Machine
+from machine import Machine
 from common.interfaces import MemoryDevice, IODevice
 from common.ram import RAM
 from common.rom import ROM
@@ -19,6 +19,7 @@ from ut88.timer import Timer
 from ut88.keyboard import Keyboard
 from ut88.display import Display
 from ut88.quasidisk import QuasiDisk
+from ut88.machine import UT88Machine
 from ut88.bios_emulator import *
 from radio86rk.keyboard import RK86Keyboard
 from radio86rk.display import RK86Display

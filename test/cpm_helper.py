@@ -3,12 +3,12 @@ import os
 resources_dir = os.path.join(os.path.dirname(__file__), "..", "resources")
 tapes_dir = os.path.join(os.path.dirname(__file__), "..", "tapes")
 
-from machine import UT88Machine
+from helper import EmulatedInstanceWithKeyboard
 from common.rom import ROM
 from common.ram import RAM
 from common.utils import *
-from helper import EmulatedInstanceWithKeyboard
 from common.interfaces import MemoryDevice
+from ut88.machine import UT88Machine
 
 # CP/M is a UT-88 machine with monitorF ROM, and a 64k RAM + CP/M binary modules loaded.
 #
