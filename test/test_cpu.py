@@ -11,7 +11,7 @@ from machine import Machine
 from common.cpu import CPU
 from rom import ROM
 from ram import RAM
-from interfaces import MemoryDevice, IODevice
+from common.interfaces import MemoryDevice, IODevice
 from utils import *
 from helper import MockIO
 

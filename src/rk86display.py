@@ -2,7 +2,7 @@ import os
 import pygame
 
 from utils import *
-from interfaces import *
+from common.interfaces import *
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")
 

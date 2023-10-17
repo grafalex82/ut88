@@ -1,5 +1,5 @@
 import pygame
-from interfaces import *
+from common.interfaces import *
 
 class HexKeyboard:
     """

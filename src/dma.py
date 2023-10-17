@@ -1,5 +1,5 @@
 from utils import *
-from interfaces import *
+from common.interfaces import *
 
 DMA_CH0_START   = 0
 DMA_CH0_COUNT   = 1

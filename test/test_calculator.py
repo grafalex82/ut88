@@ -26,7 +26,7 @@ from float import *
 from machine import Machine
 from emulator import Emulator
 from common.cpu import CPU
-from interfaces import MemoryDevice
+from common.interfaces import MemoryDevice
 from rom import ROM
 from ram import RAM
 from utils import *

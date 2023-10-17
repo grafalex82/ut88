@@ -7,7 +7,7 @@ sys.path.append('../src')
 from machine import Machine
 from emulator import Emulator
 from keyboard import Keyboard
-from interfaces import IODevice
+from common.interfaces import IODevice
 
 # Convert bytes array into a string
 def bytes2str(data):

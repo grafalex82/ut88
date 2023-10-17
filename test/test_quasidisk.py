@@ -9,7 +9,7 @@ sys.path.append('../src')
 from machine import UT88Machine
 from utils import *
 from quasidisk import QuasiDisk
-from interfaces import MemoryDevice
+from common.interfaces import MemoryDevice
 from ram import RAM
 
 # The Port 0x40 is a configuration port. Writing 0xfe, 0xfd, 0xfb, or 0xf7 to this port will enable

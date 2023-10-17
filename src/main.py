@@ -20,7 +20,7 @@ from dma import DMA
 from ppi import PPI
 from rk86keyboard import RK86Keyboard
 from rk86display import RK86Display
-from interfaces import MemoryDevice, IODevice
+from common.interfaces import MemoryDevice, IODevice
 from bios_emulator import *
 
 resources_dir = os.path.join(os.path.dirname(__file__), "../resources")

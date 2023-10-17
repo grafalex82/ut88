@@ -10,7 +10,7 @@ from dma import *
 from ram import RAM
 from machine import Machine
 from utils import *
-from interfaces import MemoryDevice
+from common.interfaces import MemoryDevice
 
 @pytest.fixture
 def dma():

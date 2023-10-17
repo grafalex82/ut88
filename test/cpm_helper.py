@@ -8,7 +8,7 @@ from rom import ROM
 from ram import RAM
 from utils import *
 from helper import EmulatedInstanceWithKeyboard
-from interfaces import MemoryDevice
+from common.interfaces import MemoryDevice
 
 # CP/M is a UT-88 machine with monitorF ROM, and a 64k RAM + CP/M binary modules loaded.
 #

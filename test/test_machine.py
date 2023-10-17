@@ -9,7 +9,7 @@ sys.path.append('../src')
 
 from machine import Machine
 from utils import *
-from interfaces import MemoryDevice, IODevice
+from common.interfaces import MemoryDevice, IODevice
 from ram import RAM
 from rom import ROM
 from helper import MockIO

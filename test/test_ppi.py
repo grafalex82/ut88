@@ -9,7 +9,7 @@ sys.path.append('../src')
 
 from ppi import *
 from utils import *
-from interfaces import MemoryDevice
+from common.interfaces import MemoryDevice
 
 @pytest.fixture
 def ppi():
