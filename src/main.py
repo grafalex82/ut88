@@ -98,6 +98,9 @@ class Configuration:
         return 0x0000
 
 
+    def use_alternalte_font(self):
+        pass
+
     def run(self):
         self._emulator.reset()
 
@@ -250,6 +253,10 @@ class VideoConfiguration(Configuration):
         self._machine.add_io(IODevice(self._keyboard, 0x04))
         self._display = Display()
         self._machine.add_memory(MemoryDevice(self._display, 0xe000))
+
+
+    def use_alternalte_font(self):
+        self._display.load_font(True)
 
 
     def configure_logging(self):
@@ -521,6 +528,7 @@ def main():
     parser.add_argument('configuration', choices=["basic", "video", "ut88os", "cpm64", "radio86rk"])
     parser.add_argument('-d', '--debug', help="enable CPU instructions logging", action='store_true')
     parser.add_argument('-b', '--emulate_bios', help="emulate BIOS and MonitorF I/O functions", action='store_true')
+    parser.add_argument('-f', '--alternate_font', help="Use alternate font for the display", action='store_true')
     args = parser.parse_args()
 
     pygame.init()
@@ -540,6 +548,8 @@ def main():
     configuration.enable_logging(args.debug)
     if args.emulate_bios:
         configuration.enable_bios_emulation()
+    if args.alternate_font:
+        configuration.use_alternalte_font()
 
     configuration.run()
 

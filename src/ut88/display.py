@@ -26,8 +26,12 @@ class Display(RAM):
     and memory at 0xef00-0xefff range is unused by the video controller (and potentially can be utilized
     by user programs).
     
-    Font generator is based on a 2 kb ROM, which is not connected to the data bus. Each symbol is
-    a 6x8 bit matrix (bits are inverted), stored in the ROM as 8 consecutive bytes.
+    Font generator is based on a 1 kb ROM, which is not connected to the data bus. Each symbol is
+    a 6x8 bit matrix (bits are inverted), stored in the ROM as 8 consecutive bytes. The original publication
+    contains a dump for a 2 kb ROM, which contains two variations of the font, mostly identical, but
+    a few chars different. Although the original schematics does not offer a way to select font, it can
+    be easily improved by resoldering 1 wire. This emulator implementation offers a load_font() function
+    that supports font selection in runtime.
 
     Original schematics published in the magazine is based on a 2k RAM morrored to two ranges: 0xe000-0xe7ff
     and 0xe800-0xefff. The 0xe800+ is a primary range, but some programs use 0xe000+ range in some cases.
@@ -60,12 +64,17 @@ class Display(RAM):
     def __init__(self):
         RAM.__init__(self, 0x1000)  # 0x800 bytes for chars, 0x800 bytes for inversion attribute
 
-        with open(f"{resources_dir}/font.bin", mode='rb') as f:
-            f.seek(0x400)
-            font = f.read()
-            print(len(font))
-
         self._display = pygame.Surface((CHAR_WIDTH*64, CHAR_HEIGHT*28))
+
+        self.load_font()
+
+
+    def load_font(self, alternate=False):
+        with open(f"{resources_dir}/font.bin", mode='rb') as f:
+            if alternate:
+                f.seek(0x400)
+
+            font = f.read()
 
         self._chars = [self._create_char(font[(c*8):((c+1)*8)], False) for c in range(128)]
         self._chars.extend([self._create_char(font[(c*8):((c+1)*8)], True) for c in range(128)])
