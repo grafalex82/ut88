@@ -220,8 +220,10 @@ The Video Module not only enhances the UT-88's functionality but also offers a h
 Here's a detailed description of the hardware additions to the UT-88 computer:
 - **Video Adapter**: 
   - The Video Adapter is built around a 2-port RAM located in the address range `0xe800`-`0xefff`. One port of this memory is connected to the computer's data bus and functions like regular memory. A specialized circuit, consisting of counters and logic gates, reads the video memory through the second port and converts it into a TV signal.
-  - Additionally, a dedicated 2k ROM (not connected to the data bus) serves as a font generator. 
-  - The video adapter is capable of displaying a 64x28 monochrome character matrix, with each character being 6x8 pixels in size. The character set matches the KOI-7 N2 encoding: characters in the `0x00`-`0x1f` range providing pseudo-graphic symbols, characters in the `0x20`-`0x5f` range matching the standard ASCII table, and characters in the `0x60`-`0x7f` range allocated for Cyrillic symbols.
+  - The video adapter is capable of displaying a 64x28 monochrome character matrix, with each character being 6x8 pixels in size.
+  - A dedicated 2k ROM (not connected to the data bus) serves as a font generator. It contains 2 characters sets. Schematically only lower part is connected to system. Upper part of the ROM may be connected *instead* with a minor hardware modifications (e.g. by adding a switch). The font ROM is dumped [here](doc/ut88_font.txt), along with the comparison between fonts, and bugs description.
+  - Lower 1k of the Font ROM contains 128 chars in the KOI-7 N2 encoding: characters in the `0x00`-`0x1f` range providing pseudo-graphic symbols, characters in the `0x20`-`0x5f` range matching the standard ASCII table, and characters in the `0x60`-`0x7f` range allocated for Cyrillic symbols.
+  - Upper 1k contains alternative font, that matches KOI-7 N1 encoding. `0x00`-`0x1f` range provides a different set of pseudo-graphic symbols. `0x20`-`0x3f` range matches to ASCII symbol set, `0x40`-`0x7f` range represents upper and lower case cyrillic chars. There are no Latin chars in this font. All chars supposed to be printed with latin letters in fact are printed with lower case cyrillic symbols.
   - The highest bit of each character signals the video controller to invert the symbol.
 - **Keyboard**:
   - The keyboard is connected via an i8255 chip to ports 0x04-0x07, with the two lowest bits of the address inverted.
@@ -925,6 +927,8 @@ The configuration enables 32k RAM. Video and DMA controllers are emulated to a l
 ### Other emulator notes
 
 The `--debug` option activates CPU instruction logging, compatible with all the modes outlined earlier. To prevent log cluttering with repetitive waiting loops, each configuration selectively suppresses logging for specific well-known functions (e.g., delays, character printing, tape input/output, etc.). The [configure_logging() method](src/main.py) is responsible for configuring log suppression for a given setup.
+
+The `--alternate_font` switch forces using an alternate font located in the upper part of the font generator ROM. 
 
 Both Basic and Video configurations include a tape recorder component. Utilize the `Alt-L` key combination to load a binary into the tape recorder. Once loaded, the data can be read using the corresponding Monitor tape load command. Additionally, the data can be output to the tape using `Alt-S` to save the buffered data in the tape recorder to a file.
 
