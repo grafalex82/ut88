@@ -30,9 +30,10 @@ class IODevice:
         translate I/O port read and write requests to the provided device object. The device class
         must expose read_byte() and/or write_byte() function.
     """
-    def __init__(self, device, startaddr, endaddr=None):
+    def __init__(self, device, startaddr, endaddr=None, invertaddr=False):
         self._device = device
         self._iostartaddr = startaddr
+        self._invert = invertaddr
 
         if endaddr:
             self._ioendaddr = endaddr
@@ -52,14 +53,19 @@ class IODevice:
             raise IOError(f"Incorrect IO address {addr:x}")
 
 
-    def read_io(self, addr):
+    def _get_offset(self, addr):
         self.validate_io_addr(addr)
-        return self._device.read_byte(addr - self._iostartaddr)
+        if not self._invert:
+            return addr - self._iostartaddr
+        else:
+            return self._ioendaddr - addr
+
+    def read_io(self, addr):
+        return self._device.read_byte(self._get_offset(addr))
 
 
     def write_io(self, addr, value):
-        self.validate_io_addr(addr)
-        self._device.write_byte(addr - self._iostartaddr, value)
+        self._device.write_byte(self._get_offset(addr), value)
 
 
     def update(self):

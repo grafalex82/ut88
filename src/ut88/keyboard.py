@@ -79,11 +79,8 @@ class Keyboard:
     emulator will return port B value according to selected column and button pressed.
     """
     def __init__(self):
-        # The only supported configuration is Port A output, B and C - input
-        self.configure(0x8b)
-
-        self._port_a = 0xff
-        self._port_c = 0xff
+        self._selected_columns = 0xff
+        self._mod_keys = 0xff
         self._pressed_key = (0xff, 0xff, 0xff)
 
         self._key_map = {}
@@ -257,44 +254,25 @@ class Keyboard:
         self._ctrl_codes_map[pygame.K_HOME]     = (0x7f, 0xbf, 0xfd)    # Char code 0x0c, but with Ctrl
 
 
-    def get_size(self):
-        return 4    # Keyboard PPI has 4 registers
+    def write_columns(self, value):
+        self._selected_columns = value         
 
 
-    def configure(self, value):
-        self._configuration = value
-        assert self._configuration == 0x8b  
-
-
-    def read_byte(self, offset):
-        # Address bits are inverted comparing to i8255 addresses
-        if offset == 2:            # Port B
-            # Return key scan line if scan column matches previously set on Port A
-            if self._pressed_key[0] == self._port_a: 
-                self._port_c = self._pressed_key[2]
-                return self._pressed_key[1] & 0x7f  # MSB is unused, but for some reason checked in the code
-            
-            # Special case when Monitor F scans for any keyboard press
-            if self._port_a == 0x00:
-                return self._pressed_key[1] & 0x7f  # MSB is unused, but for some reason checked in the code
-
-            return 0x7f
+    def read_rows(self):
+        # Return key scan line if scan column matches previously set on Port A
+        if self._pressed_key[0] == self._selected_columns: 
+            self._mod_keys = self._pressed_key[2]
+            return self._pressed_key[1] & 0x7f  # MSB is unused, but for some reason checked in the code
         
-        if offset == 1:            # Port C
-            return self._port_c
+        # Special case when Monitor F scans for any keyboard press
+        if self._selected_columns == 0x00:
+            return self._pressed_key[1] & 0x7f  # MSB is unused, but for some reason checked in the code
 
-        raise IOError(f"Reading IO {addr:x} is not supported")
-    
+        return 0x7f
 
-    def write_byte(self, offset, value):
-        # Address bits are inverted comparing to i8255 addresses
-        if offset == 0:            # Configuration register
-            return self.configure(value)
-        if offset == 3:            # Port A
-            self._port_a = value         
-            return
-        
-        IOError(f"Writing IO {addr:x} is not supported")
+
+    def read_mod_keys(self):
+        return self._mod_keys
 
 
     def handle_key_event(self, event):

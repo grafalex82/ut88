@@ -151,7 +151,7 @@ class PPI:
         if offset == PPI_PORT_CFG:
             return 0
         else:
-            raise MemoryError("PPI port {offset} is not configured for reading")
+            raise MemoryError(f"PPI port {offset} is not configured for reading")
 
 
     def write_byte(self, offset, value):
@@ -171,5 +171,5 @@ class PPI:
             else:                       # If MSB is not set - this is BSR mode request
                 self._handle_bsr(value)
         else:
-            raise MemoryError("PPI port {offset} is not configured for writing")
+            raise MemoryError(f"PPI port {offset} is not configured for writing")
 

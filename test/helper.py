@@ -7,6 +7,7 @@ sys.path.append('../src')
 from common.machine import Machine
 from common.emulator import Emulator
 from common.interfaces import IODevice
+from common.ppi import PPI
 from ut88.keyboard import Keyboard
 
 # Convert bytes array into a string
@@ -88,7 +89,12 @@ class EmulatedInstanceWithKeyboard(EmulatedInstance):
         EmulatedInstance.__init__(self)
 
         self._keyboard = Keyboard()
-        self._machine.add_io(IODevice(self._keyboard, 0x04))
+        ppi = PPI()
+        ppi.set_portA_handler(self._keyboard.write_columns)
+        ppi.set_portB_handler(self._keyboard.read_rows)
+        ppi.set_portC_handler(self._keyboard.read_mod_keys)
+        ppi.write_byte(3, 0x8b)    # Initialize keyboard port (same as MonitorF does)
+        self._machine.add_io(IODevice(ppi, 0x04, invertaddr=True))
 
 
     @property

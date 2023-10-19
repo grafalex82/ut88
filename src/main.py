@@ -249,8 +249,14 @@ class VideoConfiguration(Configuration):
     def create_peripherals(self):
         self._recorder = TapeRecorder()
         self._machine.add_io(IODevice(self._recorder, 0xa1))
+
         self._keyboard = Keyboard()
-        self._machine.add_io(IODevice(self._keyboard, 0x04))
+        ppi = PPI()
+        ppi.set_portA_handler(self._keyboard.write_columns)
+        ppi.set_portB_handler(self._keyboard.read_rows)
+        ppi.set_portC_handler(self._keyboard.read_mod_keys)
+        self._machine.add_io(IODevice(ppi, 0x04, invertaddr=True))
+
         self._display = Display()
         self._machine.add_memory(MemoryDevice(self._display, 0xe000))
 
