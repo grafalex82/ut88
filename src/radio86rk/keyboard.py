@@ -5,6 +5,70 @@ def _ctrl_pressed():
 
 
 class RK86Keyboard():
+    """
+        Radio-86RK Keyboard emulator
+
+        This class emulates Radio-86RK alpha-numeric keyboard. The keyboard contains 8x8 keyboard matrix,
+        and a 3 additional mod keys (Rus, Shift, and Ctrl). 
+
+        Keyboard features are:
+        - keys containing digits, letters, symbols, and space
+        - 4 arrow keys + home key
+        - CR and LF keys
+        - Clear screen key
+        - 3 Mod keys:
+            - RUS toggle key, that changes some keys to represent Russian letters (Ё and Ъ letters did not fit
+            the keyboard layout). Although Rus key behaves like a toggle, in fact it is a usual push button, 
+            while the toggle feature is implemented by the Monitor.
+            - Symbol shift - works like 'Shift' key on modern computers, but only for symbols. The computer does
+            not offer lower case (all letters are upper case), so shift key does nothing for letter keys.
+            - Control symbol - works like a 'Ctrl' key on modern computer terminals, but only for letter and 
+            a few other keys. Aim of this button is to allow entering symbols with codes in 0x00-0x1f range.
+        - F1-F5 keys (not handled by the Monitor, but can be used by user programs)
+
+        With mod keys the keyboard allows entering pretty much every symbol in a range 0x00-0x7f. Among them:
+        - 0x00-0x1f some pseudo-graphics symbols. Also in some modes symbols in this range represent control 
+        symbols (e.g. cursor movement, clear screen) 
+        - 0x20-0x5f - symbols, numbers, and Latin letters. These codes fully match standard ASCII table in this
+        range.
+        - 0x60-0x7f - this part is reserved for Russian letters (Ё and Ъ letters still do not fit the range).
+
+        The keyboard layout is odd, compared to what is being used nowadays, but was quite popular on soviet
+        computers back in 80x. The layout is based on the standard Russian layout, while Latin letters match
+        the Russian ones, where possible. 
+        
+
+        Electrical connection notes:
+
+        All the buttons (except for modification keys) are organized in a 8x8 matrix, connected to the
+        computer via i8255 controller. Monitor selects one column at a time, by setting low level
+        on a corresponding bit in Port A. Row state is captured via Port B (highest bit is ties to gnd, 
+        other bits are pulled up with resistors, and will be read as 1 if no button is pressed in the
+        selected column).
+
+        3 modification keys set low level on corresponding bits on the Port C.        
+
+
+        Emulation notes:
+
+        Taking into account the odd layout, it would be quite impossible to emulate the keyboard as is.
+        Instead, this class will detect keyboard press events, and translate it to Port A/B/C values (which
+        in turn represent pressed button and a modification key). This approach allows emulating keyboard
+        presses using currently active keyboard layout on the host system (including English and Russian).
+
+        In order to detect letters on both languages, as well as distinguish symbols that are collocated on 
+        the same button (e.g. colon and semicolon), the event.unicode field is used. For arrow keys, as
+        well as Ctrl-key combinations, the pygame.KEYDOWN event is used.
+
+        When a button is pressed, the emulator class sets the _pressed_key member to a tuple, representing
+        ports A, B, and mod key values. When the Monitor F firmware will scan keyboard matrix via port A, the
+        emulator will return port B value according to selected column and button pressed.
+
+        Having that RUS mode toggle is a Monitor feature, the Cyrillic letters are not implemented in this
+        keyboard emulator.
+    """
+
+
     def __init__(self):
         self._port_a = 0xff
         self._port_c = 0xff
