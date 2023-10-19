@@ -466,6 +466,8 @@ class Radio86RKConfiguration(Configuration):
         self._machine.add_memory(MemoryDevice(RAM(), 0x0000, 0x7fff))
         self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/rk86_monitor.bin"), 0xf800))
 
+        self._emulator.load_memory(f"{tapes_dir}/LRUNNER.rku")   # 0x0000-...
+
 
     def create_peripherals(self):
         # All Radio86RK peripherals are connected to the memory lines, not I/O lines, and therefore
