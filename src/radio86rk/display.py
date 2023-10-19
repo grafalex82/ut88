@@ -3,21 +3,15 @@ import pygame
 
 from common.utils import *
 from common.interfaces import *
+from common.surface import DisplaySurface, CHAR_WIDTH, CHAR_HEIGHT
 
 resources_dir = os.path.join(os.path.dirname(__file__), "..", "..", "resources")
 
-CHAR_WIDTH = 12
-CHAR_HEIGHT = 16
 
 class RK86Display:
     def __init__(self, dma):
         self._dma = dma
-
-        with open(f"{resources_dir}/font.bin", mode='rb') as f:
-            font = f.read()
-
-        self._chars = [self._create_char(font[(c*8):((c+1)*8)], False) for c in range(128)]
-        self._chars.extend([self._create_char(font[(c*8):((c+1)*8)], True) for c in range(128)])
+        self._surface = DisplaySurface(f"{resources_dir}/rk86_font.bin", 78, 30)
 
         self._current_command = None
         self._current_parameter = None
@@ -41,29 +35,12 @@ class RK86Display:
         self._burst_space_code = None
         self._burst_count_code = None
 
-
     def get_size(self):
         return 2    # The Intel 8275 controller has just 2 registers
+    
 
-
-    def _create_char(self, font, invert):
-        white = (255, 255, 255)
-        char = pygame.Surface((CHAR_WIDTH, CHAR_HEIGHT))
-
-        for row in range(8):
-            for col in range(6):
-                bitvalue = font[row] & (0x20 >> col) != 0
-
-                if invert:
-                    bitvalue = not bitvalue
-
-                if not bitvalue:
-                    char.set_at((col*2, row*2), white)
-                    char.set_at((col*2, row*2+1), white)
-                    char.set_at((col*2+1, row*2), white)
-                    char.set_at((col*2+1, row*2+1), white)
-
-        return char
+    def select_font(self, alternate = False):
+        self._surface.select_font(alternate)
 
 
     def _handle_command(self, value):
@@ -132,7 +109,7 @@ class RK86Display:
     
 
     def _handle_start_display_command(self):
-        screen_size = (CHAR_WIDTH*self._screen_width, CHAR_HEIGHT*self._screen_height)
+        screen_size = self._surface.set_size(self._screen_width, self._screen_height)
         pygame.display.set_mode(screen_size)
 
 
@@ -162,16 +139,20 @@ class RK86Display:
         # Read the video memory over the DMA
         data = self._dma.dma_read(2)
 
+        # Update chars on the surface
         index = 0
         for y in range(self._screen_height):
             for x in range(self._screen_width):
                 ch = data[index]
                 if x == self._cursor_x and y==self._cursor_y and self._cursor_invert:
                     ch |= 0x80
-                screen.blit(self._chars[ch], (x*CHAR_WIDTH, y*CHAR_HEIGHT))
+                self._surface.update_char(x, y, ch)
 
                 index += 1
-    
+
+        # Blit the surface to the screen
+        self._surface.blit(screen)
+
         # Toggle cursor when time comes
         if pygame.time.get_ticks() - self._cursor_timer > 500:
             self._cursor_timer = pygame.time.get_ticks()

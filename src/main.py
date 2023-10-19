@@ -256,7 +256,7 @@ class VideoConfiguration(Configuration):
 
 
     def use_alternalte_font(self):
-        self._display.load_font(True)
+        self._display.select_font(True)
 
 
     def configure_logging(self):
@@ -502,6 +502,10 @@ class Radio86RKConfiguration(Configuration):
 
     def get_screen_size(self):
         return (78*12, 30*16)
+
+
+    def use_alternalte_font(self):
+        self._display.select_font(True)
 
 
     def update(self, screen):
