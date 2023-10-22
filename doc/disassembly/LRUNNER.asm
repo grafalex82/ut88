@@ -36,12 +36,8 @@ SCORE_STR:
     003d  75 72 6f 77 65 6e 78 3a   db "УРОВЕНЬ:"
     0045  00                        db 0x00
 
-????:
-0046  1b   LDA 1b00
-0047  59         MOV E, C
-0048  37         STC
-0049  29         DAD HL
-004a  00         NOP
+MOVE_TO_SCORE_STR:
+    0046  1b 59 37 29 00            db 0x1b, 0x59, 0x37, 0x29, 0x00 ; Move cursor to (9, 23)
 
 MOVE_TO_LIVES_STR:
     004b  1b 59 37 41 00
@@ -251,7 +247,7 @@ INIT_MAP:
     012b  22 89 04   SHLD NUM_TREASURES (0489)
 
     012e  97         SUB A                      ; Zero enemies counter
-    012f  32 09 05   STA ENEMIES_COUNT (0509)
+    012f  32 09 05   STA MOBS_COUNT (0509)
 
     0132  2a 5a 05   LHLD CUR_MAP_PTR (055a)    ; Load map pointer
 
@@ -287,7 +283,7 @@ INIT_MAP_COL_LOOP:
     0155  ba         CMP D
     0156  c2 37 01   JNZ INIT_MAP_ROW_LOOP (0137)
 
-    0159  21 09 05   LXI HL, ENEMIES_COUNT (0509)   ; Increment enemies counter ????
+    0159  21 09 05   LXI HL, MOBS_COUNT (0509)   ; Increment enemies counter ????
     015c  34         INR M
     015d  c9         RET
 
@@ -334,13 +330,13 @@ SCAN_BLOCK_TREASURE:
     0185  c3 a9 01   JMP SCAN_BLOCK_EXIT (01a9)
 
 SCAN_BLOCK_ENEMY:
-    0188  3a 09 05   LDA ENEMIES_COUNT (0509)   ; Get the enemies counter
+    0188  3a 09 05   LDA MOBS_COUNT (0509)   ; Get the enemies counter
 
     018b  fe 05      CPI A, 05                  ; Limit number of enemies to 5
     018d  d2 a9 01   JNC SCAN_BLOCK_EXIT (01a9)
 
     0190  3c         INR A                      ; Increment number of enemies
-    0191  32 09 05   STA ENEMIES_COUNT (0509)
+    0191  32 09 05   STA MOBS_COUNT (0509)
 
     0194  e5         PUSH HL
     0195  21 0c 05   LXI HL, PLAYER_STRUCT + 2 (050c)
@@ -370,33 +366,44 @@ SCAN_BLOCK_EXIT:
     01ac  c9         RET
 
 
+; Check if the symbol under cursor position is a player symbol
+; Z flag is set in this case
+IS_PLAYER:
+    01ad  cd 21 f8   CALL MONITOR_GET_CHAR_AT_CURSOR (f821)
+    01b0  fe 09      CPI A, 09
+    01b2  ca cc 01   JZ 01cc
+
+; Check if the symbol under cursor position is a ladder ('#') symbol
+; Z flag is set in this case
+IS_LADDER:
+    01b5  cd 21 f8   CALL MONITOR_GET_CHAR_AT_CURSOR (f821)
+    01b8  fe 23      CPI A, 23
+    01ba  ca cc 01   JZ 01cc
+
+
+; Check if the symbol under cursor is empty
+; Sets Z flag if the symbol is SP (treasure), ' ' (space), or '^' (rope)
+IS_EMPTY:
+    01bd  cd 21 f8   CALL MONITOR_GET_CHAR_AT_CURSOR (f821)
+    01c0  fe 1e      CPI A, 1e
+    01c2  ca cc 01   JZ 01cc
+    01c5  fe 20      CPI A, 20
+    01c7  ca cc 01   JZ 01cc
+    01ca  fe 5e      CPI A, 5e
 
 ????:
-01ad  cd 21 f8   CALL f821
-01b0  fe 09      CPI A, 09
-01b2  ca cc 01   JZ 01cc
+    01cc  c9         RET
 
-????:
-01b5  cd 21 f8   CALL f821
-01b8  fe 23      CPI A, 23
-01ba  ca cc 01   JZ 01cc
 
-????:
-01bd  cd 21 f8   CALL f821
-01c0  fe 1e      CPI A, 1e
-01c2  ca cc 01   JZ 01cc
-01c5  fe 20      CPI A, 20
-01c7  ca cc 01   JZ 01cc
-01ca  fe 5e      CPI A, 5e
-????:
-01cc  c9         RET
 ????:
 01cd  21 0a 05   LXI HL, PLAYER_POS_STR (050a)
-01d0  3a 09 05   LDA ENEMIES_COUNT (0509)
+01d0  3a 09 05   LDA MOBS_COUNT (0509)
+
 ????:
 01d3  32 57 05   STA 0557
 01d6  22 58 05   SHLD 0558
-01d9  11 4c 05   LXI DE, 054c
+
+01d9  11 4c 05   LXI DE, CUR_MOB (054c)
 01dc  06 0b      MVI B, 0b
 ????:
 01de  7e         MOV A, M
@@ -405,40 +412,46 @@ SCAN_BLOCK_EXIT:
 01e1  13         INX DE
 01e2  05         DCR B
 01e3  c2 de 01   JNZ 01de
-01e6  3a 54 05   LDA 0554
+
+01e6  3a 54 05   LDA CUR_MOB + 8 (0554)
 01e9  fe 01      CPI A, 01
 01eb  ca 4b 02   JZ 024b
+
 01ee  f2 90 03   JP 0390
-01f1  3a 53 05   LDA 0553
+
+01f1  3a 53 05   LDA CUR_MOB + 7 (0553)
 01f4  fe ff      CPI A, ff
 01f6  ca 0a 02   JZ 020a
+
 01f9  fe 00      CPI A, 00
 01fb  c2 06 02   JNZ 0206
+
 01fe  3e 02      MVI A, 02
 ????:
-0200  32 53 05   STA 0553
+0200  32 53 05   STA CUR_MOB + 7 (0553)
 0203  c3 90 03   JMP 0390
+
 ????:
 0206  3d         DCR A
-0207  32 53 05   STA 0553
+0207  32 53 05   STA CUR_MOB + 7 (0553)
 ????:
-020a  3a 55 05   LDA 0555
+020a  3a 55 05   LDA CUR_MOB + 9 (0555)
 020d  fe 23      CPI A, 23
 020f  ca 4b 02   JZ 024b
 0212  fe 5e      CPI A, 5e
 0214  ca 4b 02   JZ 024b
-0217  21 4c 05   LXI HL, 054c
+0217  21 4c 05   LXI HL, CUR_MOB_CURSOR_STR (054c)
 021a  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
 021d  0e 1a      MVI C, 1a
 021f  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-0222  cd bd 01   CALL 01bd
+0222  cd bd 01   CALL IS_EMPTY (01bd)
 0225  ca b0 02   JZ 02b0
 0228  fe 70      CPI A, 70
 022a  c2 4b 02   JNZ 024b
-022d  2a 51 05   LHLD 0551
+022d  2a 51 05   LHLD CUR_MOB + 5 (0551)
 0230  01 1e 00   LXI BC, 001e
 0233  09         DAD BC
-0234  3a 4f 05   LDA 054f
+0234  3a 4f 05   LDA CUR_MOB_CURSOR_STR + 3 (054f)
 0237  e6 01      ANI A, 01
 0239  fe 00      CPI A, 00
 023b  c2 43 02   JNZ 0243
@@ -451,7 +464,7 @@ SCAN_BLOCK_EXIT:
 0246  fe 00      CPI A, 00
 0248  ca b0 02   JZ 02b0
 ????:
-024b  3a 56 05   LDA 0556
+024b  3a 56 05   LDA CUR_MOB + 10 (0556)
 024e  fe 1a      CPI A, 1a
 0250  ca f1 02   JZ 02f1
 0253  fe 19      CPI A, 19
@@ -468,7 +481,7 @@ SCAN_BLOCK_EXIT:
 026c  22 8c 04   SHLD 048c
 026f  3e 01      MVI A, 01
 0271  32 90 04   STA 0490
-0274  3a 4f 05   LDA 054f
+0274  3a 4f 05   LDA CUR_MOB_CURSOR_STR + 3 (054f)
 0277  e6 01      ANI A, 01
 0279  fe 00      CPI A, 00
 027b  ca a4 02   JZ 02a4
@@ -482,7 +495,7 @@ SCAN_BLOCK_EXIT:
 028e  22 8c 04   SHLD 048c
 0291  3e ff      MVI A, ff
 0293  32 90 04   STA 0490
-0296  3a 4f 05   LDA 054f
+0296  3a 4f 05   LDA CUR_MOB_CURSOR_STR + 3 (054f)
 0299  e6 01      ANI A, 01
 029b  c2 a4 02   JNZ 02a4
 029e  11 ff ff   LXI DE, ffff
@@ -490,7 +503,7 @@ SCAN_BLOCK_EXIT:
 ????:
 02a4  11 00 00   LXI DE, 0000
 ????:
-02a7  21 4f 05   LXI HL, 054f
+02a7  21 4f 05   LXI HL, CUR_MOB_CURSOR_STR + 3 (054f)
 02aa  22 8e 04   SHLD 048e
 02ad  c3 0c 03   JMP 030c
 ????:
@@ -499,15 +512,15 @@ SCAN_BLOCK_EXIT:
 02b4  32 8b 04   STA 048b
 02b7  21 17 00   LXI HL, DOWN_STR (0017)
 02ba  22 8c 04   SHLD 048c
-02bd  21 4e 05   LXI HL, 054e
+02bd  21 4e 05   LXI HL, CUR_MOB_CURSOR_STR + 2 (054e)
 02c0  22 8e 04   SHLD 048e
 02c3  3e 01      MVI A, 01
 02c5  32 90 04   STA 0490
 02c8  11 1e 00   LXI DE, 001e
-02cb  cd b5 01   CALL 01b5
+02cb  cd b5 01   CALL IS_LADDER (01b5)
 02ce  c3 1f 03   JMP 031f
 ????:
-02d1  3a 55 05   LDA 0555
+02d1  3a 55 05   LDA CUR_MOB + 9 (0555)
 02d4  fe 23      CPI A, 23
 02d6  c2 90 03   JNZ 0390
 02d9  06 1a      MVI B, 1a
@@ -529,23 +542,23 @@ SCAN_BLOCK_EXIT:
 0300  32 90 04   STA 0490
 0303  11 1e 00   LXI DE, 001e
 ????:
-0306  21 4e 05   LXI HL, 054e
+0306  21 4e 05   LXI HL, CUR_MOB_CURSOR_STR + 2 (054e)
 0309  22 8e 04   SHLD 048e
 ????:
-030c  21 4c 05   LXI HL, 054c
+030c  21 4c 05   LXI HL, CUR_MOB_CURSOR_STR (054c)
 030f  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
 0312  3a 8b 04   LDA 048b
 0315  4f         MOV C, A
 0316  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-0319  cd ad 01   CALL 01ad
+0319  cd ad 01   CALL IS_PLAYER (01ad)
 031c  c2 90 03   JNZ 0390
 ????:
-031f  21 55 05   LXI HL, 0555
+031f  21 55 05   LXI HL, CUR_MOB + 9 (0555)
 0322  48         MOV C, B
 0323  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
 0326  4e         MOV C, M
 0327  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-032a  32 55 05   STA 0555
+032a  32 55 05   STA CUR_MOB + 9 (0555)
 032d  2a 8c 04   LHLD 048c
 0330  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
 0333  0e 09      MVI C, 09
@@ -554,23 +567,23 @@ SCAN_BLOCK_EXIT:
 033b  3a 90 04   LDA 0490
 033e  86         ADD M
 033f  77         MOV M, A
-0340  2a 51 05   LHLD 0551
+0340  2a 51 05   LHLD CUR_MOB + 5 (0551)
 0343  19         DAD DE
-0344  22 51 05   SHLD 0551
-0347  3a 55 05   LDA 0555
+0344  22 51 05   SHLD CUR_MOB + 5 (0551)
+0347  3a 55 05   LDA CUR_MOB + 9 (0555)
 034a  fe 09      CPI A, 09
 034c  c2 90 03   JNZ 0390
 034f  21 0c 05   LXI HL, PLAYER_POS_STR + 2 (050c)
-0352  11 13 05   LXI DE, 0513
+0352  11 13 05   LXI DE, PLAYER_STRUCT + 9 (0513)
 0355  01 0b 00   LXI BC, 000b
-0358  3a 09 05   LDA ENEMIES_COUNT (0509)
+0358  3a 09 05   LDA MOBS_COUNT (0509)
 035b  32 8b 04   STA 048b
 ????:
-035e  3a 4e 05   LDA 054e
+035e  3a 4e 05   LDA CUR_MOB_CURSOR_STR + 2 (054e)
 0361  be         CMP M
 0362  c2 7d 03   JNZ 037d
 0365  23         INX HL
-0366  3a 4f 05   LDA 054f
+0366  3a 4f 05   LDA CUR_MOB_CURSOR_STR + 3 (054f)
 0369  be         CMP M
 036a  c2 7c 03   JNZ 037c
 036d  2b         DCX HL
@@ -579,7 +592,7 @@ SCAN_BLOCK_EXIT:
 0370  eb         XCHG
 0371  fe 09      CPI A, 09
 0373  ca 7d 03   JZ 037d
-0376  32 55 05   STA 0555
+0376  32 55 05   STA CUR_MOB + 9 (0555)
 0379  c3 90 03   JMP 0390
 ????:
 037c  2b         DCX HL
@@ -596,7 +609,7 @@ SCAN_BLOCK_EXIT:
 038d  c3 5e 03   JMP 035e
 ????:
 0390  2a 58 05   LHLD 0558
-0393  11 4c 05   LXI DE, 054c
+0393  11 4c 05   LXI DE, CUR_MOB (054c)
 0396  06 0b      MVI B, 0b
 ????:
 0398  1a         LDAX DE
@@ -609,135 +622,209 @@ SCAN_BLOCK_EXIT:
 03a3  3d         DCR A
 03a4  c2 d3 01   JNZ 01d3
 03a7  c9         RET
-????:
-03a8  3a 13 05   LDA 0513
-03ab  fe 1e      CPI A, 1e
-03ad  c0         RNZ
-03ae  3e 20      MVI A, 20
-03b0  32 13 05   STA 0513
-03b3  2a 89 04   LHLD NUM_TREASURES (0489)
-03b6  2b         DCX HL
-03b7  22 89 04   SHLD NUM_TREASURES (0489)
-03ba  21 87 04   LXI HL, 0487
-03bd  06 03      MVI B, 03
-03bf  3e 10      MVI A, 10
-03c1  37         STC
-03c2  3f         CMC
-????:
-03c3  8e         ADC M
-03c4  27         DAA
-03c5  77         MOV M, A
-03c6  3e 00      MVI A, 00
-03c8  2b         DCX HL
-03c9  05         DCR B
-03ca  c2 c3 03   JNZ 03c3
-03cd  21 46 00   LXI HL, 0046
-03d0  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
-03d3  06 04      MVI B, 04
-03d5  21 85 04   LXI HL, 0485
-????:
-03d8  7e         MOV A, M
-03d9  cd 15 f8   CALL MONITOR_PRINT_BYTE_HEX (f815)
-03dc  23         INX HL
-03dd  05         DCR B
-03de  c2 d8 03   JNZ 03d8
-03e1  c9         RET
-????:
-03e2  21 cd 04   LXI HL, 04cd
-03e5  01 03 00   LXI BC, 0003
-????:
-03e8  7e         MOV A, M
-03e9  fe 00      CPI A, 00
-03eb  ca 12 04   JZ 0412
-03ee  fe 01      CPI A, 01
-03f0  ca f8 03   JZ 03f8
-03f3  35         DCR M
-03f4  09         DAD BC
-03f5  c3 e8 03   JMP 03e8
-????:
-03f8  35         DCR M
-03f9  23         INX HL
-03fa  0e 1b      MVI C, 1b
-03fc  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-03ff  0e 59      MVI C, 59
-0401  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-0404  4e         MOV C, M
-0405  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-0408  23         INX HL
-0409  4e         MOV C, M
-040a  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-040d  0e 70      MVI C, 70
-040f  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-????:
-0412  3a 14 05   LDA 0514
-0415  fe 1f      CPI A, 1f
-0417  c2 25 04   JNZ 0425
-041a  21 0a 05   LXI HL, PLAYER_POS_STR (050a)
-041d  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
-0420  0e 18      MVI C, 18
-0422  c3 30 04   JMP 0430
-????:
-0425  fe 0c      CPI A, 0c
-0427  c0         RNZ
-0428  21 0a 05   LXI HL, PLAYER_POS_STR (050a)
-042b  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
-042e  0e 08      MVI C, 08
-????:
-0430  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-0433  cd 21 f8   CALL f821
-0436  fe 20      CPI A, 20
-0438  ca 3e 04   JZ 043e
-043b  fe 5e      CPI A, 5e
-043d  c0         RNZ
-????:
-043e  0e 1a      MVI C, 1a
-0440  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-0443  cd 21 f8   CALL f821
-0446  fe 70      CPI A, 70
-0448  c0         RNZ
-0449  21 cd 04   LXI HL, 04cd
-044c  11 91 04   LXI DE, 0491
-044f  06 39      MVI B, 39
-????:
-0451  7e         MOV A, M
-0452  12         STAX DE
-0453  23         INX HL
-0454  13         INX DE
-0455  05         DCR B
-0456  c2 51 04   JNZ 0451
-0459  21 cd 04   LXI HL, 04cd
-045c  36 32      MVI M, 32
-045e  eb         XCHG
-045f  cd 1e f8   CALL f81e
-0462  3e 1d      MVI A, 1d
-0464  84         ADD H
-0465  13         INX DE
-0466  12         STAX DE
-0467  3e 18      MVI A, 18
-0469  85         ADD L
-046a  13         INX DE
-046b  12         STAX DE
-046c  13         INX DE
-046d  21 91 04   LXI HL, 0491
-0470  06 39      MVI B, 39
-????:
-0472  7e         MOV A, M
-0473  12         STAX DE
-0474  23         INX HL
-0475  13         INX DE
-0476  05         DCR B
-0477  c2 72 04   JNZ 0472
-047a  0e 20      MVI C, 20
-047c  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-047f  3e 00      MVI A, 00
-0481  32 14 05   STA 0514
-0484  c9         RET
-????:
-0485  00         NOP
-0486  02         STAX BC
-????:
-0487  80         ADD B
-0488  00         NOP
+
+; Handle player gets a treasure
+;
+; The function checks if the player reaches a treasure. In case if symbol under the player is a treasure,
+; the remaining treasures counter is decremented, score is advanced by 1000, and printed on the screen
+HANDLE_TREASURE:
+    03a8  3a 13 05   LDA PLAYER_STRUCT + 9 (0513)   ; Check the symbol under the player
+    03ab  fe 1e      CPI A, 1e                      ; Nothing to do if is not a treasure (0x1e)
+    03ad  c0         RNZ
+
+    03ae  3e 20      MVI A, 20                  ; Replace symbol under the player to space (swallow treasure)
+    03b0  32 13 05   STA PLAYER_STRUCT + 9 (0513)
+
+    03b3  2a 89 04   LHLD NUM_TREASURES (0489)  ; Decrement number of remaining treasures
+    03b6  2b         DCX HL
+    03b7  22 89 04   SHLD NUM_TREASURES (0489)
+
+    03ba  21 87 04   LXI HL, SCORE + 2 (0487)   ; Add 1000 to the score starting from the 3rd byte, moving
+    03bd  06 03      MVI B, 03                  ; backwards (4th byte remains untouched)
+    03bf  3e 10      MVI A, 10                  
+
+    03c1  37         STC                        ; Clear C flag
+    03c2  3f         CMC
+
+HANDLE_TREASURE_SCORE_LOOP:
+    03c3  8e         ADC M                      ; Add the byte to the score
+    03c4  27         DAA
+    03c5  77         MOV M, A
+
+    03c6  3e 00      MVI A, 00                  ; Prepare for adding the next byte
+
+    03c8  2b         DCX HL                     ; Move to the next byte, decrease the counter
+    03c9  05         DCR B
+    03ca  c2 c3 03   JNZ HANDLE_TREASURE_SCORE_LOOP (03c3)
+
+    03cd  21 46 00   LXI HL, MOVE_TO_SCORE_STR (0046)   ; Prepare for printing score, move cursor
+    03d0  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
+
+    03d3  06 04      MVI B, 04                  ; Print 4 bytes of score
+    03d5  21 85 04   LXI HL, SCORE (0485)
+
+HANDLE_TREASURE_PRINT_LOOP:
+    03d8  7e         MOV A, M                   ; Print the next score byte
+    03d9  cd 15 f8   CALL MONITOR_PRINT_BYTE_HEX (f815)
+
+    03dc  23         INX HL                     ; Repeat for all 4 bytes
+    03dd  05         DCR B
+    03de  c2 d8 03   JNZ HANDLE_TREASURE_PRINT_LOOP (03d8)
+
+    03e1  c9         RET                        ; Done
+
+
+
+; Handle burned bricks
+;
+; The function is responsible for handling the following features:
+; - If use presses burn left or right buttons, burn the block if possible.
+; - Check if burned block timer counter is due, and restore the block when time comes
+;
+; The function algorithm:
+; - Scan through the burned bricks array and decrement timer counters
+; - If a timer is due, restore the burned brick
+; - Check if the player has pressed burn left or right keys. If yes:
+;   - Burn is allowed if left/right to the player is space or a rope (burn not allowed if the player is
+;     next to a wall or a ladder). The function also checks the char below - only bricks are allowed to burn
+;   - The function creates a new record in the beginning of the burned bricks array. The record is initialized
+;     with timer value of 50, and coordinates of the burned brick. The function is using a backup array to
+;     shift existing records by 1 record further.
+HANDLE_BRICKS:
+    03e2  21 cd 04   LXI HL, BURNED_BRICKS (04cd)   ; First let's scan through the burned bricks array
+    03e5  01 03 00   LXI BC, 0003                   ; Every record is 3 bytes
+
+HANDLE_BRICKS_TIMERS_LOOP:
+    03e8  7e         MOV A, M                       ; The first byte of each record is a timer
+    03e9  fe 00      CPI A, 00                      ; Zero means the record (and further records) is empty
+    03eb  ca 12 04   JZ HANDLE_BRICKS_PLAYER (0412) ; Process player inputs, whether they burn another block
+
+    03ee  fe 01      CPI A, 01                      ; Value of 1 means that the timer is due
+    03f0  ca f8 03   JZ HANDLE_BRICKS_RESTORE (03f8)
+
+    03f3  35         DCR M                          ; If the timer is not due - decrement the timer counter
+
+    03f4  09         DAD BC                         ; And advance to the next record
+    03f5  c3 e8 03   JMP HANDLE_BRICKS_TIMERS_LOOP (03e8)
+
+HANDLE_BRICKS_RESTORE:
+    03f8  35         DCR M                      ; Zero the record
+
+    03f9  23         INX HL                     ; Advance to coordinate field
+
+    03fa  0e 1b      MVI C, 1b                  ; Move cursor at the burned block coordinate
+    03fc  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
+    03ff  0e 59      MVI C, 59
+    0401  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
+    0404  4e         MOV C, M
+    0405  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
+    0408  23         INX HL
+    0409  4e         MOV C, M
+    040a  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
+
+    040d  0e 70      MVI C, 70                  ; Restore brick at the cursor
+    040f  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
+
+
+HANDLE_BRICKS_PLAYER:
+    0412  3a 14 05   LDA PLAYER_STRUCT + 10 (0514)  ; Check if player pressed burn right key (clear screen key)
+    0415  fe 1f      CPI A, 1f
+    0417  c2 25 04   JNZ HANDLE_BRICKS_PLAYER_1 (0425)
+
+    041a  21 0a 05   LXI HL, PLAYER_POS_STR (050a)  ; Move cursor to the player's position
+    041d  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
+
+    0420  0e 18      MVI C, 18                      ; Then move cursor one position right
+    0422  c3 30 04   JMP HANDLE_BRICKS_PLAYER_2 (0430)
+
+HANDLE_BRICKS_PLAYER_1:
+    0425  fe 0c      CPI A, 0c                      ; Check if player pressed burn left key (Home key)
+    0427  c0         RNZ
+
+    0428  21 0a 05   LXI HL, PLAYER_POS_STR (050a)  ; Move cursor to the player's position
+    042b  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
+
+    042e  0e 08      MVI C, 08                      ; Then move cursor one position left
+
+HANDLE_BRICKS_PLAYER_2:
+    0430  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)   ; Print the move char
+
+    0433  cd 21 f8   CALL MONITOR_GET_CHAR_AT_CURSOR (f821) ; Check the char left/right to the player
+
+    0436  fe 20      CPI A, 20                      ; Burning block is allowed that a space is left/right to the playe
+    0438  ca 3e 04   JZ HANDLE_BRICKS_PLAYER_3 (043e)
+
+    043b  fe 5e      CPI A, 5e                      ; ... or a rope
+    043d  c0         RNZ
+
+HANDLE_BRICKS_PLAYER_3:
+    043e  0e 1a      MVI C, 1a                      ; Move cursor 1 position down
+    0440  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
+
+    0443  cd 21 f8   CALL MONITOR_GET_CHAR_AT_CURSOR (f821) ; Burn is allowed only for a floor char
+    0446  fe 70      CPI A, 70
+    0448  c0         RNZ
+
+    0449  21 cd 04   LXI HL, BURNED_BRICKS (04cd)   ; Copy 57 bytes (19 records) from main burned bricks array
+    044c  11 91 04   LXI DE, BURNED_BRICKS_BACKUP (0491)    ; to the backup array
+    044f  06 39      MVI B, 39
+
+HANDLE_BRICKS_COPY_LOOP1:
+    0451  7e         MOV A, M                   ; Copy the next byte
+    0452  12         STAX DE
+
+    0453  23         INX HL                     ; Increment pointers
+    0454  13         INX DE
+
+    0455  05         DCR B                      ; Repeat until all 57 bytes are copies
+    0456  c2 51 04   JNZ HANDLE_BRICKS_COPY_LOOP1 (0451)
+
+    0459  21 cd 04   LXI HL, BURNED_BRICKS (04cd)   ; Burned block will restore in 50 cycles
+    045c  36 32      MVI M, 32                  ; (put 50 as a timer value for the first record)
+
+    045e  eb         XCHG                       ; Move record address to DE
+
+    045f  cd 1e f8   CALL MONITOR_GET_CURSOR_POS (f81e) ; Get cursor position (H - Y, L - X)
+
+    0462  3e 1d      MVI A, 1d                  ; Convert Y position to screen coordinates suitable for Esc-Y 
+    0464  84         ADD H
+
+    0465  13         INX DE                     ; Store the Y coordinate
+    0466  12         STAX DE
+
+    0467  3e 18      MVI A, 18                  ; Convert X position to screen coordinates suitable for Esc-Y
+    0469  85         ADD L
+
+    046a  13         INX DE                     ; Store the coordinate
+    046b  12         STAX DE
+
+    046c  13         INX DE                     ; Advance to the next record
+
+    046d  21 91 04   LXI HL, BURNED_BRICKS_BACKUP (0491)    ; Copy 57 bytes from backup back to the main table, 
+    0470  06 39      MVI B, 39                  ; but shifted by one record (first slot is for the new record)
+
+HANDLE_BRICKS_COPY_LOOP2:
+    0472  7e         MOV A, M                   ; Copy the next byte
+    0473  12         STAX DE
+
+    0474  23         INX HL                     ; Advance pointers
+    0475  13         INX DE
+
+    0476  05         DCR B                      ; Repeat for all 57 bytes
+    0477  c2 72 04   JNZ HANDLE_BRICKS_COPY_LOOP2 (0472)
+
+    047a  0e 20      MVI C, 20                  ; Burn the character under cursor (print a space)
+    047c  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
+
+    047f  3e 00      MVI A, 00                  ; Reset player movement key
+    0481  32 14 05   STA PLAYER_STRUCT + 10 (0514)
+
+    0484  c9         RET
+
+
+
+SCORE:
+    0485  00 02 80 00           db 0x00, 0x00, 0x00, 0x00       ; Game score value
 
 NUM_TREASURES:
 0489  04         INR B
@@ -753,116 +840,17 @@ NUM_TREASURES:
 ????:
 0490  ff         RST 7
 
-????:
-0491  1e 31      MVI E, 31
-0493  4c         MOV C, H
-0494  09         DAD BC
-0495  2e 4d      MVI L, 4d
-0497  00         NOP
-0498  2e 43      MVI L, 43
-049a  00         NOP
-049b  2b         DCX HL
-049c  56         MOV D, M
-049d  00         NOP
-049e  31 27 00   LXI SP, 0027
-04a1  28         db 28
-04a2  51         MOV D, C
-04a3  00         NOP
-04a4  25         DCR H
-04a5  52         MOV D, D
-04a6  00         NOP
-04a7  00         NOP
-04a8  00         NOP
-04a9  00         NOP
-04aa  00         NOP
-04ab  00         NOP
-04ac  00         NOP
-04ad  00         NOP
-04ae  00         NOP
-04af  00         NOP
-04b0  00         NOP
-04b1  00         NOP
-04b2  00         NOP
-04b3  00         NOP
-04b4  00         NOP
-04b5  00         NOP
-04b6  00         NOP
-04b7  00         NOP
-04b8  00         NOP
-04b9  00         NOP
-04ba  00         NOP
-04bb  00         NOP
-04bc  00         NOP
-04bd  00         NOP
-04be  00         NOP
-04bf  00         NOP
-04c0  00         NOP
-04c1  00         NOP
-04c2  00         NOP
-04c3  00         NOP
-04c4  00         NOP
-04c5  00         NOP
-04c6  00         NOP
-04c7  00         NOP
-04c8  00         NOP
-04c9  00         NOP
-04ca  00         NOP
-04cb  00         NOP
-04cc  00         NOP
-????:
-04cd  22 31 58   SHLD 5831
-04d0  0e 31      MVI C, 31
-04d2  4c         MOV C, H
-04d3  00         NOP
-04d4  2e 4d      MVI L, 4d
-04d6  00         NOP
-04d7  2e 43      MVI L, 43
-04d9  00         NOP
-04da  2b         DCX HL
-04db  56         MOV D, M
-04dc  00         NOP
-04dd  31 27 00   LXI SP, 0027
-04e0  28         db 28
-04e1  51         MOV D, C
-04e2  00         NOP
-04e3  25         DCR H
-04e4  52         MOV D, D
-04e5  00         NOP
-04e6  00         NOP
-04e7  00         NOP
-04e8  00         NOP
-04e9  00         NOP
-04ea  00         NOP
-04eb  00         NOP
-04ec  00         NOP
-04ed  00         NOP
-04ee  00         NOP
-04ef  00         NOP
-04f0  00         NOP
-04f1  00         NOP
-04f2  00         NOP
-04f3  00         NOP
-04f4  00         NOP
-04f5  00         NOP
-04f6  00         NOP
-04f7  00         NOP
-04f8  00         NOP
-04f9  00         NOP
-04fa  00         NOP
-04fb  00         NOP
-04fc  00         NOP
-04fd  00         NOP
-04fe  00         NOP
-04ff  00         NOP
-0500  00         NOP
-0501  00         NOP
-0502  00         NOP
-0503  00         NOP
-0504  00         NOP
-0505  00         NOP
-0506  00         NOP
-0507  00         NOP
-0508  00         NOP
+BURNED_BRICKS_BACKUP:
+    0491  60 * [00]                 db  60 * [0x00]     ; Just a free space used while adding a new burned
+                                                        ; brick into the main array
+
+
+BURNED_BRICKS:
+    04cd  60 * [00]                 db  60 * [0x00]     ; An array of burned bricks. 20 records 3 bytes each.
+                                                        ; First byte of each record is a timer, how long to wait
+                                                        ; till the block can be restored. Other 2 bytes are screen
+                                                        ; coordinates of the burned block
+
 
 ENEMIES_COUNT:
     0509  03                        db 00
@@ -871,13 +859,9 @@ PLAYER_STRUCT:
 PLAYER_POS_STR:
     050a  1b 59 33 51 00            db 0x1b, 0x59, 0x33, 0x51, 0x00     ; String that moves cursor to the current player position
     050f  4b 0d                     dw 0d4b                             ; Original player position
-
 0511  ff         RST 7
-????:
 0512  00         NOP
-????:
 0513  23         INX HL
-????:
 0514  08         db 08
 
 ENEMY1_STRUCT:
@@ -888,21 +872,15 @@ ENEMY1_POS_STR:
 051c  02         STAX BC
 051d  f2 23 18   JP 1823
 
-????:
-0520  1b         DCX DE
-0521  59         MOV E, C
-0522  2d         DCR L
-0523  53         MOV D, E
-0524  00         NOP
+ENEMY2_STRUCT:
+    0520  1b 59 2d 53 00
 0525  98         SBB B
 0526  0c         INR C
 0527  01 00 20   LXI BC, 2000
 052a  08         db 08
-052b  1b         DCX DE
-052c  59         MOV E, C
-052d  33         INX SP
-052e  37         STC
-052f  00         NOP
+
+ENEMY3_STRUCT:
+    052b  1b 59 33 37 00
 0530  46         MOV B, M
 0531  14         INR D
 0532  00         NOP
@@ -927,21 +905,23 @@ ENEMY1_POS_STR:
 0547  00         NOP
 0548  01 00 20   LXI BC, 2000
 054b  08         db 08
-????:
-054c  1b         DCX DE
-054d  59         MOV E, C
-????:
-054e  2d         DCR L
-????:
-054f  53         MOV D, E
-0550  00         NOP
-????:
-0551  98         SBB B
-0552  0c         INR C
-????:
+
+; Currently processed moving object (player or enemy)
+;
+; The MOB structure:
+; - offset 0, 5 bytes   - Escape sequence moving cursor to the MOB position on the screen
+; - offset 5, 2 bytes   - ??? original position of the MOB upon respawn
+; - offset 7
+; - offset 8
+; - offset 9, 1 byte    - Character under the MOB (to restore background char when MOV moves)
+; - offset 10
+CUR_MOB:
+CUR_MOB_CURSOR_STR:
+054c  1b 59 2d 53 00
+0551  98 0c
 0553  01 00 20   LXI BC, 2000
-????:
 0556  08         db 08
+
 ????:
 0557  01 20 05   LXI BC, 0520
 
@@ -982,13 +962,14 @@ EXIT_STR:
     071a  00
 
 ????:
-071b  21 15 05   LXI HL, 0515
-071e  3a 09 05   LDA ENEMIES_COUNT (0509)
+071b  21 15 05   LXI HL, ENEMY1_STRUCT (0515)
+071e  3a 09 05   LDA MOBS_COUNT (0509)
 0721  3d         DCR A
 ????:
 0722  32 57 05   STA 0557
 0725  22 58 05   SHLD 0558
-0728  11 4c 05   LXI DE, 054c
+
+0728  11 4c 05   LXI DE, CUR_MOB (054c)
 072b  06 0b      MVI B, 0b
 ????:
 072d  7e         MOV A, M
@@ -997,20 +978,21 @@ EXIT_STR:
 0730  13         INX DE
 0731  05         DCR B
 0732  c2 2d 07   JNZ 072d
-0735  3a 53 05   LDA 0553
+
+0735  3a 53 05   LDA CUR_MOB + 7 (0553)
 0738  fe 00      CPI A, 00
 073a  ca ef 08   JZ 08ef
-073d  3a 54 05   LDA 0554
+073d  3a 54 05   LDA CUR_MOB + 8 (0554)
 0740  fe 02      CPI A, 02
 0742  ca 6d 08   JZ 086d
 0745  fe 00      CPI A, 00
 0747  ca 51 07   JZ 0751
 074a  f2 eb 08   JP 08eb
 074d  3c         INR A
-074e  32 54 05   STA 0554
+074e  32 54 05   STA CUR_MOB + 8 (0554)
 ????:
-0751  2a 51 05   LHLD 0551
-0754  3a 4f 05   LDA 054f
+0751  2a 51 05   LHLD CUR_MOB + 5 (0551)
+0754  3a 4f 05   LDA CUR_MOB_CURSOR_STR + 3 (054f)
 0757  e6 01      ANI A, 01
 0759  fe 00      CPI A, 00
 075b  c2 68 07   JNZ 0768
@@ -1028,34 +1010,34 @@ EXIT_STR:
 076b  fe 05      CPI A, 05
 076d  c2 78 07   JNZ 0778
 0770  3e 14      MVI A, 14
-0772  32 54 05   STA 0554
+0772  32 54 05   STA CUR_MOB + 8 (0554)
 0775  c3 ef 08   JMP 08ef
 ????:
-0778  3a 54 05   LDA 0554
+0778  3a 54 05   LDA CUR_MOB + 8 (0554)
 077b  fe 00      CPI A, 00
 077d  c2 ef 08   JNZ 08ef
 0780  3a 0c 05   LDA PLAYER_POS_STR + 2 (050c)
-0783  21 4e 05   LXI HL, 054e
+0783  21 4e 05   LXI HL, CUR_MOB_CURSOR_STR + 2 (054e)
 0786  be         CMP M
 0787  ca b0 07   JZ 07b0
 078a  fa a3 07   JM 07a3
-078d  21 4c 05   LXI HL, 054c
+078d  21 4c 05   LXI HL, CUR_MOB_CURSOR_STR (054c)
 0790  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
 0793  0e 1a      MVI C, 1a
 0795  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-0798  cd b5 01   CALL 01b5
+0798  cd b5 01   CALL IS_LADDER (01b5)
 079b  c2 b0 07   JNZ 07b0
 079e  3e 1a      MVI A, 1a
 07a0  c3 c4 07   JMP 07c4
 ????:
-07a3  3a 55 05   LDA 0555
+07a3  3a 55 05   LDA CUR_MOB + 9 (0555)
 07a6  fe 23      CPI A, 23
 07a8  c2 b0 07   JNZ 07b0
 07ab  3e 19      MVI A, 19
 07ad  c3 c4 07   JMP 07c4
 ????:
 07b0  3a 0d 05   LDA PLAYER_POS_STR + 3 (050d)
-07b3  21 4f 05   LXI HL, 054f
+07b3  21 4f 05   LXI HL, CUR_MOB_CURSOR_STR + 3 (054f)
 07b6  be         CMP M
 07b7  ca ca 07   JZ 07ca
 07ba  fa c2 07   JM 07c2
@@ -1064,14 +1046,14 @@ EXIT_STR:
 ????:
 07c2  3e 08      MVI A, 08
 ????:
-07c4  32 56 05   STA 0556
+07c4  32 56 05   STA CUR_MOB + 10 (0556)
 07c7  c3 ef 08   JMP 08ef
 ????:
 07ca  3a 0c 05   LDA PLAYER_POS_STR + 2 (050c)
-07cd  21 4e 05   LXI HL, 054e
+07cd  21 4e 05   LXI HL, CUR_MOB_CURSOR_STR + 2 (054e)
 07d0  be         CMP M
 07d1  fa 09 08   JM 0809
-07d4  21 4c 05   LXI HL, 054c
+07d4  21 4c 05   LXI HL, CUR_MOB_CURSOR_STR (054c)
 07d7  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
 07da  0e 1a      MVI C, 1a
 07dc  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
@@ -1080,9 +1062,9 @@ EXIT_STR:
 07e1  0e 08      MVI C, 08
 07e3  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
 07e6  1c         INR E
-07e7  cd b5 01   CALL 01b5
+07e7  cd b5 01   CALL IS_LADDER (01b5)
 07ea  c2 e1 07   JNZ 07e1
-07ed  21 4c 05   LXI HL, 054c
+07ed  21 4c 05   LXI HL, CUR_MOB_CURSOR_STR (054c)
 07f0  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
 07f3  0e 1a      MVI C, 1a
 07f5  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
@@ -1092,18 +1074,18 @@ EXIT_STR:
 07fc  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
 07ff  14         INR D
 ????:
-0800  cd b5 01   CALL 01b5
+0800  cd b5 01   CALL IS_LADDER (01b5)
 0803  c2 fa 07   JNZ 07fa
 0806  c3 49 08   JMP 0849
 ????:
-0809  21 4c 05   LXI HL, 054c
+0809  21 4c 05   LXI HL, CUR_MOB_CURSOR_STR (054c)
 080c  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
 080f  1e 00      MVI E, 00
 ????:
 0811  0e 08      MVI C, 08
 0813  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
 0816  1c         INR E
-0817  cd 21 f8   CALL f821
+0817  cd 21 f8   CALL MONITOR_GET_CHAR_AT_CURSOR (f821)
 081a  fe 70      CPI A, 70
 081c  ca 27 08   JZ 0827
 081f  fe 23      CPI A, 23
@@ -1112,14 +1094,14 @@ EXIT_STR:
 ????:
 0827  1e 7f      MVI E, 7f
 ????:
-0829  21 4c 05   LXI HL, 054c
+0829  21 4c 05   LXI HL, CUR_MOB_CURSOR_STR (054c)
 082c  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
 082f  16 00      MVI D, 00
 ????:
 0831  0e 18      MVI C, 18
 0833  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
 0836  14         INR D
-0837  cd 21 f8   CALL f821
+0837  cd 21 f8   CALL MONITOR_GET_CHAR_AT_CURSOR (f821)
 083a  fe 70      CPI A, 70
 083c  ca 47 08   JZ 0847
 083f  fe 23      CPI A, 23
@@ -1134,52 +1116,52 @@ EXIT_STR:
 084e  fa 5a 08   JM 085a
 0851  5a         MOV E, D
 0852  3e 18      MVI A, 18
-0854  32 56 05   STA 0556
+0854  32 56 05   STA CUR_MOB + 10 (0556)
 0857  c3 5f 08   JMP 085f
 ????:
 085a  3e 08      MVI A, 08
-085c  32 56 05   STA 0556
+085c  32 56 05   STA CUR_MOB + 10 (0556)
 ????:
 085f  7b         MOV A, E
 0860  2f         CMA
 0861  3c         INR A
 ????:
-0862  32 54 05   STA 0554
+0862  32 54 05   STA CUR_MOB + 8 (0554)
 0865  c3 ef 08   JMP 08ef
 ????:
 0868  3e 00      MVI A, 00
 086a  c3 62 08   JMP 0862
 ????:
-086d  21 4c 05   LXI HL, 054c
+086d  21 4c 05   LXI HL, CUR_MOB_CURSOR_STR (054c)
 0870  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
-0873  cd 21 f8   CALL f821
+0873  cd 21 f8   CALL MONITOR_GET_CHAR_AT_CURSOR (f821)
 0876  fe 70      CPI A, 70
 0878  ca bc 08   JZ 08bc
 087b  0e 19      MVI C, 19
 087d  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-0880  cd b5 01   CALL 01b5
+0880  cd b5 01   CALL IS_LADDER (01b5)
 0883  c2 ef 08   JNZ 08ef
-0886  21 55 05   LXI HL, 0555
+0886  21 55 05   LXI HL, CUR_MOB + 9 (0555)
 0889  0e 1a      MVI C, 1a
 088b  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
 088e  4e         MOV C, M
 088f  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-0892  32 55 05   STA 0555
+0892  32 55 05   STA CUR_MOB + 9 (0555)
 0895  0e 08      MVI C, 08
 0897  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
 089a  0e 19      MVI C, 19
 089c  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
 089f  0e 09      MVI C, 09
 08a1  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-08a4  21 4e 05   LXI HL, 054e
+08a4  21 4e 05   LXI HL, CUR_MOB_CURSOR_STR + 2 (054e)
 08a7  35         DCR M
-08a8  2a 51 05   LHLD 0551
+08a8  2a 51 05   LHLD CUR_MOB + 5 (0551)
 08ab  11 e2 ff   LXI DE, ffe2
 08ae  19         DAD DE
-08af  22 51 05   SHLD 0551
-08b2  3a 54 05   LDA 0554
+08af  22 51 05   SHLD CUR_MOB + 5 (0551)
+08b2  3a 54 05   LDA CUR_MOB + 8 (0554)
 08b5  3d         DCR A
-08b6  32 54 05   STA 0554
+08b6  32 54 05   STA CUR_MOB + 8 (0554)
 08b9  c3 b0 07   JMP 07b0
 ????:
 08bc  3a 15 0b   LDA 0b15
@@ -1189,26 +1171,27 @@ EXIT_STR:
 08c6  5f         MOV E, A
 08c7  16 00      MVI D, 00
 08c9  19         DAD DE
-08ca  22 51 05   SHLD 0551
-08cd  21 4e 05   LXI HL, 054e
+08ca  22 51 05   SHLD CUR_MOB + 5 (0551)
+08cd  21 4e 05   LXI HL, CUR_MOB_CURSOR_STR + 2 (054e)
 08d0  36 21      MVI M, 21
 08d2  23         INX HL
 08d3  87         ADD A
 08d4  c6 22      ADI A, 22
 08d6  77         MOV M, A
 08d7  3e 00      MVI A, 00
-08d9  32 54 05   STA 0554
-08dc  21 4c 05   LXI HL, 054c
+08d9  32 54 05   STA CUR_MOB + 8 (0554)
+08dc  21 4c 05   LXI HL, CUR_MOB_CURSOR_STR (054c)
 08df  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
-08e2  cd 21 f8   CALL f821
-08e5  32 55 05   STA 0555
+08e2  cd 21 f8   CALL MONITOR_GET_CHAR_AT_CURSOR (f821)
+08e5  32 55 05   STA CUR_MOB + 9 (0555)
 08e8  c3 ef 08   JMP 08ef
+
 ????:
 08eb  3d         DCR A
-08ec  32 54 05   STA 0554
+08ec  32 54 05   STA CUR_MOB + 8 (0554)
 ????:
 08ef  2a 58 05   LHLD 0558
-08f2  11 4c 05   LXI DE, 054c
+08f2  11 4c 05   LXI DE, CUR_MOB (054c)
 08f5  06 0b      MVI B, 0b
 ????:
 08f7  1a         LDAX DE
@@ -1221,101 +1204,159 @@ EXIT_STR:
 0902  3d         DCR A
 0903  c2 22 07   JNZ 0722
 0906  c9         RET
-????:
-0907  3a 16 0b   LDA 0b16
-090a  fe 00      CPI A, 00
-090c  c0         RNZ
-090d  2a 89 04   LHLD NUM_TREASURES (0489)
-0910  3e 00      MVI A, 00
-0912  bc         CMP H
-0913  c0         RNZ
-0914  bd         CMP L
-0915  c0         RNZ
-0916  06 14      MVI B, 14
-0918  2a 5a 05   LHLD CUR_MAP_PTR (055a)
-091b  16 21      MVI D, 21
-????:
-091d  1e 22      MVI E, 22
-????:
-091f  7e         MOV A, M
-0920  e6 f0      ANI A, f0
-0922  0f         RRC
-0923  0f         RRC
-0924  0f         RRC
-0925  0f         RRC
-0926  fe 0a      CPI A, 0a
-0928  cc 49 09   CZ 0949
-092b  1c         INR E
-092c  7e         MOV A, M
-092d  e6 0f      ANI A, 0f
-092f  fe 0a      CPI A, 0a
-0931  cc 49 09   CZ 0949
-0934  1c         INR E
-0935  23         INX HL
-0936  3e 5e      MVI A, 5e
-0938  bb         CMP E
-0939  c2 1f 09   JNZ 091f
-093c  14         INR D
-093d  3e 35      MVI A, 35
-093f  ba         CMP D
-0940  c2 1d 09   JNZ 091d
-0943  3e ff      MVI A, ff
-0945  32 16 0b   STA 0b16
-0948  c9         RET
-????:
-0949  0e 1b      MVI C, 1b
-094b  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-094e  0e 59      MVI C, 59
-0950  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-0953  4a         MOV C, D
-0954  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-0957  4b         MOV C, E
-0958  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-095b  cd 21 f8   CALL f821
-095e  fe 09      CPI A, 09
-0960  c2 a3 09   JNZ 09a3
-0963  e5         PUSH HL
-0964  d5         PUSH DE
-0965  c5         PUSH BC
-0966  eb         XCHG
-0967  22 12 0b   SHLD 0b12
-096a  21 0c 05   LXI HL, PLAYER_POS_STR + 2 (050c)
-096d  11 13 05   LXI DE, 0513
-0970  01 0b 00   LXI BC, 000b
-0973  3a 09 05   LDA ENEMIES_COUNT (0509)
-0976  32 15 0b   STA 0b15
-????:
-0979  3a 13 0b   LDA 0b13
-097c  be         CMP M
-097d  c2 8d 09   JNZ 098d
-0980  23         INX HL
-0981  3a 12 0b   LDA 0b12
-0984  be         CMP M
-0985  c2 8c 09   JNZ 098c
-0988  eb         XCHG
-0989  36 23      MVI M, 23
-098b  eb         XCHG
-????:
-098c  2b         DCX HL
-????:
-098d  09         DAD BC
-098e  eb         XCHG
-098f  09         DAD BC
-0990  eb         XCHG
-0991  3a 15 0b   LDA 0b15
-0994  3d         DCR A
-0995  fe 00      CPI A, 00
-0997  ca a0 09   JZ 09a0
-099a  32 15 0b   STA 0b15
-099d  c3 79 09   JMP 0979
-????:
-09a0  c1         POP BC
-09a1  d1         POP DE
-09a2  e1         POP HL
-????:
-09a3  0e 23      MVI C, 23
-09a5  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
-09a8  c9         RET
+
+
+; Check if all treasures were collected, and reveal exit ladder
+;
+; The function checks if the exit condition is met (all treasures were collected), and reveals the 
+; exeit ladder for all blocks of type 0x0a on the map. The ladder is revealed with REVEAL_LADDER
+; function. When the procedure is done, the flag is set to avoid scanning the map again on the next
+; cycle.
+HANDLE_EXIT_LADDER:
+    0907  3a 16 0b   LDA IS_LADDER_REVEALED (0b16)  ; Check if the ladder has been already revealed
+    090a  fe 00      CPI A, 00
+    090c  c0         RNZ
+
+    090d  2a 89 04   LHLD NUM_TREASURES (0489)  ; Is number of treasures zero? If not yet - exit
+    0910  3e 00      MVI A, 00
+    0912  bc         CMP H
+    0913  c0         RNZ
+    0914  bd         CMP L
+    0915  c0         RNZ
+
+    0916  06 14      MVI B, 14                  ; Will scan all 20 rows on the game screen
+    0918  2a 5a 05   LHLD CUR_MAP_PTR (055a)    ; Load the map pointer
+
+    091b  16 21      MVI D, 21                  ; Initial row
+
+HANDLE_EXIT_LADDER_ROW_LOOP:
+    091d  1e 22      MVI E, 22                  ; Initial column in each row
+
+HANDLE_EXIT_LADDER_COL_LOOP:
+    091f  7e         MOV A, M                   ; Load the next byte
+
+    0920  e6 f0      ANI A, f0                  ; Check the high nibble
+    0922  0f         RRC
+    0923  0f         RRC
+    0924  0f         RRC
+    0925  0f         RRC
+
+    0926  fe 0a      CPI A, 0a                  ; If the nibble type is 0x0a - reveal ladder for this block
+    0928  cc 49 09   CZ REVEAL_LADDER (0949)
+
+    092b  1c         INR E                      ; Advance X coordinate
+
+    092c  7e         MOV A, M                   ; Get the low nibble value
+    092d  e6 0f      ANI A, 0f
+
+    092f  fe 0a      CPI A, 0a                  ; If the nibble type is 0x0a - reveal ladder for this block
+    0931  cc 49 09   CZ REVEAL_LADDER (0949)
+
+    0934  1c         INR E                      ; Advance to the next screen position
+
+    0935  23         INX HL                     ; Advance to the next map byte
+
+    0936  3e 5e      MVI A, 5e                  ; Repeat until reached the rightmost position
+    0938  bb         CMP E
+    0939  c2 1f 09   JNZ HANDLE_EXIT_LADDER_COL_LOOP (091f)
+
+    093c  14         INR D                      ; Advance row
+
+    093d  3e 35      MVI A, 35                  ; Repeat until reached the bottom row
+    093f  ba         CMP D
+    0940  c2 1d 09   JNZ HANDLE_EXIT_LADDER_ROW_LOOP (091d)
+
+    0943  3e ff      MVI A, ff                  ; Set the 'ladder revealed' flag
+    0945  32 16 0b   STA IS_LADDER_REVEALED (0b16)
+
+    0948  c9         RET
+
+
+; Reveal an end of level ladder
+; 
+; The function is executed for every screen block after the Player collected all treasures.
+; If the function matches a block with code 0x0a (exit ladder), the ladder is revealed on the screen
+; as a normal ladder.
+;
+; It may happen that player or enemy is currently on a position where the ladder shall appear. In this
+; case the ladder symbol is written to the MOB (player or enemy) structure as a symbol behind the MOB.
+; When the mob moves, the ladder will be revealed.
+;
+; Argument:
+; DE - screen coordinate of the block where to reveal the exit level ladder
+REVEAL_LADDER:
+    0949  0e 1b      MVI C, 1b                  ; Move cursor to coordinates in DE
+    094b  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
+    094e  0e 59      MVI C, 59
+    0950  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
+    0953  4a         MOV C, D
+    0954  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
+    0957  4b         MOV C, E
+    0958  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
+
+    095b  cd 21 f8   CALL MONITOR_GET_CHAR_AT_CURSOR (f821) ; Check if the current char matches the player
+    095e  fe 09      CPI A, 09                              ; BUG? What if an enemy is on this position
+    0960  c2 a3 09   JNZ REVEAL_LADDER_EXIT (09a3)
+
+    0963  e5         PUSH HL                    ; Save some registers
+    0964  d5         PUSH DE
+    0965  c5         PUSH BC
+
+    0966  eb         XCHG                       ; Store current block position to a local variable
+    0967  22 12 0b   SHLD REVEAL_BLOCK_POS (0b12)
+
+    096a  21 0c 05   LXI HL, PLAYER_POS_STR + 2 (050c)
+    096d  11 13 05   LXI DE, PLAYER_STRUCT + 9 (0513)
+    0970  01 0b 00   LXI BC, 000b
+
+    0973  3a 09 05   LDA MOBS_COUNT (0509)      ; Init the records counter
+    0976  32 15 0b   STA 0b15
+
+REVEAL_LADDER_LOOP:
+    0979  3a 13 0b   LDA 0b13                   ; Compare X coordinate
+    097c  be         CMP M
+    097d  c2 8d 09   JNZ REVEAL_LADDER_2 (098d)
+
+    0980  23         INX HL
+
+    0981  3a 12 0b   LDA REVEAL_BLOCK_POS (0b12); Compare Y coordinate
+    0984  be         CMP M
+    0985  c2 8c 09   JNZ REVEAL_LADDER_1 (098c)
+
+    0988  eb         XCHG
+    0989  36 23      MVI M, 23                  ; Store '#' as a char under the mob
+    098b  eb         XCHG
+
+REVEAL_LADDER_1:
+    098c  2b         DCX HL                     ; Restore pointer
+
+REVEAL_LADDER_2:
+    098d  09         DAD BC                     ; Advance to the next MOB
+    098e  eb         XCHG
+    098f  09         DAD BC
+    0990  eb         XCHG
+
+    0991  3a 15 0b   LDA 0b15                   ; Decrement mob count to go
+    0994  3d         DCR A
+
+    0995  fe 00      CPI A, 00                  ; Exit when reached zero
+    0997  ca a0 09   JZ REVEAL_LADDER_3 (09a0)
+
+    099a  32 15 0b   STA 0b15                   ; Store the counter and repeat
+    099d  c3 79 09   JMP REVEAL_LADDER_LOOP (0979)
+
+REVEAL_LADDER_3:
+    09a0  c1         POP BC                     ; Restore registers
+    09a1  d1         POP DE
+    09a2  e1         POP HL
+
+REVEAL_LADDER_EXIT:
+    09a3  0e 23      MVI C, 23                  ; Draw a ladder
+    09a5  cd 09 f8   CALL MONITOR_PUT_CHAR (f809)
+
+    09a8  c9         RET
+
+
 
 REAL_START:
     09a9  21 5c 05   LXI HL, WELCOME_SCREEN (055c)  ; Print the intro screen
@@ -1328,8 +1369,8 @@ REAL_START:
     09b5  21 18 0b   LXI HL, MAP_01 (0b18)          ; Initialize current map pointer
     09b8  22 5a 05   SHLD CUR_MAP_PTR (055a)
 
-    09bb  06 04      MVI B, 04                      ; Zero 4 bytes at 0x0485 ????
-    09bd  21 85 04   LXI HL, 0485
+    09bb  06 04      MVI B, 04                      ; Zero score
+    09bd  21 85 04   LXI HL, SCORE (0485)
 ????:
     09c0  23         INX HL
     09c1  36 00      MVI M, 00
@@ -1359,9 +1400,9 @@ NEW_MAP:
     09e4  3a 11 0b   LDA CUR_LEVEL (0b11)           ; Print the value
     09e7  cd 15 f8   CALL MONITOR_PRINT_BYTE_HEX (f815)
 
-    09ea  21 13 05   LXI HL, 0513               ; Set 0x20 to ????? field of 6 structures ????
-    09ed  11 0b 00   LXI DE, 000b
-    09f0  06 06      MVI B, 06
+    09ea  21 13 05   LXI HL, PLAYER_STRUCT + 9 (0513)   ; Set symbol under the mob to space (0x20)
+    09ed  11 0b 00   LXI DE, 000b                   ; Struct size - 11 bytes
+    09f0  06 06      MVI B, 06                      ; 6 structures - 1 player + 5 enemies
 
 ????:
     09f2  36 20      MVI M, 20
@@ -1369,7 +1410,7 @@ NEW_MAP:
     09f5  05         DCR B
     09f6  c2 f2 09   JNZ 09f2
 
-    09f9  21 12 05   LXI HL, 0512               ; Clear ???? field in 6 structures ????
+    09f9  21 12 05   LXI HL, PLAYER_STRUCT + 8 (0512)   ; Clear ???? field in 6 structures ????
     09fc  06 06      MVI B, 06
 
 ????:
@@ -1378,8 +1419,9 @@ NEW_MAP:
     0a01  05         DCR B
     0a02  c2 fe 09   JNZ 09fe
 
-    0a05  21 91 04   LXI HL, 0491               ; Clear 120 bytes at 0x0491
-    0a08  06 78      MVI B, 78
+    0a05  21 91 04   LXI HL, BURNED_BRICKS_BACKUP (0491)    ; Clear 120 bytes (main and backup burned bricks
+    0a08  06 78      MVI B, 78                              ; brick arrays)
+
 ????:
     0a0a  36 00      MVI M, 00
     0a0c  23         INX HL
@@ -1391,8 +1433,8 @@ NEW_MAP:
 
     0a17  cd 28 01   CALL INIT_MAP (0128)       ; Initialize the map structures
 
-    0a1a  3e 00      MVI A, 00                  ; Clear some flag ????
-    0a1c  32 16 0b   STA 0b16
+    0a1a  3e 00      MVI A, 00                  ; Clear 'ladder revealed' flag
+    0a1c  32 16 0b   STA IS_LADDER_REVEALED (0b16)
 
 WAIT_START_KEY:
     0a1f  cd 03 f8   CALL MONITOR_WAIT_KEY (f803)   ; Wait for a initial key press
@@ -1421,17 +1463,17 @@ WAIT_START_KEY:
     0a43  fe ff      CPI A, ff                  ; If no key pressed - ????
     0a45  ca 4b 0a   JZ 0a4b
 
-    0a48  32 14 05   STA 0514                   ; Store the pressed key value
+    0a48  32 14 05   STA PLAYER_STRUCT + 10 (0514)  ; Store the pressed key value
 
 ????:
     0a4b  fe 41      CPI A, 41                  ; 'A' restarts the level, reducing lives counter
     0a4d  ca e0 0a   JZ PLAYER_DIE (0ae0)
 
 0a50  cd cd 01   CALL 01cd
-0a53  cd a8 03   CALL 03a8
-0a56  cd e2 03   CALL 03e2
+0a53  cd a8 03   CALL HANDLE_TREASURE (03a8)
+0a56  cd e2 03   CALL HANDLE_BRICKS (03e2)
 0a59  cd 1b 07   CALL 071b
-0a5c  cd 07 09   CALL 0907
+0a5c  cd 07 09   CALL HANDLE_EXIT_LADDER (0907)
 0a5f  16 2f      MVI D, 2f
 ????:
 0a61  1e 6f      MVI E, 6f
@@ -1480,12 +1522,12 @@ ADVANCE_LEVEL:
 ????:
 0aac  21 0a 05   LXI HL, PLAYER_POS_STR (050a)
 0aaf  cd 18 f8   CALL MONITOR_PRINT_STR (f818)
-0ab2  cd 21 f8   CALL f821
+0ab2  cd 21 f8   CALL MONITOR_GET_CHAR_AT_CURSOR (f821)
 0ab5  fe 70      CPI A, 70
 0ab7  ca e0 0a   JZ PLAYER_DIE (0ae0)
 0aba  21 17 05   LXI HL, ENEMY1_POS_STR + 2 (0517)
 0abd  11 0b 00   LXI DE, 000b
-0ac0  3a 09 05   LDA ENEMIES_COUNT (0509)
+0ac0  3a 09 05   LDA MOBS_COUNT (0509)
 0ac3  3d         DCR A
 0ac4  4f         MOV C, A
 ????:
@@ -1543,11 +1585,17 @@ NO_MORE_LEVELS:
 CUR_LEVEL:
     0b11  01                                    ; Current difficulty level
 
-????:
-0b12 00 00   LXI BC, 0000
+REVEAL_BLOCK_POS:
+    0b12 00 00              dw 0000             ; Local variable of REVEAL_BLOCK function, stores currently
+                                                ; processed block position
+
 0b14  00         NOP
 ????:
-0b15  ce 00      ACI A, 00
+0b15  ce 
+
+IS_LADDER_REVEALED:
+    0b16                    db 00               ; Flag indicates that player collected all treasures, and exit
+                                                ; ladder has revealed on the screen
 
 LIVES_COUNT:
     0b17  00         NOP                        ; Number of lives till the game over
