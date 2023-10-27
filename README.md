@@ -769,6 +769,7 @@ Memory map of the Radio-86RK computer:
 - `0xe000` - `0xe008`: Intel 8257 DMA controller chip.
 - `0xf800` - `0xffff`: Monitor ROM.
 
+A classic [Lode Runner](tapes/LRUNNER.rku) game ([disassembly](doc/disassembly/LRUNNER.asm)) is added as an example of Radio-86RK game.
 
 # UT-88 Emulator
 
