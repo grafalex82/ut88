@@ -3,6 +3,17 @@ from common.machine import Machine
 from common.cpu import CPU
 
 class Emulator:
+    """
+        Intel 8080 based machine emulator.
+
+        This class is responsible to driving emulation process with the given machine and CPU. The Emulator
+        provides possibility to run emulated CPU for a a single instruction, as well as for a number of cycles.
+        The Emulator also provides possibility to hook to the emulated code execution by setting up breakpoints.
+        Breakpoints allow running emulator side code when the emulated CPU reaches a certain instruction address.
+
+        In order to speed up data loading into the computer, this emulator class provides a feature to load
+        a tape data from disk directly to the emulater computer memory.
+    """
     def __init__(self, machine):
         self._machine = machine
         self._cpu = CPU(self._machine)

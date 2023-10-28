@@ -3,6 +3,23 @@ import os
 from common.utils import *
 
 class QuasiDisk:
+    """
+        Quasi Disk emulator
+        
+        This class emulates the UT-88 quasi disk. Original quasi disk is based on 256k RAM, organized in
+        four 64k pages. The read and write access to the selected page data is performed using stack read
+        and write operations. 
+
+        RAM page selection is performed by writing special values to the 0x40 port. In this particular
+        implementation page selection is performed using select_page() function.
+
+        Although original implementation does not offer a long term storage, this particular implementation
+        dumps the content of the RAM disk to a file, and restore the content on startup. There is a possibility
+        to flush the RAM contents to file in runtime, as well as reloading the data from file. This is used
+        for testing.
+    """
+
+
     def __init__(self, fname):
         self._page = None
         self._fname = fname
