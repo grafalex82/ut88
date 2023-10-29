@@ -1396,6 +1396,7 @@ PUT_CHAR_A:
 ; - As a X and Y coordinate to track screen boundaries, and fill the i8275 cursor position register.
 ;
 ; The function handles the following special chars:
+; 0x07  - Beep
 ; 0x08  - Move cursor 1 position left
 ; 0x0c  - Move cursor to the top left position
 ; 0x18  - Move cursor 1 position right
