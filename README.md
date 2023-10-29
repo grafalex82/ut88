@@ -19,7 +19,7 @@ The magazine featured both computer schematics and software code, with the inten
 - **Video Module:** The next phase introduced a 55-key alphanumeric keyboard and a 64x28 character monochrome display (with TV output). The hardware and software of the Video Configuration is described in [this document](doc/cfg_video.md).
 - **Dynamic 64k RAM:** This upgrade allowed users to run programs from other compatible computers. See [64k RAM mod notes](doc/64k_mod.md) for more details.
 - **64k-256k Quasi Disk:** A battery-powered dynamic RAM was added, providing the capacity to store a substantial amount of data.
-- **Custom Add-ons:** In addition to the phases listed above, there were custom add-ons, including a Flash memory programmer and an i8253-based sound generator.
+- **Custom Add-ons:** In addition to the phases listed above, there were custom add-ons, including a [Flash memory programmer](doc/rom_flasher.md) and an i8253-based sound generator.
 
 These phases offered readers a structured approach to gradually build and enhance the UT-88 computer according to their preferences and needs. Each phase of the UT-88 build not only expanded the hardware but also enriched the software capabilities, providing users with a versatile computing experience.
 
@@ -43,13 +43,6 @@ Scans of the original magazine can be found [here](doc/scans).
 
 
 
-## ROM flasher addon
-
-The magazine offered an interesting addon for the UT-88 computer, which was a ROM flasher. This device was designed to enable the programming of 573RF2 and 573RF5 2k ROM chips, both of which were claimed to be analogs of Intel 2716 ROM chips. Overall, the ROM flasher addon added a valuable feature to the UT-88, enabling users to work with ROM chips and potentially customize their computer's functionality to suit their specific needs.
-
-The [schematics](doc/scans/UT60.djvu) for the ROM flasher device appear to be relatively straightforward, and is based on the i8255 chip. However, it's worth noting that there is a discrepancy in the CE (Chip Enable) and OE (Output Enable) lines compared to their references in the code.
-
-To support the ROM flasher device, a dedicated flasher program was provided. This program, which you can explore in the [disassembly](doc/disassembly/flasher.asm), allowed users to read and write to the ROM chips using the flasher device. 
 
 ## UT-88 OS
 
