@@ -136,3 +136,22 @@ def test_bsr_set(ppi):
     ppi.set_portC_bit_handler(6, mock_func6)
     ppi.write_byte(PPI_PORT_CFG, 0x0d)
     mock_func6.assert_called_once_with(True)    
+
+
+def test_disconnect_port_in_runtime(ppi):
+    ppi.write_byte(PPI_PORT_CFG, 0x80)      # Configure with PortC as output
+
+    mock_func = MagicMock()                 # Connect a function to port, check if is executed on port write
+    ppi.set_portC_bit_handler(0, mock_func)
+    ppi.write_byte(PPI_PORT_CFG, 0x00)
+    mock_func.assert_called_once_with(False)
+
+    mock_func = MagicMock()                 # Disconnect function, check it is not written
+    ppi.set_portC_bit_handler(0, None)
+    ppi.write_byte(PPI_PORT_CFG, 0x00)
+    mock_func.assert_not_called()
+
+    mock_func = MagicMock()                 # Connect the function again, check if is executed on port write
+    ppi.set_portC_bit_handler(0, mock_func)
+    ppi.write_byte(PPI_PORT_CFG, 0x01)
+    mock_func.assert_called_once_with(True)
