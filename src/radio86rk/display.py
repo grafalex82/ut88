@@ -8,13 +8,14 @@ from common.surface import DisplaySurface, CHAR_WIDTH, CHAR_HEIGHT
 resources_dir = os.path.join(os.path.dirname(__file__), "..", "..", "resources")
 
 # Intel 8275 commands
-CRT_COMMAND_RESET       =   0
-CRT_COMMAND_START       =   1
-CRT_COMMAND_SET_CURSOR  =   4
+CRT_COMMAND_RESET           =   0
+CRT_COMMAND_START           =   1
+CRT_COMMAND_SET_CURSOR      =   4
+CRT_COMMAND_RESET_COUNTERS  =   7
 
 # Intel 8275 registers
-CRT_SREG                =   1
-CRT_PREG                =   0
+CRT_SREG                    =   1
+CRT_PREG                    =   0
 
 class RK86Display:
     """
@@ -80,6 +81,9 @@ class RK86Display:
         elif cmd == CRT_COMMAND_SET_CURSOR:
             self._current_command = value
             self._current_parameter = 0
+
+        elif cmd == CRT_COMMAND_RESET_COUNTERS:
+            pass
 
         else:
             raise IOError(f"Unsupported i8275 command: 0x{value:02x}")
