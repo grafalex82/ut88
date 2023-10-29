@@ -15,7 +15,7 @@ UT-88 (Russian: ЮТ-88) is a DIY computer originally introduced in "Young Techn
 
 The magazine featured both computer schematics and software code, with the intention of guiding readers through a computer construction process in several phases:
 - **Basic Configuration:** The CPU module resembled a calculator, featuring a 6-digit LCD display and a hexadecimal button keypad. See detailed description of the basic configuration including hardware and software description [here](doc/cfg_basic.md).
-- **Calculator Add-on:** This expanded the capabilities by incorporating a ROM with floating-point functions, enabling scientific calculations.
+- **Calculator Add-on:** This expanded the capabilities by incorporating a ROM with floating-point functions, enabling scientific calculations. The calculator addon is described [here](doc/cfg_calculator.md).
 - **Video Module:** The next phase introduced a 55-key alphanumeric keyboard and a 64x28 character monochrome display (with TV output).
 - **Dynamic 64k RAM:** This upgrade allowed users to run programs from other compatible computers.
 - **64k-256k Quasi Disk:** A battery-powered dynamic RAM was added, providing the capacity to store a substantial amount of data.
