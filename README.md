@@ -17,7 +17,7 @@ The magazine featured both computer schematics and software code, with the inten
 - **Basic Configuration:** The CPU module resembled a calculator, featuring a 6-digit LCD display and a hexadecimal button keypad. See detailed description of the basic configuration including hardware and software description [here](doc/cfg_basic.md).
 - **Calculator Add-on:** This expanded the capabilities by incorporating a ROM with floating-point functions, enabling scientific calculations. The calculator addon is described [here](doc/cfg_calculator.md).
 - **Video Module:** The next phase introduced a 55-key alphanumeric keyboard and a 64x28 character monochrome display (with TV output). The hardware and software of the Video Configuration is described in [this document](doc/cfg_video.md).
-- **Dynamic 64k RAM:** This upgrade allowed users to run programs from other compatible computers.
+- **Dynamic 64k RAM:** This upgrade allowed users to run programs from other compatible computers. See [64k RAM mod notes](doc/64k_mod.md) for more details.
 - **64k-256k Quasi Disk:** A battery-powered dynamic RAM was added, providing the capacity to store a substantial amount of data.
 - **Custom Add-ons:** In addition to the phases listed above, there were custom add-ons, including a Flash memory programmer and an i8253-based sound generator.
 
@@ -41,15 +41,6 @@ Scans of the original magazine can be found [here](doc/scans).
 
 
 
-
-
-## 64k Dynamic RAM
-
-The upgrade to a 64k dynamic RAM module ([schematics](doc/scans/UT38.djvu)) significantly enhances UT-88 computer memory capabilities. While the RAM module covers the entire 64k address space, it includes special logic to disable the dynamic RAM for specific address ranges, such as `0xe000`-`0xefff` (video RAM) and `0xf000`-`0xffff` (reserved for Monitor F RAM/ROM). As a result, the effective dynamic RAM size is 56k.
-
-This additional RAM capacity opens up the possibility of running a wider range of programs on the UT-88. It is claimed that the UT-88 is programmatically compatible with other computers in the same class, particularly the Micro-80 and Radio-86RK. However, compatibility is only partial, as some programs designed for the Radio-86RK write directly to video memory or make use of the i8275 video controller (which is not available in the UT-88). These differences can result in incompatibility with many Radio-86RK games.
-
-Nonetheless, there are examples of Radio-86RK games that can run on the UT-88, thanks to the compatibility provided by Monitor F functions. Programs that communicate with the keyboard and display using Monitor F functions will work as expected on the UT-88. For instance, Treasure game ([Disassembly](doc/disassembly/klad.asm)) and the more recently developed 2048 game ([Disassembly](doc/disassembly/2048.asm)) are two examples of Radio-86RK games that are compatible with the UT-88.
 
 
 ## ROM flasher addon
