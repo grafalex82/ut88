@@ -29,7 +29,7 @@ I/O address space map:
 - `0xa0`  - hex heyboard
 - `0xa1`  - tape recorder
 
-Basic CPU module schematics can be found here: [part 1](doc/scans/UT08.djvu), [part 2](doc/scans/UT09.djvu).
+Basic CPU module schematics can be found here: [part 1](scans/UT08.djvu), [part 2](scans/UT09.djvu).
 
 ## Firmware
 
@@ -129,10 +129,10 @@ Programs in the second part of Monitor 0  extend the functionality of Monitor 0,
 ## Other software
 
 In the Basic Configuration, the UT-88 computer offers limited software variety. The programs included with the Basic CPU module instructions, however, may not meet the same quality standards as the main firmware, possibly being authored by the UT-88 creator's students. These programs are as follows:
-- [Tic Tac Toe game](doc/disassembly/tictactoe.asm) - a classic game. Computer always goes first, and there is no way for the player to win.
-- [Labyrinth game](doc/disassembly/labyrinth.asm) - player searches a way in a 16x16 labyrinth.
-- [Reaction game](doc/disassembly/reaction.asm) - program starts counter, goal to stop the counter as early as possible.
-- [Gamma](doc/disassembly/gamma.asm) - generates gamma notes to the tape recorder.
+- [Tic Tac Toe game](disassembly/tictactoe.asm) - a classic game. Computer always goes first, and there is no way for the player to win.
+- [Labyrinth game](disassembly/labyrinth.asm) - player searches a way in a 16x16 labyrinth.
+- [Reaction game](disassembly/reaction.asm) - program starts counter, goal to stop the counter as early as possible.
+- [Gamma](disassembly/gamma.asm) - generates gamma notes to the tape recorder.
 
 
 # Running emulator in Basic Configuration
@@ -145,4 +145,4 @@ python src/main.py basic
 
 Calculator ROM is also pre-loaded in this configuration.
 
-![](doc/images/basic.png)
+![](images/basic.png)
