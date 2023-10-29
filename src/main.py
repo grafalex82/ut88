@@ -475,21 +475,29 @@ class Radio86RKConfiguration(Configuration):
 
         # self._recorder = TapeRecorder()
         # self._machine.add_io(self._recorder)
-        self._keyboard_port = PPI()
-        self._machine.add_memory(MemoryDevice(self._keyboard_port, 0x8000))
+        self._ppi = PPI()
+        self._machine.add_memory(MemoryDevice(self._ppi, 0x8000))
 
         self._keyboard = RK86Keyboard()
-        self._keyboard_port.set_portA_handler(self._keyboard.set_columns)
-        self._keyboard_port.set_portB_handler(self._keyboard.read_rows)
-        self._keyboard_port.set_portC_bit_handler(6, self._keyboard.read_ctrl_key)
-        self._keyboard_port.set_portC_bit_handler(5, self._keyboard.read_shift_key)
-        self._keyboard_port.set_portC_bit_handler(7, self._keyboard.read_rus_key)
+        self._ppi.set_portA_handler(self._keyboard.set_columns)
+        self._ppi.set_portB_handler(self._keyboard.read_rows)
+        self._ppi.set_portC_bit_handler(6, self._keyboard.read_ctrl_key)
+        self._ppi.set_portC_bit_handler(5, self._keyboard.read_shift_key)
+        self._ppi.set_portC_bit_handler(7, self._keyboard.read_rus_key)
 
         self._dma = DMA(self._machine)
         self._machine.add_memory(MemoryDevice(self._dma, 0xe000))
 
         self._display = RK86Display(self._dma)
         self._machine.add_memory(MemoryDevice(self._display, 0xc000))
+
+        self._recorder = TapeRecorder()
+        # Intentionally not connecting tape recorder to port C here. Radio-86RK shares the same port
+        # for tape recorder, keyboard mod keys, and Rus/Lat LED. This causes a lot of reads and writes
+        # to this port, that limited functionality of the tape recorder emulator is not happy with.
+        # These handlers are connected on tape in/out functions calls, and disconnected afterwards.
+        # self._ppi.set_portC_bit_handler(0, self._recorder.write_bit)
+        # self._ppi.set_portC_bit_handler(4, self._recorder.read_bit)
 
 
     def configure_logging(self):
@@ -501,6 +509,27 @@ class Radio86RKConfiguration(Configuration):
         # Each key press requires a debounce period. In order to speed up the keyboard reading loop,
         # it is possible to reduce debounce loop to 1 pass when running under the emulator.
         self._emulator.add_breakpoint(0xfeb5, lambda: self._emulator._cpu.set_l(0x01))
+
+        # Original Radio-86RK employs DMA controller for video RAM transfer. Time critical functions
+        # such as tape input and output disable DMA while working with the tape recorder. Switching 
+        # off the DMA transfer causes Emulator Display to crash when it can't get the next video data.
+        # Fortunately in this emulator the DMA transfer does not introduce any delays, so switching 
+        # off DMA is not necessary.
+        self._emulator.add_breakpoint(0xfc4a, lambda: self._emulator._cpu.set_pc(0xfc4f))
+        self._emulator.add_breakpoint(0xfb9c, lambda: self._emulator._cpu.set_pc(0xfba1))
+
+        # Reinitializing video controller on tape recorder data transfer is also not necessary
+        self._emulator.add_breakpoint(0xfc0f, lambda: self._emulator._cpu.set_pc(0xfc29))
+        self._emulator.add_breakpoint(0xfc86, lambda: self._emulator._cpu.set_pc(0xfca0))
+
+        # The Radio-86RK shares same port for tape recorder, keyboard modifications, and the RUS/LED
+        # indicator. The tape recorder emulation is not ready for extra reads and write to the port
+        # that are unrelated to the tape input or output. In this emulator the tape recorder will be
+        # connected to the Port C right before the data transfer, and disconnected afterwards.
+        self._emulator.add_breakpoint(0xfb98, lambda: self._ppi.set_portC_bit_handler(4, self._recorder.read_bit))
+        self._emulator.add_breakpoint(0xfc31, lambda: self._ppi.set_portC_bit_handler(4, None))
+        self._emulator.add_breakpoint(0xfc46, lambda: self._ppi.set_portC_bit_handler(0, self._recorder.write_bit))
+        self._emulator.add_breakpoint(0xfca0, lambda: self._ppi.set_portC_bit_handler(0, None))
 
 
     def get_start_address(self):
@@ -517,11 +546,11 @@ class Radio86RKConfiguration(Configuration):
 
 
     def update(self, screen):
-    #     alt_pressed = pygame.key.get_mods() & (pygame.KMOD_ALT | pygame.KMOD_META) 
-    #     if pygame.key.get_pressed()[pygame.K_l] and alt_pressed:
-    #         self._recorder.load_from_file(open_pki())
-    #     if pygame.key.get_pressed()[pygame.K_s] and alt_pressed:
-    #         self._recorder.dump_to_file(save_pki())
+        alt_pressed = pygame.key.get_mods() & (pygame.KMOD_ALT | pygame.KMOD_META) 
+        if pygame.key.get_pressed()[pygame.K_l] and alt_pressed:
+            self._recorder.load_from_file(open_pki())
+        if pygame.key.get_pressed()[pygame.K_s] and alt_pressed:
+            self._recorder.dump_to_file(save_pki())
 
         self._display.update_screen(screen)
 

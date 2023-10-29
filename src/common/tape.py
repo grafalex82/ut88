@@ -90,16 +90,16 @@ class TapeRecorder:
                 self._buffer = bytearray(f.read())          # Read the buffer as is
 
 
-    def read_byte(self, offset):
+    def read_bit(self):
         if len(self._buffer) == 0:
             logger.debug("No more data in the tape buffer")
-            return 0
+            return False
 
         if self._bits == 0: # Load the next byte
             self._byte = self._buffer[0]
 
         self._bits += 1
-        value = 1 if self._byte & 0x80 else 0
+        value = (self._byte & 0x80) != 0
 
         oldbits = self._bits
 
@@ -111,7 +111,7 @@ class TapeRecorder:
         # data bit will come at read #3
 
         if self._bits in [1, 2, 4, 6, 8, 10, 12, 14, 16]:  # HACK: First 2 bits duplicated, but still considered as odd call
-            value ^= 1      # Odd calls shall return inverted bits, every second call returns non-inverted
+            value ^= True      # Odd calls shall return inverted bits, every second call returns non-inverted
         else:
             self._byte = (self._byte << 1) & 0xff
 
@@ -124,16 +124,23 @@ class TapeRecorder:
         return value
     
 
-    def write_byte(self, offset, value):
+    def write_bit(self, value):
         self._bits += 1
         if self._bits % 2:
             return # Skip odd calls, only even phase has the data
         
         self._byte <<= 1
-        self._byte |= (value & 0x01)
+        self._byte |= 0x01 if value else 0x00
 
         if self._bits == 16:
             self._buffer.extend(self._byte.to_bytes(1, 'big'))
             self._bits = 0
             self._byte = 0
 
+
+    def read_byte(self, offset):
+        return 0x01 if self.read_bit() else 0x00
+
+
+    def write_byte(self, offset, value):
+        self.write_bit((value & 0x01) != 0)
