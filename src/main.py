@@ -341,7 +341,7 @@ class QuasiDiskConfiguration(VideoConfiguration):
 
         # Load full CPM64 image, just in case if someone wants start with boot loader
         # Start address: 0x3100
-        self._emulator.load_memory(f"{tapes_dir}/cpm64.RKU")    
+        self._emulator.load_memory(f"{tapes_dir}/cpm64.rku")
 
         # Already loaded CP/M parts for a faster boot
         # Start address: 0xda00
