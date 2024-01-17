@@ -46,6 +46,8 @@ This project serves as an emulator for the UT-88 hardware, encompassing the CPU,
 
 The following sections describe how to run and use the Emulator in the configuration options described above.
 
+Note: Python 3.10 or higher is required to run the emulator.
+
 ### Basic configuration
 
 Basic UT-88 configuration is started with the following command:
