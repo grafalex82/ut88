@@ -186,7 +186,7 @@ class BasicConfiguration(Configuration):
 
     def create_memories(self):
         self._machine.add_memory(MemoryDevice(RAM(), 0xc000, 0xc3ff))
-        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/Monitor0.bin"), 0x0000))
+        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/monitor0.bin"), 0x0000))
         self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/calculator.bin"), 0x0800))
 
 
@@ -243,7 +243,7 @@ class VideoConfiguration(Configuration):
         self._machine.add_memory(MemoryDevice(RAM(), 0x0000, 0x7fff))
         self._machine.add_memory(MemoryDevice(RAM(), 0xc000, 0xc3ff))
         self._machine.add_memory(MemoryDevice(RAM(), 0xf400, 0xf7ff))
-        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/MonitorF.bin"), 0xf800))
+        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/monitorF.bin"), 0xf800))
 
 
     def create_peripherals(self):
@@ -337,7 +337,7 @@ class QuasiDiskConfiguration(VideoConfiguration):
     def create_memories(self):
         self._machine.add_memory(MemoryDevice(RAM(), 0x0000, 0xe000))
         self._machine.add_memory(MemoryDevice(RAM(), 0xf400, 0xf7ff))
-        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/MonitorF.bin"), 0xf800))
+        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/monitorF.bin"), 0xf800))
 
         # Load full CPM64 image, just in case if someone wants start with boot loader
         # Start address: 0x3100
