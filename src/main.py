@@ -180,8 +180,15 @@ class BasicConfiguration(Configuration):
         # Create legend text
         green = (0, 255, 0)
         font = pygame.font.SysFont('Courier New', 24)
-        self._legendtext = font.render(BASIC_CONFIGURATION_LEGEND, True, green)
-        self._legendrect = self._legendtext.get_rect().move(0, 80)
+
+        # Render each line of the legend separately (font.render() does not support multiline text)
+        self._legendtext = []
+        y = 0
+        for line in BASIC_CONFIGURATION_LEGEND.split('\n'):
+            text = font.render(line, True, green)
+            rect = text.get_rect().move(0, 80 + y)
+            self._legendtext.append((text, rect))
+            y += 24 # Font height
 
 
     def create_memories(self):
@@ -231,7 +238,8 @@ class BasicConfiguration(Configuration):
         self._lcd.update_screen(screen)
         self._kbd.update()
 
-        screen.blit(self._legendtext, self._legendrect)
+        for text, rect in self._legendtext:
+            screen.blit(text, rect)
 
 
 class VideoConfiguration(Configuration):
