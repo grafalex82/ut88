@@ -19,7 +19,7 @@ class CPM(EmulatedInstanceWithKeyboard):
         EmulatedInstanceWithKeyboard.__init__(self)
 
         self._machine.add_memory(MemoryDevice(RAM(), 0x0000, 0xf7ff))
-        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/MonitorF.bin"), 0xf800))
+        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/monitorF.bin"), 0xf800))
 
         self._emulator.load_memory(f"{tapes_dir}/cpm64_bdos.rku")
         self._emulator.load_memory(f"{tapes_dir}/cpm64_bios.rku")

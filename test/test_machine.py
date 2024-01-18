@@ -17,7 +17,7 @@ from helper import MockIO
 @pytest.fixture
 def machine():
     m = Machine()
-    m.add_memory(MemoryDevice(ROM("../resources/Monitor0.bin"), 0x4000))
+    m.add_memory(MemoryDevice(ROM("../resources/monitor0.bin"), 0x4000))
     m.add_memory(MemoryDevice(RAM(), 0x8000, 0x8fff))
     return m
 

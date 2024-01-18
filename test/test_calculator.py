@@ -39,9 +39,9 @@ from helper import EmulatedInstance
 class Calculator(EmulatedInstance):
     def __init__(self):
         EmulatedInstance.__init__(self)
-        
+
         self._machine.add_memory(MemoryDevice(RAM(), 0xc000, 0xc3ff))     # Same as CPU module configuration
-        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/Monitor0.bin"), 0x0000))
+        self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/monitor0.bin"), 0x0000))
         self._machine.add_memory(MemoryDevice(ROM(f"{resources_dir}/calculator.bin"), 0x0800))
 
 

@@ -12,7 +12,7 @@ from common.interfaces import MemoryDevice
 
 @pytest.fixture
 def rom():
-    return MemoryDevice(ROM("../resources/Monitor0.bin"), 0x4000)
+    return MemoryDevice(ROM("../resources/monitor0.bin"), 0x4000)
 
 def test_addr(rom):
     start, end = rom.get_addr_range()
