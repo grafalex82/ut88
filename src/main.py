@@ -36,8 +36,8 @@ Keys:
   Alt-S     - Save a tape file
 """
 
-filetypes=((".PKI tape files", "*.pki *.gam"), 
-           (".RK Tape files", "*.rk *.rku"), 
+filetypes=((".RK Tape files", "*.rk *.rku"), 
+           (".PKI tape files", "*.pki *.gam"), 
            ("All files", "*.*"))
 
 def open_pki():
